@@ -1123,6 +1123,40 @@ fn detours_in_a_parallel_lane_when_both_detour_lanes_are_taken() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a request and a reply drawn on the same diagonal between a circle
+///   and a box below and to its right, so both must turn a corner
+/// When the diagram is fixed
+/// Then the two routes nest around the corner instead of crossing, and
+///   nothing is reported
+#[test]
+fn nests_a_request_and_reply_that_turn_the_same_corner() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+        <g data-node="ship">
+          <circle cx="100" cy="80" r="50" />
+          <text x="100" y="85" text-anchor="middle" font-size="14">Ship</text>
+        </g>
+        <g data-node="carrier">
+          <rect x="240" y="200" width="120" height="52" />
+          <text x="300" y="231" text-anchor="middle" font-size="14">Carrier</text>
+        </g>
+        <line id="shipment" data-from="ship" data-to="carrier" x1="100" y1="80" x2="300" y2="226" />
+        <line id="tracking" data-from="carrier" data-to="ship" x1="300" y1="226" x2="100" y2="80" />
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let shipment = connector_points(&result.report, "shipment");
+    let tracking = connector_points(&result.report, "tracking");
+
+    assert!(bend_count(&shipment) > 0 && bend_count(&tracking) > 0);
+    assert!(is_orthogonal(&shipment) && is_orthogonal(&tracking));
+    assert!(!crosses_route(&shipment, &tracking), "{shipment:?} {tracking:?}");
+    assert!(result.report.issues.is_empty());
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a request and a reply that overlap between the same two nodes
 /// When the diagram is fixed
 /// Then their endpoints are spread along the node edges and no overlap remains

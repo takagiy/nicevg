@@ -557,7 +557,65 @@ pub fn spread_ports(requests: &[PortRequest]) -> HashMap<String, Ports> {
     let spread = sides_in_use(requests, &midpoints)
         .iter()
         .fold(midpoints.clone(), |ports, (key, users)| spread_side(ports, key, users));
-    align_facing_ports(requests, spread)
+    align_facing_ports(requests, untangle_pairs(requests, spread))
+}
+
+/// Connectors joining the same two node sides tie when ordered by the node
+/// at their other end, so both sides get the same order: right for facing
+/// sides, but around a corner the routes cross. Wherever the straight
+/// chords between two such connectors' ports cross, their ports on one
+/// node trade places so the routes nest instead.
+fn untangle_pairs(requests: &[PortRequest], ports: HashMap<String, Ports>) -> HashMap<String, Ports> {
+    requests
+        .iter()
+        .enumerate()
+        .flat_map(|(index, first)| requests[index + 1..].iter().map(move |second| (first, second)))
+        .fold(ports, |mut ports, (first, second)| {
+            let reversed = if first.source_id == second.source_id
+                && first.target_id == second.target_id
+                && first.sides.start == second.sides.start
+                && first.sides.end == second.sides.end
+            {
+                false
+            } else if first.source_id == second.target_id
+                && first.target_id == second.source_id
+                && first.sides.start == second.sides.end
+                && first.sides.end == second.sides.start
+            {
+                true
+            } else {
+                return ports;
+            };
+            let (Some(one), Some(other)) = (ports.get(&first.id).copied(), ports.get(&second.id).copied()) else {
+                return ports;
+            };
+            // The other connector's ports on the first one's source and target.
+            let (other_start, other_end) = if reversed {
+                (other.end, other.start)
+            } else {
+                (other.start, other.end)
+            };
+            if !chords_cross(one.start, one.end, other_start, other_end) {
+                return ports;
+            }
+            let traded = if reversed {
+                Ports {
+                    start: one.end,
+                    ..other
+                }
+            } else {
+                Ports { end: one.end, ..other }
+            };
+            ports.insert(first.id.clone(), Ports { end: other_end, ..one });
+            ports.insert(second.id.clone(), traded);
+            ports
+        })
+}
+
+/// Whether two straight segments pass through each other.
+fn chords_cross(a: Point, b: Point, c: Point, d: Point) -> bool {
+    let turn = |p: Point, q: Point, r: Point| ((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)).signum();
+    turn(a, b, c) * turn(a, b, d) < 0.0 && turn(c, d, a) * turn(c, d, b) < 0.0
 }
 
 /// An endpoint attached to a node side, with the node at the other end.

@@ -232,6 +232,20 @@ pub fn overlaps_route(first: &[Point], second: &[Point]) -> bool {
         .any(|segment| others.iter().any(|other| collinear_overlap(segment, other)))
 }
 
+/// Whether a horizontal and a vertical segment of the two routes pass
+/// through each other.
+pub fn crosses_route(first: &[Point], second: &[Point]) -> bool {
+    let others = segments(second);
+    let crosses = |(a, b): &(Point, Point), (c, d): &(Point, Point)| {
+        a.y == b.y && c.x == d.x && a.x.min(b.x) < c.x && c.x < a.x.max(b.x) && c.y.min(d.y) < a.y && a.y < c.y.max(d.y)
+    };
+    segments(first).iter().any(|segment| {
+        others
+            .iter()
+            .any(|other| crosses(segment, other) || crosses(other, segment))
+    })
+}
+
 pub fn inflate(box_: &Bounds, amount: f64) -> Bounds {
     bounds(
         box_.x - amount,

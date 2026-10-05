@@ -1,0 +1,17 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+        <g data-node="ship">
+          <circle cx="100" cy="80" r="50"/>
+          <text x="100" y="85" text-anchor="middle" font-size="14">Ship</text>
+        </g>
+        <g data-node="carrier">
+          <rect x="240" y="200" width="120" height="52"/>
+          <text x="300" y="231" text-anchor="middle" font-size="14">Carrier</text>
+        </g>
+        <path id="shipment" data-from="ship" data-to="carrier" fill="none" d="M 147 63 L 320 63 L 320 200"/>
+        <path id="tracking" data-from="carrier" data-to="ship" fill="none" d="M 280 200 L 280 97 L 147 97"/>
+      </svg>
