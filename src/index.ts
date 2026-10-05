@@ -631,6 +631,47 @@ const inspectConnectorOverlaps = (
       })),
   );
 
+// Shortest distance between a box and any segment of a route.
+const distanceToRoute = (bounds: Bounds, points: Point[]): number =>
+  Math.min(
+    ...connectorSegments(points).map(([from, to]) => {
+      const dx = Math.max(
+        0,
+        bounds.x - Math.max(from.x, to.x),
+        Math.min(from.x, to.x) - (bounds.x + bounds.width),
+      );
+      const dy = Math.max(
+        0,
+        bounds.y - Math.max(from.y, to.y),
+        Math.min(from.y, to.y) - (bounds.y + bounds.height),
+      );
+      return Math.hypot(dx, dy);
+    }),
+  );
+
+// Labels are placed one clearance plus a pixel away from their connector, so
+// a tied label further than this no longer reads as belonging to it.
+const detachedLabelDistance = 16;
+
+const inspectDetachedLabels = (
+  labels: DiagramLabel[],
+  connectors: DiagramConnector[],
+): DiagramIssue[] =>
+  labels.flatMap((label): DiagramIssue[] => {
+    const connector = connectors.find((item) => item.id === label.connector);
+    if (connector === undefined) return [];
+    const distance = distanceToRoute(label.bounds, connector.points);
+    if (distance <= detachedLabelDistance) return [];
+    return [
+      {
+        code: "label-detached",
+        message: `Label "${label.id}" sits ${Math.round(distance)}px from its connector "${connector.id}".`,
+        elements: [label.id, connector.id],
+        details: { distance, maximumDistance: detachedLabelDistance },
+      },
+    ];
+  });
+
 const pointIsInside = (point: Point, bounds: Bounds): boolean =>
   point.x > bounds.x &&
   point.x < bounds.x + bounds.width &&
@@ -829,7 +870,19 @@ const segmentLength = ([from, to]: [Point, Point]): number =>
 
 type ConnectorPorts = ReturnType<typeof connectorPorts>;
 
-const sideOf = (point: Point, bounds: Bounds): string =>
+type Side = "top" | "right" | "bottom" | "left";
+
+const isOnOutline = (point: Point, bounds: Bounds): boolean => {
+  const withinX = point.x >= bounds.x && point.x <= bounds.x + bounds.width;
+  const withinY = point.y >= bounds.y && point.y <= bounds.y + bounds.height;
+  return (
+    (withinX &&
+      (point.y === bounds.y || point.y === bounds.y + bounds.height)) ||
+    (withinY && (point.x === bounds.x || point.x === bounds.x + bounds.width))
+  );
+};
+
+const sideOf = (point: Point, bounds: Bounds): Side =>
   point.x === bounds.x
     ? "left"
     : point.x === bounds.x + bounds.width
@@ -842,13 +895,19 @@ const sideOf = (point: Point, bounds: Bounds): string =>
 // by the position of the node at the other end, so parallel connectors do not
 // collapse onto one line.
 const spreadPorts = (
-  connectors: Array<{ id: string; source: Bounds; target: Bounds }>,
+  connectors: Array<{
+    id: string;
+    source: Bounds;
+    target: Bounds;
+    sides: { start: Side; end: Side };
+  }>,
 ): Map<string, ConnectorPorts> => {
   const ports = new Map(
-    connectors.map((connector) => [
-      connector.id,
-      connectorPorts(connector.source, connector.target),
-    ]),
+    connectors.map((connector) => {
+      const start = portOnSide(connector.source, connector.sides.start);
+      const end = portOnSide(connector.target, connector.sides.end);
+      return [connector.id, { start, end, horizontal: start.y === end.y }];
+    }),
   );
   const sides = new Map<
     string,
@@ -989,32 +1048,98 @@ const routeConnector = (
   // Step straight out of each port before searching, and keep the search
   // clear of the end nodes too, so detours meet node sides at right angles
   // instead of running along them.
-  const outward = (point: Point, bounds: Bounds): Point => {
-    const side = sideOf(point, bounds);
-    return {
-      x:
-        point.x +
-        (side === "left" ? -clearance : side === "right" ? clearance : 0),
-      y:
-        point.y +
-        (side === "top" ? -clearance : side === "bottom" ? clearance : 0),
-    };
-  };
   const detour = searchOrthogonalRoute(
-    outward(start, source),
-    outward(end, target),
+    [terminalAt(start, source, 0, clearance)],
+    [terminalAt(end, target, 0, clearance)],
     [
       ...obstacles,
       inflateBounds(source, clearance),
       inflateBounds(target, clearance),
     ],
     occupied,
-    axisOf(start, source),
-    axisOf(end, target),
   );
   return detour === null
     ? direct
-    : withoutRedundantPoints([start, ...detour, end]);
+    : withoutRedundantPoints([start, ...detour.path, end]);
+};
+
+const outward = (point: Point, side: Side, distance: number): Point => ({
+  x: point.x + (side === "left" ? -distance : side === "right" ? distance : 0),
+  y: point.y + (side === "top" ? -distance : side === "bottom" ? distance : 0),
+});
+
+const terminalAt = (
+  port: Point,
+  bounds: Bounds,
+  cost: number,
+  clearance: number,
+): Terminal => {
+  const side = sideOf(port, bounds);
+  return {
+    point: outward(port, side, clearance),
+    axis: side === "left" || side === "right" ? 0 : 1,
+    cost,
+  };
+};
+
+const sides: Side[] = ["top", "right", "bottom", "left"];
+
+const portOnSide = (bounds: Bounds, side: Side): Point => ({
+  x:
+    side === "left"
+      ? bounds.x
+      : side === "right"
+        ? bounds.x + bounds.width
+        : Math.round(bounds.x + bounds.width / 2),
+  y:
+    side === "top"
+      ? bounds.y
+      : side === "bottom"
+        ? bounds.y + bounds.height
+        : Math.round(bounds.y + bounds.height / 2),
+});
+
+// Picks the pair of node sides whose route needs the fewest bends, trying
+// every side of both ends from its midpoint. Each connector already on a side
+// makes that side cost more, so bends are not saved by bunching connectors
+// together. The sides facing along the dominant axis win ties, so a side only
+// changes when it saves something.
+const chooseSides = (
+  source: Bounds,
+  target: Bounds,
+  rawObstacles: Bounds[],
+  occupied: Point[][],
+  load: (bounds: Bounds, side: Side) => number = () => 0,
+  clearance = 8,
+): { start: Side; end: Side } => {
+  const preferred = connectorPorts(source, target);
+  const fallback = {
+    start: sideOf(preferred.start, source),
+    end: sideOf(preferred.end, target),
+  };
+  const terminals = (bounds: Bounds, keep: Side) =>
+    sides.map((side) =>
+      terminalAt(
+        portOnSide(bounds, side),
+        bounds,
+        (side === keep ? 0 : sideChangeCost) +
+          crowdingCost * load(bounds, side),
+        clearance,
+      ),
+    );
+  const found = searchOrthogonalRoute(
+    terminals(source, fallback.start),
+    terminals(target, fallback.end),
+    [
+      ...rawObstacles.map((bounds) => inflateBounds(bounds, clearance)),
+      inflateBounds(source, clearance),
+      inflateBounds(target, clearance),
+    ],
+    occupied,
+  );
+  const start = sides[found?.start ?? -1];
+  const end = sides[found?.end ?? -1];
+  return start === undefined || end === undefined ? fallback : { start, end };
 };
 
 const withoutRedundantPoints = (points: Point[]): Point[] =>
@@ -1029,6 +1154,12 @@ const withoutRedundantPoints = (points: Point[]): Point[] =>
   });
 
 const bendPenalty = 40;
+// Below one unit of length: changing a side only wins when it saves length or
+// bends, never on a tie.
+const sideChangeCost = 0.5;
+// Cost of each connector already attached to a side; below two bends, so one
+// neighbour never forces an extra bend but a bundle can.
+const crowdingCost = 30;
 const laneSpacing = 10;
 
 // Minimal binary heap ordered by [cost, state] for deterministic ties.
@@ -1094,21 +1225,48 @@ class MinQueue {
 // 0: horizontal, 1: vertical
 type Axis = 0 | 1;
 
-const axisOf = (point: Point, bounds: Bounds): Axis => {
-  const side = sideOf(point, bounds);
-  return side === "left" || side === "right" ? 0 : 1;
+// Indices of the grid steps (between lines[i] and lines[i + 1]) that share
+// some length with the span from a to b; lines are sorted ascending.
+const stepsCovering = (
+  lines: number[],
+  a: number,
+  b: number,
+): [number, number] => {
+  const low = Math.min(a, b);
+  const high = Math.max(a, b);
+  // first step whose upper line lies above low
+  let first = 0;
+  let last = lines.length - 1;
+  while (first < last) {
+    const middle = Math.floor((first + last) / 2);
+    if ((lines[middle + 1] ?? Infinity) > low) last = middle;
+    else first = middle + 1;
+  }
+  let end = first - 1;
+  while (end + 1 < lines.length - 1 && (lines[end + 1] ?? Infinity) < high) {
+    end += 1;
+  }
+  return [first, end];
 };
 
+// A place a route may start or end: the point outside a port, the axis the
+// route must leave or arrive along, and an extra cost for choosing it.
+interface Terminal {
+  point: Point;
+  axis: Axis;
+  cost: number;
+}
+
 // Dijkstra over a sparse orthogonal grid built from obstacle edges, the
-// channels between them and the two ports. Returns null when no path exists.
+// channels between them and the terminals. Starts from whichever start
+// terminal and stops at whichever end terminal is cheapest overall. Returns
+// null when no path exists.
 const searchOrthogonalRoute = (
-  start: Point,
-  end: Point,
+  starts: Terminal[],
+  ends: Terminal[],
   obstacles: Bounds[],
   occupied: Point[][],
-  startAxis: Axis,
-  endAxis: Axis,
-): Point[] | null => {
+): { path: Point[]; start: number; end: number } | null => {
   const axis = (pick: (point: Point) => number, low: "x" | "y") => {
     const size = low === "x" ? "width" : "height";
     // Lanes beside connectors already drawn let new routes run alongside
@@ -1121,8 +1279,7 @@ const searchOrthogonalRoute = (
           : [],
       );
     const edges = [
-      pick(start),
-      pick(end),
+      ...[...starts, ...ends].map((terminal) => pick(terminal.point)),
       ...obstacles.flatMap((bounds) => [
         bounds[low],
         bounds[low] + bounds[size],
@@ -1178,44 +1335,62 @@ const searchOrthogonalRoute = (
     if (from.y === to.y) {
       const yi = ys.indexOf(from.y);
       if (yi === -1) continue;
-      for (let xi = 0; xi < xs.length - 1; xi += 1) {
-        const low = xs[xi] ?? 0;
-        const high = xs[xi + 1] ?? 0;
-        if (high > Math.min(from.x, to.x) && low < Math.max(from.x, to.x)) {
-          blockedHorizontal[yi * xs.length + xi] = 1;
-        }
+      const [first, last] = stepsCovering(xs, from.x, to.x);
+      for (let xi = first; xi <= last; xi += 1) {
+        blockedHorizontal[yi * xs.length + xi] = 1;
       }
     } else if (from.x === to.x) {
       const xi = xs.indexOf(from.x);
       if (xi === -1) continue;
-      for (let yi = 0; yi < ys.length - 1; yi += 1) {
-        const low = ys[yi] ?? 0;
-        const high = ys[yi + 1] ?? 0;
-        if (high > Math.min(from.y, to.y) && low < Math.max(from.y, to.y)) {
-          blockedVertical[yi * xs.length + xi] = 1;
-        }
+      const [first, last] = stepsCovering(ys, from.y, to.y);
+      for (let yi = first; yi <= last; yi += 1) {
+        blockedVertical[yi * xs.length + xi] = 1;
       }
     }
   }
   const key = (xi: number, yi: number) => yi * xs.length + xi;
-  const startKey = key(xs.indexOf(start.x), ys.indexOf(start.y));
-  const endKey = key(xs.indexOf(end.x), ys.indexOf(end.y));
+  const cellOf = (point: Point) =>
+    key(xs.indexOf(point.x), ys.indexOf(point.y));
+  const endCells = new Map(
+    ends.map((terminal, index) => [
+      cellOf(terminal.point),
+      { ...terminal, index },
+    ]),
+  );
   const pointOf = (cell: number): Point => ({
     x: xs[cell % xs.length] ?? 0,
     y: ys[Math.floor(cell / xs.length)] ?? 0,
   });
   // state = cell * 2 + (0: arrived horizontally, 1: arrived vertically)
-  const distance = new Map<number, number>();
-  const previous = new Map<number, number>();
+  const distance = new Float64Array(xs.length * ys.length * 2).fill(Infinity);
+  const previous = new Int32Array(xs.length * ys.length * 2).fill(-1);
+  // A*: every edge costs at least its length, so the Manhattan distance to
+  // the nearest end never overestimates and the cheapest route is still found.
+  const estimate = (cell: number) => {
+    const point = pointOf(cell);
+    return Math.min(
+      ...ends.map(
+        (terminal) =>
+          Math.abs(terminal.point.x - point.x) +
+          Math.abs(terminal.point.y - point.y),
+      ),
+    );
+  };
   const queue = new MinQueue();
-  queue.push([0, startKey * 2 + startAxis]);
-  distance.set(startKey * 2 + startAxis, 0);
+  for (const terminal of starts) {
+    const state = cellOf(terminal.point) * 2 + terminal.axis;
+    if (blockedCell[Math.floor(state / 2)] === 1) continue;
+    if (terminal.cost >= (distance[state] ?? Infinity)) continue;
+    distance[state] = terminal.cost;
+    queue.push([terminal.cost + estimate(Math.floor(state / 2)), state]);
+  }
   let reached: number | null = null;
   while (queue.size > 0) {
-    const [cost, state] = queue.pop() ?? [0, 0];
-    if (cost > (distance.get(state) ?? Infinity)) continue;
+    const [priority, state] = queue.pop() ?? [0, 0];
     const cell = Math.floor(state / 2);
-    if (cell === endKey) {
+    const cost = distance[state] ?? Infinity;
+    if (priority > cost + estimate(cell)) continue;
+    if (endCells.has(cell)) {
       reached = state;
       break;
     }
@@ -1232,7 +1407,8 @@ const searchOrthogonalRoute = (
       if (nxi < 0 || nyi < 0 || nxi >= xs.length || nyi >= ys.length) continue;
       const nextCell = key(nxi, nyi);
       const next = pointOf(nextCell);
-      if (nextCell !== endKey && blockedCell[nextCell] === 1) continue;
+      const end = endCells.get(nextCell);
+      if (end === undefined && blockedCell[nextCell] === 1) continue;
       const vertical = nxi === xi ? 1 : 0;
       const edge = key(Math.min(xi, nxi), Math.min(yi, nyi));
       const blocked = vertical === 1 ? blockedVertical : blockedHorizontal;
@@ -1241,24 +1417,36 @@ const searchOrthogonalRoute = (
       // the end stub, so turning onto or off them counts as a bend.
       const bend =
         (state % 2 !== vertical ? bendPenalty : 0) +
-        (nextCell === endKey && vertical !== endAxis ? bendPenalty : 0);
+        (end === undefined
+          ? 0
+          : end.cost + (vertical !== end.axis ? bendPenalty : 0));
       const nextState = nextCell * 2 + vertical;
       const length = Math.abs(next.x - point.x) + Math.abs(next.y - point.y);
       const outline = vertical === 1 ? outlineVertical : outlineHorizontal;
       const nextCost = cost + length * (outline[edge] === 1 ? 1.01 : 1) + bend;
-      if (nextCost >= (distance.get(nextState) ?? Infinity)) continue;
-      distance.set(nextState, nextCost);
-      previous.set(nextState, state);
-      queue.push([nextCost, nextState]);
+      if (nextCost >= (distance[nextState] ?? Infinity)) continue;
+      distance[nextState] = nextCost;
+      previous[nextState] = state;
+      queue.push([nextCost + estimate(nextCell), nextState]);
     }
   }
   if (reached === null) return null;
   const path: Point[] = [];
-  for (let state: number | undefined = reached; state !== undefined;) {
+  for (let state = reached; state !== -1; state = previous[state] ?? -1) {
     path.unshift(pointOf(Math.floor(state / 2)));
-    state = previous.get(state);
   }
-  return withoutRedundantPoints(path);
+  const first = path[0];
+  const startIndex = starts.findIndex(
+    (terminal) =>
+      first !== undefined &&
+      terminal.point.x === first.x &&
+      terminal.point.y === first.y,
+  );
+  return {
+    path: withoutRedundantPoints(path),
+    start: startIndex,
+    end: endCells.get(Math.floor(reached / 2))?.index ?? -1,
+  };
 };
 
 export const analyze = (svg: string): AnalysisReport => {
@@ -1407,6 +1595,7 @@ export const analyze = (svg: string): AnalysisReport => {
     ...inspectConnectorLabelClearance(connectors, labels),
     ...inspectConnectorEndpoints(nodes, connectors),
     ...inspectConnectorOverlaps(connectors),
+    ...inspectDetachedLabels(labels, connectors),
   ];
 
   return {
@@ -1420,7 +1609,7 @@ export const analyze = (svg: string): AnalysisReport => {
 const formatBounds = (bounds: Bounds): string =>
   [bounds.x, bounds.y, bounds.width, bounds.height].join(" ");
 
-export const fix = (svg: string): FixResult => {
+const fixOnce = (svg: string): FixResult => {
   const document = parseSvg(svg);
   const root = document.documentElement;
   const changes: FixChange[] = [];
@@ -1517,8 +1706,42 @@ export const fix = (svg: string): FixResult => {
     report = analyze(serializer.serializeToString(document));
   }
 
-  const connectorsWithIssues = new Set(
-    report.issues
+  // A detached label moves back beside its connector on its own when there is
+  // room there; otherwise the connector is rerouted to give the label a slot.
+  const textOf = (id: string) =>
+    Array.from(document.getElementsByTagName("text")).find(
+      (candidate) =>
+        (candidate.getAttribute("data-label") ||
+          candidate.getAttribute("id")) === id,
+    );
+  const detachedIssues = report.issues.filter(
+    (issue) => issue.code === "label-detached",
+  );
+  const detachedIds = new Set(detachedIssues.map((issue) => issue.elements[0]));
+  const stuckConnectorIds = detachedIssues.flatMap((issue) => {
+    const [labelId = "", connectorId = ""] = issue.elements;
+    const route = report.diagram.connectors.find(
+      (connector) => connector.id === connectorId,
+    )?.points;
+    const element = textOf(labelId);
+    if (route === undefined || element === undefined) return [];
+    const slot = placeLabel(
+      element.textContent.length,
+      numberAttribute(element, "font-size") || 16,
+      route,
+      report.diagram.connectors.map((connector) => connector.points),
+      [
+        ...report.diagram.labels
+          .filter((label) => !detachedIds.has(label.id))
+          .map((label) => label.bounds),
+        ...report.diagram.nodes.map((node) => node.bounds),
+      ],
+    );
+    return slot === null ? [connectorId] : [];
+  });
+  const connectorsWithIssues = new Set([
+    ...stuckConnectorIds,
+    ...report.issues
       .filter((issue) =>
         [
           "connector-node-crossing",
@@ -1532,7 +1755,7 @@ export const fix = (svg: string): FixResult => {
           ? issue.elements
           : issue.elements.slice(0, 1),
       ),
-  );
+  ]);
   const nodesById = new Map(
     report.diagram.nodes.map((node) => [node.id, node]),
   );
@@ -1545,17 +1768,104 @@ export const fix = (svg: string): FixResult => {
     if (source === undefined || target === undefined) return [];
     return [{ connector, source, target }];
   });
-  const ports = spreadPorts(
-    reroutes.map(({ connector, source, target }) => ({
-      id: connector.id,
-      source: source.bounds,
-      target: target.bounds,
-    })),
-  );
   const reroutedIds = new Set(reroutes.map(({ connector }) => connector.id));
+  // Labels that drifted from a sound connector move back beside it; the
+  // connector itself keeps its path.
+  const detachedLabelIds = new Set(
+    report.issues
+      .filter((issue) => issue.code === "label-detached")
+      .flatMap((issue) => issue.elements.slice(0, 1)),
+  );
   const settledRoutes = report.diagram.connectors
     .filter((connector) => !reroutedIds.has(connector.id))
     .map((connector) => connector.points);
+  const obstaclesFor = (connector: DiagramConnector): Bounds[] => [
+    ...report.diagram.nodes
+      .filter((node) => node.id !== connector.from && node.id !== connector.to)
+      .map((node) => node.bounds),
+    ...report.diagram.labels
+      .filter(
+        (label) =>
+          !detachedLabelIds.has(label.id) &&
+          (label.connector === undefined || !reroutedIds.has(label.connector)),
+      )
+      .map((label) => label.bounds),
+  ];
+  // Side loads: endpoints of the connectors that stay, plus the sides chosen
+  // for rerouted ones. Sides are chosen twice so every connector sees where
+  // the others went, not only the ones before it.
+  const sideKey = (bounds: Bounds, side: Side) =>
+    `${formatBounds(bounds)}:${side}`;
+  const settledLoad = new Map<string, number>();
+  for (const connector of report.diagram.connectors) {
+    if (reroutedIds.has(connector.id)) continue;
+    for (const [nodeId, point] of [
+      [connector.from, connector.points.at(0)],
+      [connector.to, connector.points.at(-1)],
+    ] as const) {
+      const bounds = nodesById.get(nodeId)?.bounds;
+      if (bounds === undefined || point === undefined) continue;
+      if (!isOnOutline(point, bounds)) continue;
+      const side = sideOf(point, bounds);
+      const key = sideKey(bounds, side);
+      settledLoad.set(key, (settledLoad.get(key) ?? 0) + 1);
+    }
+  }
+  const chooseAll = (
+    previous: Map<string, { start: Side; end: Side }>,
+  ): Map<string, { start: Side; end: Side }> => {
+    const load = new Map(settledLoad);
+    for (const { connector, source, target } of reroutes) {
+      const chosen = previous.get(connector.id);
+      if (chosen === undefined) continue;
+      for (const key of [
+        sideKey(source.bounds, chosen.start),
+        sideKey(target.bounds, chosen.end),
+      ]) {
+        load.set(key, (load.get(key) ?? 0) + 1);
+      }
+    }
+    return new Map(
+      reroutes.map(({ connector, source, target }) => {
+        const own = previous.get(connector.id);
+        const loadOf = (bounds: Bounds, side: Side) => {
+          const key = sideKey(bounds, side);
+          const mine =
+            own === undefined
+              ? 0
+              : Number(key === sideKey(source.bounds, own.start)) +
+                Number(key === sideKey(target.bounds, own.end));
+          return (load.get(key) ?? 0) - mine;
+        };
+        return [
+          connector.id,
+          chooseSides(
+            source.bounds,
+            target.bounds,
+            obstaclesFor(connector),
+            settledRoutes,
+            loadOf,
+          ),
+        ];
+      }),
+    );
+  };
+  const chosenSides = chooseAll(chooseAll(new Map()));
+  const ports = spreadPorts(
+    reroutes.flatMap(({ connector, source, target }) => {
+      const sides = chosenSides.get(connector.id);
+      return sides === undefined
+        ? []
+        : [
+            {
+              id: connector.id,
+              source: source.bounds,
+              target: target.bounds,
+              sides,
+            },
+          ];
+    }),
+  );
   const finalRoutes = new Map<string, Point[]>(
     report.diagram.connectors.map((connector) => [
       connector.id,
@@ -1563,19 +1873,7 @@ export const fix = (svg: string): FixResult => {
     ]),
   );
   for (const { connector, source, target } of reroutes) {
-    const obstacles = [
-      ...report.diagram.nodes
-        .filter(
-          (node) => node.id !== connector.from && node.id !== connector.to,
-        )
-        .map((node) => node.bounds),
-      ...report.diagram.labels
-        .filter(
-          (label) =>
-            label.connector === undefined || !reroutedIds.has(label.connector),
-        )
-        .map((label) => label.bounds),
-    ];
+    const obstacles = obstaclesFor(connector);
     const route = routeConnector(
       source.bounds,
       target.bounds,
@@ -1627,7 +1925,8 @@ export const fix = (svg: string): FixResult => {
 
   const movingLabels = report.diagram.labels.filter(
     (label) =>
-      label.connector !== undefined && reroutedIds.has(label.connector),
+      detachedLabelIds.has(label.id) ||
+      (label.connector !== undefined && reroutedIds.has(label.connector)),
   );
   const labelObstacles = report.diagram.labels
     .filter((label) => !movingLabels.includes(label))
@@ -1702,4 +2001,23 @@ export const fix = (svg: string): FixResult => {
 
   const fixedSvg = serializer.serializeToString(document);
   return { svg: fixedSvg, changes, report: analyze(fixedSvg) };
+};
+
+// Later passes see earlier results: connectors routed early avoid labels
+// placed late, and labels left without a slot get another try. A pass is kept
+// only while it reduces the issues.
+export const fix = (svg: string, maxPasses = 5): FixResult => {
+  let best = fixOnce(svg);
+  const changes = [...best.changes];
+  for (
+    let pass = 1;
+    pass < maxPasses && best.report.issues.length > 0;
+    pass += 1
+  ) {
+    const next = fixOnce(best.svg);
+    if (next.report.issues.length >= best.report.issues.length) break;
+    changes.push(...next.changes);
+    best = next;
+  }
+  return { ...best, changes };
 };

@@ -399,4 +399,48 @@ describe("diagram inspection", () => {
       report.issues.some((issue) => issue.code === "connector-overlap"),
     ).toBe(false);
   });
+  const tiedLabel = (labelY: number) => `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
+      <g data-node="source">
+        <rect x="20" y="20" width="100" height="56" />
+        <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+      </g>
+      <g data-node="target">
+        <rect x="260" y="20" width="100" height="56" />
+        <text x="310" y="53" text-anchor="middle" font-size="14">Target</text>
+      </g>
+      <line id="flow" data-from="source" data-to="target"
+        x1="120" y1="48" x2="260" y2="48" />
+      <text data-label="retry" data-label-for="flow"
+        x="190" y="${labelY}" text-anchor="middle" font-size="14">Retry</text>
+    </svg>
+  `;
+
+  test("reports a tied label that sits away from its connector", () => {
+    /**
+     * Given a label tied to a connector by data-label-for, 45px above it
+     * When the diagram is analyzed
+     * Then the label is reported as detached from that connector
+     */
+    const report = analyze(tiedLabel(0));
+
+    expect(
+      report.issues
+        .filter((issue) => issue.code === "label-detached")
+        .map((issue) => issue.elements),
+    ).toEqual([["retry", "flow"]]);
+  });
+
+  test("accepts a tied label right beside its connector", () => {
+    /**
+     * Given a label tied to a connector, keeping 9px above it
+     * When the diagram is analyzed
+     * Then no detached label is reported
+     */
+    const report = analyze(tiedLabel(36));
+
+    expect(report.issues.map((issue) => issue.code)).not.toContain(
+      "label-detached",
+    );
+  });
 });

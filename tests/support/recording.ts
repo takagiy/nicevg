@@ -65,8 +65,8 @@ export const test = (title: string, body: () => void | Promise<void>): void => {
   });
 };
 
-export const fix = (svg: string): FixResult => {
-  const result = fixSvg(svg);
+export const fix = (svg: string, maxPasses?: number): FixResult => {
+  const result = fixSvg(svg, maxPasses);
   if (recordDir !== undefined && current !== undefined) {
     current.calls.push({
       input: svg,
