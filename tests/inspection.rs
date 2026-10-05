@@ -174,6 +174,39 @@ fn reports_a_connector_crossing_an_unrelated_node() {
     })));
 }
 
+/// Given two nodes inside a cluster container, a connector between them and
+///   another from inside the cluster to a node outside it
+/// When the diagram is analyzed
+/// Then neither connector is reported as crossing the cluster that contains
+///   its ends
+#[test]
+fn does_not_report_crossing_a_container_that_holds_the_connector_ends() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 260">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="420" height="200" />
+          <text x="40" y="45" font-size="14">Cluster</text>
+          <g data-node="a">
+            <rect x="50" y="80" width="100" height="56" />
+            <text x="100" y="113" text-anchor="middle" font-size="14">A</text>
+          </g>
+          <g data-node="b">
+            <rect x="300" y="140" width="100" height="56" />
+            <text x="350" y="173" text-anchor="middle" font-size="14">B</text>
+          </g>
+        </g>
+        <g data-node="ext">
+          <rect x="480" y="80" width="100" height="56" />
+          <text x="530" y="113" text-anchor="middle" font-size="14">Ext</text>
+        </g>
+        <path id="ab" data-from="a" data-to="b" d="M 150 108 L 225 108 L 225 168 L 300 168" />
+        <path id="bx" data-from="b" data-to="ext" d="M 400 168 L 460 168 L 460 108 L 480 108" />
+      </svg>
+    "#;
+
+    assert!(!has_issue(&analyze(svg), "connector-node-crossing"));
+}
+
 /// Given a connector that passes 5px below an edge label
 /// When the diagram is analyzed
 /// Then the connector-label clearance violation is reported

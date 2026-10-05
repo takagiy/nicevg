@@ -264,6 +264,92 @@ fn keeps_a_rerouted_line_unfilled_once_it_becomes_a_path() {
     assert_fix_snapshots!(result);
 }
 
+/// Given two services inside a cluster container joined by a straight line,
+///   and a straight line from one of them to a node outside the cluster
+/// When the diagram is fixed
+/// Then both become orthogonal routes meeting their ends at right angles,
+///   without treating the cluster around them as an obstacle
+#[test]
+fn routes_connectors_inside_and_out_of_a_container() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 260">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="420" height="200" />
+          <text x="40" y="45" font-size="14">Cluster</text>
+          <g data-node="a">
+            <rect x="50" y="80" width="100" height="56" />
+            <text x="100" y="113" text-anchor="middle" font-size="14">A</text>
+          </g>
+          <g data-node="b">
+            <rect x="300" y="140" width="100" height="56" />
+            <text x="350" y="173" text-anchor="middle" font-size="14">B</text>
+          </g>
+        </g>
+        <g data-node="ext">
+          <rect x="480" y="80" width="100" height="56" />
+          <text x="530" y="113" text-anchor="middle" font-size="14">Ext</text>
+        </g>
+        <line id="ab" data-from="a" data-to="b" x1="100" y1="108" x2="350" y2="168" />
+        <line id="bx" data-from="b" data-to="ext" x1="350" y1="168" x2="530" y2="108" />
+      </svg>
+    "#;
+
+    let result = fix(svg);
+
+    for (id, from, to) in [("ab", "a", "b"), ("bx", "b", "ext")] {
+        let points = connector_points(&result.report, id);
+        assert!(is_orthogonal(&points), "{id} is orthogonal");
+        assert!(
+            leaves_perpendicularly(&points, &node_bounds(&result.report, from)),
+            "{id} leaves"
+        );
+        assert!(
+            enters_perpendicularly(&points, &node_bounds(&result.report, to)),
+            "{id} enters"
+        );
+    }
+    assert!(result.report.issues.is_empty());
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given two services inside a cluster container joined by a straight line
+///   whose tied label sits at the line's midpoint
+/// When the diagram is fixed
+/// Then the label moves beside the rerouted connector, inside the cluster,
+///   and nothing is reported
+#[test]
+fn places_labels_of_connectors_inside_a_container() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 260">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="420" height="200" />
+          <text x="40" y="45" font-size="14">Cluster</text>
+          <g data-node="a">
+            <rect x="50" y="80" width="100" height="56" />
+            <text x="100" y="113" text-anchor="middle" font-size="14">A</text>
+          </g>
+          <g data-node="b">
+            <rect x="300" y="140" width="100" height="56" />
+            <text x="350" y="173" text-anchor="middle" font-size="14">B</text>
+          </g>
+        </g>
+        <line id="ab" data-from="a" data-to="b" x1="100" y1="108" x2="350" y2="168" />
+        <text data-label="calls" data-label-for="ab" x="225" y="142" text-anchor="middle"
+          font-size="12">gRPC</text>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let label = label_bounds(&result.report, "calls");
+
+    assert!(distance_to_route(&label, &connector_points(&result.report, "ab")) <= 16.0);
+    assert!(contains(&node_bounds(&result.report, "cluster"), &label));
+    assert!(result.report.issues.is_empty());
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a connector that must detour around a node between its ends
 /// When the diagram is fixed
 /// Then it leaves the source side and enters the target side at right

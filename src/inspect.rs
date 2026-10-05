@@ -4,7 +4,7 @@
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
-use crate::diagram::{Diagram, DiagramConnector, DiagramLabel, DiagramNode};
+use crate::diagram::{Diagram, DiagramConnector, DiagramLabel, DiagramNode, holds_end};
 use crate::geometry::{
     Bounds, Point, distance_to_route, distance_to_segment, enclosing, format_number, hypot, intersection, json_bounds,
     json_number, number_list, point_is_inside, round, routes_overlap, segment_intersects_interior, segments,
@@ -227,7 +227,7 @@ fn connector_crossings(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -
         .flat_map(|connector| {
             nodes
                 .iter()
-                .filter(move |node| node.id != connector.from && node.id != connector.to)
+                .filter(move |node| !holds_end(nodes, connector, node))
                 .filter(move |node| {
                     segments(&connector.points)
                         .iter()

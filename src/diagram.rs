@@ -95,6 +95,28 @@ impl Diagram {
     }
 }
 
+/// Ids of the containers around a node, nearest first.
+pub fn ancestor_ids<'a>(nodes: &'a [DiagramNode], id: &str) -> Vec<&'a str> {
+    let parent_of = |id: &str| {
+        nodes
+            .iter()
+            .find(|node| node.id == id)
+            .and_then(|node| node.parent_id.as_deref())
+    };
+    std::iter::successors(parent_of(id), |parent| parent_of(parent))
+        .take(nodes.len())
+        .collect()
+}
+
+/// Whether a node is one of the connector's ends or a container around one,
+/// which the connector legitimately reaches into.
+pub fn holds_end(nodes: &[DiagramNode], connector: &DiagramConnector, node: &DiagramNode) -> bool {
+    node.id == connector.from
+        || node.id == connector.to
+        || ancestor_ids(nodes, &connector.from).contains(&node.id.as_str())
+        || ancestor_ids(nodes, &connector.to).contains(&node.id.as_str())
+}
+
 static TRANSLATE: LazyLock<Regex> = LazyLock::new(|| {
     let number = r"[-+]?(?:\d*\.?\d+)(?:[eE][-+]?\d+)?";
     Regex::new(&format!(r"translate\(\s*({number})(?:[\s,]+({number}))?\s*\)")).expect("valid pattern")

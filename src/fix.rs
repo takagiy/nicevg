@@ -7,8 +7,9 @@ use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 
 use crate::diagram::{
-    DiagramConnector, DiagramNode, child_element_paths, circle_bounds, connector_elements, font_size, is_node_shape,
-    label_text, node_group, number_attribute, rect_bounds, text_bounds, translation,
+    Diagram, DiagramConnector, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, connector_elements,
+    font_size, holds_end, is_node_shape, label_text, node_group, number_attribute, rect_bounds, text_bounds,
+    translation,
 };
 use crate::geometry::{Bounds, Point, enclosing, format_number};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
@@ -273,7 +274,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 .iter()
                 .filter(|label| !detached_ids.contains(label.id.as_str()))
                 .map(|label| label.bounds)
-                .chain(diagram.nodes.iter().map(|node| node.bounds))
+                .chain(label_blockers(diagram, connector_id))
                 .collect();
             place_label(
                 element.text_length(),
@@ -338,7 +339,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
         diagram
             .nodes
             .iter()
-            .filter(|node| node.id != connector.from && node.id != connector.to)
+            .filter(|node| !holds_end(&diagram.nodes, connector, node))
             .map(|node| node.bounds)
             .chain(
                 diagram
@@ -501,7 +502,6 @@ fn reroute_connectors(draft: Draft) -> Draft {
         .map(|(_, label)| label.bounds)
         .collect();
     let all_final: Vec<Vec<Point>> = routed.routes.iter().map(|(_, route)| route.clone()).collect();
-    let node_bounds: Vec<Bounds> = diagram.nodes.iter().map(|node| node.bounds).collect();
     let (placed, _) = moving
         .iter()
         .fold((routed.draft, still), |(draft, obstacles), (_, label)| {
@@ -516,7 +516,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 return (draft, obstacles);
             };
             let element = draft.document.element(&text);
-            let blocked = [obstacles.clone(), node_bounds.clone()].concat();
+            let blocked = [obstacles.clone(), label_blockers(diagram, &connector_id)].concat();
             let Some(placement) = place_label(element.text_length(), font_size(element), route, &all_final, &blocked)
             else {
                 return (draft, obstacles);
@@ -532,6 +532,27 @@ fn reroute_connectors(draft: Draft) -> Draft {
             (draft, [obstacles, vec![placement.bounds]].concat())
         });
     placed
+}
+
+/// Node boxes a connector's label keeps clear of: every node except the
+/// containers around the connector's ends, inside which the label may sit.
+fn label_blockers(diagram: &Diagram, connector_id: &str) -> Vec<Bounds> {
+    let containers: Vec<&str> = diagram
+        .connector(connector_id)
+        .map(|connector| {
+            [
+                ancestor_ids(&diagram.nodes, &connector.from),
+                ancestor_ids(&diagram.nodes, &connector.to),
+            ]
+            .concat()
+        })
+        .unwrap_or_default();
+    diagram
+        .nodes
+        .iter()
+        .filter(|node| !containers.contains(&node.id.as_str()))
+        .map(|node| node.bounds)
+        .collect()
 }
 
 /// Replaces or appends a connector's route, keeping the original order.
