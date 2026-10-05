@@ -34,32 +34,13 @@ bun install
 
 ## CLI
 
+標準入力の SVG を修正し、修正後 SVG を標準出力へ出す。
+
 ```sh
-# 人間向けの診断
-bun run nicevg check diagram.svg
-
-# 構造化 JSON
-bun run nicevg check --json diagram.svg
-
-# 標準入力を検査する（ファイル省略または -）
-cat diagram.svg | bun run nicevg check
-cat diagram.svg | bun run nicevg check -
-
-# 修正後 SVG を標準出力へ出す
-bun run nicevg fix diagram.svg
-
-# 標準入力を修正して標準出力へ出す
-cat diagram.svg | bun run nicevg fix > fixed.svg
-
-# 別ファイルへ書く
-bun run nicevg fix --output fixed.svg diagram.svg
-
-# 入力ファイルを明示的に置き換える
-bun run nicevg fix --write diagram.svg
+bun run nicevg < diagram.svg > fixed.svg
 ```
 
-`check` の終了コードは、問題なしが `0`、図の問題ありが `1`、不正な入力が `2`。
-標準入力には置き換えるファイルパスがないため、`fix --write` とは併用できない。
+修正しても残った問題は標準エラーへ表示する。終了コードは、問題が残らなければ `0`、問題が残れば `1`、不正な入力なら `2`。検査だけを行うときや構造化レポートが必要なときは TypeScript API の `analyze` を使う。
 
 ## TypeScript API
 
