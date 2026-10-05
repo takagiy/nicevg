@@ -19,6 +19,11 @@ pub const SIDE_CHANGE_COST: f64 = 0.5;
 pub const CROWDING_COST: f64 = 30.0;
 pub const LANE_SPACING: f64 = 10.0;
 pub const CLEARANCE: f64 = 8.0;
+/// How far a route runs straight into its target before the last bend,
+/// longest first. An arrowhead is about 10px long, so the clearance alone
+/// leaves the last bend under it; shorter stubs are the fallbacks when
+/// another node is in the way.
+pub const END_STUBS: [f64; 3] = [24.0, 16.0, CLEARANCE];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Side {
@@ -127,22 +132,46 @@ fn outward(port: Point, side: Side, distance: f64) -> Point {
 }
 
 /// A place a route may start or end: the point outside a port, the axis the
-/// route must leave or arrive along (0 horizontal, 1 vertical), and an
-/// extra cost for choosing it.
+/// route must leave or arrive along (0 horizontal, 1 vertical), the port it
+/// leads to and an extra cost for choosing it.
 #[derive(Clone, Copy, Debug)]
 pub struct Terminal {
     pub point: Point,
     pub axis: usize,
+    pub port: Point,
     pub cost: f64,
 }
 
 fn terminal_at(port: Point, bounds: &Bounds, cost: f64) -> Terminal {
+    stub_terminal(port, bounds, CLEARANCE, cost)
+}
+
+fn stub_terminal(port: Point, bounds: &Bounds, length: f64, cost: f64) -> Terminal {
     let side = side_of(port, bounds);
     Terminal {
-        point: outward(port, side, CLEARANCE),
+        point: outward(port, side, length),
         axis: usize::from(side.is_horizontal_edge()),
+        port,
         cost,
     }
+}
+
+/// Ends at each stub length whose straight run to the port stays clear of
+/// the obstacles; every pixel of stub given up costs a pixel of route.
+fn end_terminals(port: Point, target: &Bounds, obstacles: &[Bounds]) -> Vec<Terminal> {
+    END_STUBS
+        .iter()
+        .filter(|length| {
+            **length == CLEARANCE || route_is_clear(&[port, outward(port, side_of(port, target), **length)], obstacles)
+        })
+        .map(|length| stub_terminal(port, target, *length, END_STUBS[0] - length))
+        .collect()
+}
+
+/// Whether a move from `here` to `next` arrives at an end terminal from the
+/// port's side, which would double back along the stub.
+fn arrives_backwards(here: Point, next: Point, terminal: &Terminal) -> bool {
+    (next.x - here.x) * (terminal.port.x - next.x) + (next.y - here.y) * (terminal.port.y - next.y) < 0.0
 }
 
 pub struct Found {
@@ -342,6 +371,9 @@ pub fn search(starts: &[Terminal], ends: &[Terminal], obstacles: &[Bounds], occu
             if end.is_none() && blocked_cell[next_cell] {
                 continue;
             }
+            if end.is_some_and(|(_, terminal)| arrives_backwards(here, point_of(next_cell), terminal)) {
+                continue;
+            }
             let vertical = usize::from(nxi == xi);
             let edge = key(xi.min(nxi), yi.min(nyi));
             let blocked = if vertical == 1 {
@@ -415,7 +447,11 @@ pub fn route_connector(
         .collect();
     match search(
         &[terminal_at(ports.start, source, 0.0)],
-        &[terminal_at(ports.end, target, 0.0)],
+        &end_terminals(
+            ports.end,
+            target,
+            &[obstacles.as_slice(), &[source.inflate(CLEARANCE)]].concat(),
+        ),
         &all_obstacles,
         occupied,
     ) {

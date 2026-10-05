@@ -21,5 +21,5 @@ expression: result.svg.as_str()
           <text x="310" y="53" text-anchor="middle" font-size="14">Target</text>
         </g>
         <path id="tick" data-from="west" data-to="target" d="M 0 -40 L 195 -40 L 195 12 L 200 12"/>
-        <path id="flow" data-from="source" data-to="target" fill="none" d="M 70 76 L 70 84 L 310 84 L 310 76"/>
+        <path id="flow" data-from="source" data-to="target" fill="none" d="M 70 76 L 70 92 L 310 92 L 310 76"/>
       </svg>

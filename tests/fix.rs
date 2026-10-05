@@ -245,6 +245,30 @@ fn reroutes_a_connector_around_an_unrelated_node() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a horizontal connector that has to detour around an unrelated node
+/// When the diagram is fixed
+/// Then the detour's last bend stays at least 16px from the target, so an
+///   arrowhead at the end does not sit on the bend, and the detour still
+///   clears the node by 8px
+#[test]
+fn keeps_the_last_bend_clear_of_the_arrowhead() {
+    let svg = &blocked_row("");
+
+    let result = fix(svg);
+    let points = connector_points(&result.report, "flow");
+    let last = segments(&points).pop().expect("a segment");
+
+    assert!(bend_count(&points) > 0);
+    assert!(segment_length(&last) >= 16.0, "{points:?}");
+    assert!(!enters_box(
+        &points,
+        &inflate(&node_bounds(&result.report, "obstacle"), 8.0)
+    ));
+    assert!(result.report.issues.is_empty());
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a line without a fill, which SVG never fills, that has to detour
 /// When the diagram is fixed
 /// Then the bent path that replaces it is not filled either, while
@@ -851,6 +875,45 @@ fn moves_only_a_detached_label_leaving_its_sound_connector_as_drawn() {
     let result = fix(svg);
     let points = connector_points(&result.report, "flow");
 
+    assert_eq!(points, connector_points(&analyze(svg), "flow"));
+    assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
+    assert_eq!(change_codes(&result), ["move-label"]);
+    assert!(result.report.issues.is_empty());
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given a straight connector whose tied label sits close to it but on top
+///   of a node beside the line
+/// When the diagram is fixed
+/// Then the connector keeps its path and only the label moves to a free
+///   spot beside it, off the node
+#[test]
+fn moves_a_label_off_a_node_to_a_free_spot_beside_its_connector() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -40 440 180">
+        <g data-node="source">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+        </g>
+        <g data-node="target">
+          <rect x="300" y="20" width="100" height="56" />
+          <text x="350" y="53" text-anchor="middle" font-size="14">Target</text>
+        </g>
+        <g data-node="note">
+          <rect x="150" y="62" width="120" height="48" />
+          <text x="210" y="91" text-anchor="middle" font-size="14">Note</text>
+        </g>
+        <line id="flow" data-from="source" data-to="target" x1="120" y1="48" x2="300" y2="48" />
+        <text data-label="retry" data-label-for="flow"
+          x="210" y="74" text-anchor="middle" font-size="14">Retry</text>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let points = connector_points(&result.report, "flow");
+
+    assert_eq!(issue_codes(&analyze(svg)), ["label-node-overlap"]);
     assert_eq!(points, connector_points(&analyze(svg), "flow"));
     assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
     assert_eq!(change_codes(&result), ["move-label"]);

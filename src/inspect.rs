@@ -47,6 +47,7 @@ pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue>
         node_gaps(&diagram.nodes),
         connector_crossings(&diagram.nodes, &diagram.connectors),
         label_overlaps(&diagram.labels),
+        label_node_overlaps(&diagram.nodes, &diagram.labels),
         connector_label_clearance(&diagram.connectors, &diagram.labels),
         connector_endpoints(&diagram.nodes, &diagram.connectors),
         connector_overlaps(&diagram.connectors),
@@ -258,6 +259,48 @@ fn label_overlaps(labels: &[DiagramLabel]) -> Vec<DiagramIssue> {
                         "label-overlap",
                         format!("Labels \"{}\" and \"{}\" overlap.", first.id, second.id),
                         &[&first.id, &second.id],
+                        None,
+                    )
+                })
+        })
+        .collect()
+}
+
+/// Whether a label's box covers part of a node's shape.
+pub fn label_covers_node(label: &Bounds, node: &DiagramNode) -> bool {
+    if node.is_circle() {
+        let centre = node.bounds.centre();
+        let nearest = Point {
+            x: centre.x.clamp(label.x, label.right()),
+            y: centre.y.clamp(label.y, label.bottom()),
+        };
+        hypot(nearest.x - centre.x, nearest.y - centre.y) < node.bounds.width / 2.0
+    } else {
+        intersection(label, &node.bounds).is_some()
+    }
+}
+
+/// A container's free space is a valid place for labels; only its children
+/// and its border are off limits.
+fn lies_within_container(nodes: &[DiagramNode], label: &Bounds, node: &DiagramNode) -> bool {
+    nodes.iter().any(|child| child.parent_id.as_deref() == Some(&node.id))
+        && intersection(label, &node.bounds) == Some(*label)
+}
+
+fn label_node_overlaps(nodes: &[DiagramNode], labels: &[DiagramLabel]) -> Vec<DiagramIssue> {
+    labels
+        .iter()
+        .flat_map(|label| {
+            nodes
+                .iter()
+                .filter(|node| {
+                    label_covers_node(&label.bounds, node) && !lies_within_container(nodes, &label.bounds, node)
+                })
+                .map(move |node| {
+                    issue(
+                        "label-node-overlap",
+                        format!("Label \"{}\" overlaps node \"{}\".", label.id, node.id),
+                        &[&label.id, &node.id],
                         None,
                     )
                 })

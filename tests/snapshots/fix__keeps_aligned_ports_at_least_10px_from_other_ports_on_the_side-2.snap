@@ -21,5 +21,5 @@ expression: result.svg.as_str()
           <text x="310" y="124" text-anchor="middle" font-size="14">Floor</text>
         </g>
         <path id="facing" data-from="source" data-to="target" fill="none" d="M 120 39 L 260 39"/>
-        <path id="climbing" data-from="other" data-to="target" fill="none" d="M 120 168 L 190 168 L 190 57 L 260 57"/>
+        <path id="climbing" data-from="other" data-to="target" fill="none" d="M 120 168 L 182 168 L 182 57 L 260 57"/>
       </svg>

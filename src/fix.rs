@@ -252,13 +252,23 @@ fn reroute_connectors(draft: Draft) -> Draft {
     let document = &draft.document;
     let diagram = &report.diagram;
 
-    // A detached label moves back beside its connector on its own when there
-    // is room there; otherwise the connector is rerouted to give it a slot.
+    // A tied label that drifted from its connector or covers a node moves
+    // beside its connector on its own when there is room there; otherwise
+    // the connector is rerouted to give it a slot.
     let detached: Vec<(&str, &str)> = report
         .issues
         .iter()
-        .filter(|issue| issue.code == "label-detached")
-        .filter_map(|issue| Some((issue.elements.first()?.as_str(), issue.elements.get(1)?.as_str())))
+        .filter_map(|issue| match issue.code.as_str() {
+            "label-detached" => Some((issue.elements.first()?.as_str(), issue.elements.get(1)?.as_str())),
+            "label-node-overlap" => {
+                let label = diagram
+                    .labels
+                    .iter()
+                    .find(|label| Some(&label.id) == issue.elements.first())?;
+                Some((label.id.as_str(), label.connector.as_deref()?))
+            }
+            _ => None,
+        })
         .collect();
     let detached_ids: HashSet<&str> = detached.iter().map(|(label, _)| *label).collect();
     let all_routes: Vec<Vec<Point>> = diagram.connectors.iter().map(|c| c.points.clone()).collect();

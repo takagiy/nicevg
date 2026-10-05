@@ -17,5 +17,5 @@ expression: result.svg.as_str()
           <text x="290" y="169" text-anchor="middle" font-size="14">Lower</text>
         </g>
         <path id="to-upper" data-from="hub" data-to="upper" fill="none" d="M 118 107 L 240 107"/>
-        <path id="to-lower" data-from="hub" data-to="lower" fill="none" d="M 118 133 L 180 133 L 180 164 L 240 164"/>
+        <path id="to-lower" data-from="hub" data-to="lower" fill="none" d="M 118 133 L 172 133 L 172 164 L 240 164"/>
       </svg>

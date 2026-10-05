@@ -3,7 +3,7 @@ source: tests/fix.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "bends": 8,
+  "bends": 2,
   "detachedLabels": 0,
   "diagonalSegments": 0,
   "remainingIssues": 0

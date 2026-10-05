@@ -326,6 +326,78 @@ fn reports_overlapping_free_labels() {
     })));
 }
 
+/// Given a free label lying across a rectangular node and another across a
+///   circular node
+/// When the diagram is analyzed
+/// Then each label is reported together with the node it covers
+#[test]
+fn reports_labels_that_cover_nodes() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+        <g data-node="box">
+          <rect x="20" y="20" width="120" height="56" />
+          <text x="80" y="53" text-anchor="middle" font-size="14">Box</text>
+        </g>
+        <g data-node="disc">
+          <circle cx="280" cy="100" r="40" />
+          <text x="280" y="105" text-anchor="middle" font-size="14">Disc</text>
+        </g>
+        <text data-label="over-box" x="100" y="80" font-size="12">covers the box</text>
+        <text data-label="over-disc" x="250" y="150" font-size="12">covers the disc</text>
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    assert_eq!(
+        issues_json(&report)
+            .into_iter()
+            .filter(|issue| issue["code"] == "label-node-overlap")
+            .collect::<Vec<_>>(),
+        [
+            json!({
+                "code": "label-node-overlap",
+                "message": "Label \"over-box\" overlaps node \"box\".",
+                "elements": ["over-box", "box"],
+            }),
+            json!({
+                "code": "label-node-overlap",
+                "message": "Label \"over-disc\" overlaps node \"disc\".",
+                "elements": ["over-disc", "disc"],
+            }),
+        ]
+    );
+}
+
+/// Given a container holding a child node, with one label in the container's
+///   free space and another lying across the child
+/// When the diagram is analyzed
+/// Then only the label covering the child is reported
+#[test]
+fn ignores_labels_inside_a_container_unless_they_cover_a_child() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="360" height="200" />
+          <text x="36" y="44" font-size="13">Cluster</text>
+          <g data-node="service">
+            <rect x="60" y="80" width="120" height="56" />
+            <text x="120" y="113" text-anchor="middle" font-size="14">Service</text>
+          </g>
+        </g>
+        <text data-label="in-free-space" x="220" y="190" font-size="12">free space</text>
+        <text data-label="over-child" x="150" y="130" font-size="12">over the child</text>
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    assert_eq!(
+        issues_with_code(&report, "label-node-overlap"),
+        [["over-child", "service"]]
+    );
+}
+
 /// Given a free label that extends beyond the viewBox safety area
 /// When the diagram is analyzed
 /// Then viewport clipping is reported even when no nodes exist

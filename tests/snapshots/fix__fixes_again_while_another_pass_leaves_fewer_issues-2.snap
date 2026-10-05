@@ -49,20 +49,20 @@ expression: result.svg.as_str()
           <text x="152" y="986" font-size="13" text-anchor="middle">D5 Rate / Fee Tables</text>
           <text x="152" y="1005" font-size="11" text-anchor="middle">Redis + Oracle</text>
         </g>
-        <path id="f35" data-from="aml" data-to="route" d="M 236 70 L 437 70 L 437 290 L 446 290"/>
-        <path id="f37" data-from="fx" data-to="ratefee" d="M 446 70 L 438 70 L 438 80 L 331 80 L 331 990 L 240.5 990"/>
-        <path id="f42" data-from="fx" data-to="fee" d="M 446 60 L 246 60 L 246 290 L 236 290"/>
-        <path id="f44" data-from="fee" data-to="route" d="M 236 300 L 446 300"/>
+        <path id="f35" data-from="aml" data-to="route" d="M 236 70 L 421 70 L 421 290 L 446 290"/>
+        <path id="f37" data-from="fx" data-to="ratefee" d="M 446 80 L 306 80 L 306 990 L 240.5 990"/>
+        <path id="f42" data-from="fx" data-to="fee" d="M 446 60 L 296 60 L 296 290 L 236 290"/>
+        <path id="f44" data-from="fee" data-to="route" d="M 236 310 L 446 310"/>
         <path id="f46" data-from="route" data-to="domadp" d="M 642 300 L 852 300"/>
         <path id="f47" data-from="route" data-to="mxconv" d="M 544 330 L 544 500"/>
-        <path id="f48" data-from="route" data-to="partneradp" d="M 446 315 L 438 315 L 438 760 L 446 760"/>
+        <path id="f48" data-from="route" data-to="partneradp" d="M 446 315 L 422 315 L 422 760 L 446 760"/>
         <path id="f56" data-from="partner" data-to="partneradp" d="M 1258 760 L 642 760"/>
-        <text data-label="l35" data-label-for="f35" x="446" y="186" font-size="12" text-anchor="start">cleared order</text>
-        <text data-label="l37" data-label-for="f37" x="340" y="541" font-size="12" text-anchor="start">cached rate</text>
-        <text data-label="l42" data-label-for="f42" x="255" y="181" font-size="12" text-anchor="start">quote</text>
-        <text data-label="l44" data-label-for="f44" x="383" y="289" font-size="12" text-anchor="middle">priced order</text>
+        <text data-label="l35" data-label-for="f35" x="430" y="186" font-size="12" text-anchor="start">cleared order</text>
+        <text data-label="l37" data-label-for="f37" x="315" y="541" font-size="12" text-anchor="start">cached rate</text>
+        <text data-label="l42" data-label-for="f42" x="287" y="181" font-size="12" text-anchor="end">quote</text>
+        <text data-label="l44" data-label-for="f44" x="362" y="299" font-size="12" text-anchor="middle">priced order</text>
         <text data-label="l46" data-label-for="f46" x="747" y="289" font-size="12" text-anchor="middle">domestic</text>
         <text data-label="l47" data-label-for="f47" x="553" y="421" font-size="12" text-anchor="start">MT103</text>
-        <text data-label="l48" data-label-for="f48" x="429" y="521" font-size="12" text-anchor="end">corridor</text>
+        <text data-label="l48" data-label-for="f48" x="413" y="521" font-size="12" text-anchor="end">corridor</text>
         <text data-label="l56" data-label-for="f56" x="950" y="749" font-size="12" text-anchor="middle">payout confirm</text>
       </svg>
