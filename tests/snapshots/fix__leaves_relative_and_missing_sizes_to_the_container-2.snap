@@ -1,0 +1,11 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 120" width="100%">
+        <g data-node="checkout">
+          <rect x="20" y="20" width="100" height="56"/>
+          <text x="70" y="53" text-anchor="middle" font-size="14">Checkout</text>
+        </g>
+      </svg>

@@ -69,6 +69,75 @@ fn expands_a_clipping_viewbox_without_shrinking_its_existing_extent() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a diagram clipped on the right and bottom whose width and height
+///   are absolute lengths with units
+/// When the diagram is fixed
+/// Then width and height grow with the viewBox, keeping their units, so the
+///   drawing keeps its scale
+#[test]
+fn scales_absolute_width_and_height_with_the_viewbox() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60" width="200px" height="6cm">
+        <g data-node="checkout">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Checkout</text>
+        </g>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let before = Written::parse(svg);
+    let after = Written::parse(&result.svg);
+    let scale = |root: &std::collections::HashMap<String, String>, name: &str, extent: f64| {
+        let (value, unit) = split_length(attr(root, name));
+        (value / extent, unit)
+    };
+
+    let (old_box, new_box) = (view_box(before.root()), view_box(after.root()));
+    assert!(new_box.width > old_box.width && new_box.height > old_box.height);
+    for (name, old_extent, new_extent) in [
+        ("width", old_box.width, new_box.width),
+        ("height", old_box.height, new_box.height),
+    ] {
+        let (old_scale, old_unit) = scale(before.root(), name, old_extent);
+        let (new_scale, new_unit) = scale(after.root(), name, new_extent);
+        assert_eq!(new_unit, old_unit);
+        assert!(
+            (new_scale - old_scale).abs() <= old_scale * 1e-9,
+            "{name}: {new_scale} vs {old_scale}"
+        );
+    }
+    assert!(result.report.issues.is_empty());
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given a clipped diagram sized to its container with a percentage width
+///   and no height
+/// When the diagram is fixed
+/// Then the viewBox grows but the width stays relative and no height is added
+#[test]
+fn leaves_relative_and_missing_sizes_to_the_container() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="100%">
+        <g data-node="checkout">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Checkout</text>
+        </g>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let root = Written::parse(&result.svg);
+
+    assert!(view_box(root.root()).width > 100.0);
+    assert_eq!(attr(root.root(), "width"), "100%");
+    assert!(!root.root().contains_key("height"));
+    assert_eq!(change_codes(&result), ["expand-viewbox"]);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a label that violates its node's 12px inner padding
 /// When the diagram is fixed
 /// Then only the box expands and the text coordinates remain unchanged

@@ -403,3 +403,14 @@ pub fn view_box(attributes: &HashMap<String, String>) -> Bounds {
         .collect();
     bounds(values[0], values[1], values[2], values[3])
 }
+
+/// A length attribute split into its number and unit, as in `200px`.
+pub fn split_length(text: &str) -> (f64, String) {
+    let unit_at = text
+        .find(|c: char| c.is_ascii_alphabetic() || c == '%')
+        .unwrap_or(text.len());
+    (
+        text[..unit_at].trim().parse().expect("numeric length"),
+        text[unit_at..].trim().to_owned(),
+    )
+}

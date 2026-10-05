@@ -623,5 +623,65 @@ fn expand_view_box(draft: Draft) -> Draft {
         .document
         .update(&root_path, |root| root.with_attr("viewBox", &expanded.format()));
     let message = format!("Expanded viewBox from {} to {}.", view_box.format(), expanded.format());
-    draft.changed(updated, "expand-viewbox", message, &["svg"])
+    scale_size(
+        draft.changed(updated, "expand-viewbox", message, &["svg"]),
+        &view_box,
+        &expanded,
+    )
+}
+
+/// Grows absolute `width` and `height` by the same ratio as the viewBox, so
+/// the drawing keeps its scale. Percentages and missing sizes are left to
+/// the container.
+fn scale_size(draft: Draft, before: &Bounds, after: &Bounds) -> Draft {
+    let root_path = vec![draft.document.root_index()];
+    let root = draft.document.root();
+    let scaled: Vec<(&str, String, String)> = [
+        ("width", before.width, after.width),
+        ("height", before.height, after.height),
+    ]
+    .into_iter()
+    .filter(|(_, from, to)| from != to && *from > 0.0)
+    .filter_map(|(name, from, to)| {
+        let (value, unit) = absolute_length(root.attr(name))?;
+        Some((
+            name,
+            root.attr(name).to_owned(),
+            format!("{}{unit}", format_number(value * to / from)),
+        ))
+    })
+    .collect();
+    if scaled.is_empty() {
+        return draft;
+    }
+    let updated = draft.document.update(&root_path, |root| {
+        scaled
+            .iter()
+            .fold(root, |root, (name, _, value)| root.with_attr(name, value))
+    });
+    let message = format!(
+        "Scaled the SVG {} to keep the drawing scale.",
+        scaled
+            .iter()
+            .map(|(name, from, to)| format!("{name} from {from} to {to}"))
+            .collect::<Vec<_>>()
+            .join(" and ")
+    );
+    draft.changed(updated, "scale-size", message, &["svg"])
+}
+
+/// A length with an absolute unit (or none), split into number and unit.
+fn absolute_length(text: &str) -> Option<(f64, &str)> {
+    let trimmed = text.trim();
+    let unit_at = trimmed
+        .find(|c: char| c.is_ascii_alphabetic() || c == '%')
+        .unwrap_or(trimmed.len());
+    let (number, unit) = trimmed.split_at(unit_at);
+    let absolute = ["", "px", "pt", "pc", "mm", "cm", "in", "em", "ex"];
+    let value = number
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite() && *value > 0.0)?;
+    absolute.contains(&unit).then_some((value, unit))
 }
