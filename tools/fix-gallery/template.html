@@ -402,8 +402,8 @@
         defs.innerHTML =
           '<marker id="nicevg-gallery-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5d6573"/></marker>' +
           "<style>" +
-          ":where(rect:not([fill])){fill:#f4f6fa}" +
-          ":where(rect:not([stroke])){stroke:#5d6573;stroke-width:1.2}" +
+          ":where(rect,circle):not([fill]){fill:#f4f6fa}" +
+          ":where(rect,circle):not([stroke]){stroke:#5d6573;stroke-width:1.2}" +
           ":where(text:not([fill])){fill:#16181d;font-family:system-ui,sans-serif}" +
           ":where(line,path,polyline):not([fill]){fill:none}" +
           ":where(line,path,polyline):not([stroke]){stroke:#5d6573;stroke-width:1.4}" +

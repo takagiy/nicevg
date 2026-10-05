@@ -1,0 +1,10 @@
+---
+source: tests/fix.rs
+expression: "support :: quality_of(& result.report)"
+---
+{
+  "bends": 11,
+  "detachedLabels": 0,
+  "diagonalSegments": 0,
+  "remainingIssues": 0
+}

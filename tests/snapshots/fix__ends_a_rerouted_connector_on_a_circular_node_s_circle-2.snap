@@ -1,0 +1,16 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+        <g data-node="start">
+          <circle cx="70" cy="80" r="30"/>
+          <text x="70" y="85" text-anchor="middle" font-size="14">Go</text>
+        </g>
+        <g data-node="target">
+          <rect x="240" y="73" width="100" height="56"/>
+          <text x="290" y="106" text-anchor="middle" font-size="14">Target</text>
+        </g>
+        <path id="flow" data-from="start" data-to="target" fill="none" d="M 91 101 L 240 101"/>
+      </svg>

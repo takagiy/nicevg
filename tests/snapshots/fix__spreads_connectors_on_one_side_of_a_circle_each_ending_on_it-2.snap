@@ -1,0 +1,21 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
+        <g data-node="hub">
+          <circle cx="80" cy="120" r="40"/>
+          <text x="80" y="125" text-anchor="middle" font-size="14">Hub</text>
+        </g>
+        <g data-node="upper">
+          <rect x="240" y="60" width="100" height="56"/>
+          <text x="290" y="93" text-anchor="middle" font-size="14">Upper</text>
+        </g>
+        <g data-node="lower">
+          <rect x="240" y="136" width="100" height="56"/>
+          <text x="290" y="169" text-anchor="middle" font-size="14">Lower</text>
+        </g>
+        <path id="to-upper" data-from="hub" data-to="upper" fill="none" d="M 118 107 L 240 107"/>
+        <path id="to-lower" data-from="hub" data-to="lower" fill="none" d="M 118 133 L 180 133 L 180 164 L 240 164"/>
+      </svg>

@@ -1,0 +1,59 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2306 1060">
+        <g data-node="aml">
+          <rect x="1258" y="40" width="196" height="60" rx="14"/>
+          <text x="1356" y="66" font-size="13" text-anchor="middle">9 AML Screening</text>
+          <text x="1356" y="85" font-size="11" text-anchor="middle">fuzzy name match</text>
+        </g>
+        <g data-node="tfront">
+          <rect x="40" y="270" width="196" height="60" rx="14"/>
+          <text x="138" y="296" font-size="13" text-anchor="middle">3 Teller Front</text>
+          <text x="138" y="315" font-size="11" text-anchor="middle">VB6 · 2006</text>
+        </g>
+        <g data-node="domadp">
+          <rect x="2070" y="270" width="196" height="60" rx="14"/>
+          <text x="2168" y="296" font-size="13" text-anchor="middle">17 Zengin Adapter</text>
+          <text x="2168" y="315" font-size="11" text-anchor="middle">C · 2006</text>
+        </g>
+        <g data-node="partneradp">
+          <rect x="1664" y="730" width="196" height="60" rx="14"/>
+          <text x="1762" y="756" font-size="13" text-anchor="middle">24 Partner Adapter</text>
+          <text x="1762" y="775" font-size="11" text-anchor="middle">REST + SFTP</text>
+        </g>
+        <g data-node="regrep">
+          <rect x="2070" y="730" width="196" height="60" rx="14"/>
+          <text x="2168" y="756" font-size="13" text-anchor="middle">25 Reg Reporting</text>
+          <text x="2168" y="775" font-size="11" text-anchor="middle">STR / CTR export</text>
+        </g>
+        <g data-node="ledger">
+          <rect x="852" y="960" width="196" height="60"/>
+          <text x="964" y="986" font-size="13" text-anchor="middle">D4 Transfer Ledger</text>
+          <text x="964" y="1005" font-size="11" text-anchor="middle">Oracle · 2006</text>
+        </g>
+        <g data-node="mq">
+          <rect x="1664" y="960" width="196" height="60"/>
+          <text x="1776" y="986" font-size="13" text-anchor="middle">D6 Message Queue</text>
+          <text x="1776" y="1005" font-size="11" text-anchor="middle">IBM MQ + Kafka</text>
+        </g>
+        <g data-node="audit">
+          <rect x="2070" y="960" width="196" height="60"/>
+          <text x="2182" y="986" font-size="13" text-anchor="middle">D7 Audit Log</text>
+          <text x="2182" y="1005" font-size="11" text-anchor="middle">WORM storage</text>
+        </g>
+        <path id="f57" data-from="partneradp" data-to="mq" d="M 1762 790 L 1762 960"/>
+        <path id="f58" data-from="domadp" data-to="mq" d="M 2070 300 L 1988 300 L 1988 990 L 1860 990"/>
+        <path id="f70" data-from="ledger" data-to="regrep" d="M 1048 990 L 1559 990 L 1559 875 L 2168 875 L 2168 790"/>
+        <path id="f71" data-from="aml" data-to="regrep" d="M 1454 60 L 1998 60 L 1998 760 L 2070 760"/>
+        <path id="f75" data-from="aml" data-to="audit" d="M 1454 80 L 2008 80 L 2008 980 L 2070 980"/>
+        <path id="f76" data-from="tfront" data-to="audit" d="M 236 300 L 1978 300 L 1978 1000 L 2070 1000"/>
+        <text data-label="l57" data-label-for="f57" x="1771" y="864" font-size="12" text-anchor="start">status event</text>
+        <text data-label="l58" data-label-for="f58" x="1924" y="979" font-size="12" text-anchor="middle">status event</text>
+        <text data-label="l70" data-label-for="f70" x="1864" y="896" font-size="12" text-anchor="middle">transactions</text>
+        <text data-label="l71" data-label-for="f71" x="1989" y="276" font-size="12" text-anchor="end">STR candidates</text>
+        <text data-label="l75" data-label-for="f75" x="2017" y="536" font-size="12" text-anchor="start">screening log</text>
+        <text data-label="l76" data-label-for="f76" x="1107" y="289" font-size="12" text-anchor="middle">teller log</text>
+      </svg>

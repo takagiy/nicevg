@@ -1,0 +1,17 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
+        <g data-node="client">
+          <rect x="20" y="20" width="100" height="60"/>
+          <text x="70" y="55" text-anchor="middle" font-size="14">Client</text>
+        </g>
+        <g data-node="server">
+          <rect x="260" y="20" width="100" height="60"/>
+          <text x="310" y="55" text-anchor="middle" font-size="14">Server</text>
+        </g>
+        <path id="request" data-from="client" data-to="server" fill="none" d="M 120 40 L 260 40"/>
+        <path id="reply" data-from="server" data-to="client" fill="none" d="M 260 60 L 120 60"/>
+      </svg>

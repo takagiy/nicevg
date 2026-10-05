@@ -1,0 +1,19 @@
+[package]
+name = "nicevg"
+version = "0.2.0"
+edition = "2024"
+description = "Deterministic checks and repairs for SVG diagrams."
+license = "MIT"
+authors = ["Yuki Takagi <takagiy.4dev@gmail.com>"]
+repository = "https://github.com/takagiy/nicevg"
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive"] }
+quick-xml = "0.42.0"
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.151", features = ["float_roundtrip", "preserve_order"] }
+
+[dev-dependencies]
+insta = { version = "1.49.0", features = ["json"] }
+roxmltree = "0.21.1"
