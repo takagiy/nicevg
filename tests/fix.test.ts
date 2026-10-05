@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect } from "bun:test";
 import { DOMParser } from "@xmldom/xmldom";
-import { analyze, fix } from "../src/index";
+import { analyze } from "../src/index";
+import { fix, test } from "./support/recording";
 
 describe("fix", () => {
   test("expands a clipping viewBox without shrinking its existing extent", () => {

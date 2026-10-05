@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>nicevg fix gallery</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f7f9;
+        --surface: #ffffff;
+        --surface-2: #f0f2f5;
+        --text: #16181d;
+        --muted: #5d6573;
+        --border: #dfe3e8;
+        --accent: #2f6fde;
+        --pass: #1a7f4b;
+        --pass-bg: #e3f4ea;
+        --fail: #c4302b;
+        --fail-bg: #fbe7e6;
+        --warn: #a35a00;
+        --warn-bg: #fdf0dc;
+        --issue: #e5484d;
+        --change: #2f6fde;
+        --canvas: #ffffff;
+        --radius: 10px;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111317;
+          --surface: #1a1d23;
+          --surface-2: #22262e;
+          --text: #e8eaee;
+          --muted: #9aa3b2;
+          --border: #2e333c;
+          --accent: #6e9bff;
+          --pass: #5ccf8f;
+          --pass-bg: #163222;
+          --fail: #ff7a72;
+          --fail-bg: #3a1a19;
+          --warn: #f0b35a;
+          --warn-bg: #3a2a12;
+          --canvas: #fbfbfc;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          14px/1.5 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: color-mix(in srgb, var(--bg) 92%, transparent);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--border);
+      }
+      .bar {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 12px 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 20px;
+        align-items: center;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0;
+        font-weight: 650;
+      }
+      .summary {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-left: auto;
+      }
+      .chip {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        border-radius: 999px;
+        padding: 4px 12px;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .chip[aria-pressed="true"] {
+        border-color: var(--accent);
+        color: var(--accent);
+        font-weight: 600;
+      }
+      input[type="search"] {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        border-radius: 8px;
+        padding: 5px 10px;
+        font: inherit;
+        font-size: 13px;
+        width: 220px;
+        max-width: 100%;
+      }
+      label.toggle {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        font-size: 13px;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      main {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 20px 16px 64px;
+        display: grid;
+        gap: 20px;
+      }
+      .case {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px 18px 18px;
+      }
+      .case.failed {
+        border-color: var(--fail);
+      }
+      .case-head {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        flex-wrap: wrap;
+      }
+      .case h2 {
+        font-size: 15px;
+        margin: 0;
+        font-weight: 620;
+      }
+      .pill {
+        font-size: 11px;
+        font-weight: 650;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+      .pill.passed {
+        color: var(--pass);
+        background: var(--pass-bg);
+      }
+      .pill.failed {
+        color: var(--fail);
+        background: var(--fail-bg);
+      }
+      .pill.skipped,
+      .pill.remaining {
+        color: var(--warn);
+        background: var(--warn-bg);
+      }
+      .scenario {
+        margin: 8px 0 0;
+        color: var(--muted);
+        white-space: pre-line;
+        font-size: 13px;
+      }
+      .scenario b {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .failure {
+        margin: 10px 0 0;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: var(--fail-bg);
+        color: var(--fail);
+        font: 12px/1.45 var(--mono);
+        white-space: pre-wrap;
+        overflow-x: auto;
+      }
+      .call {
+        margin-top: 14px;
+      }
+      .call + .call {
+        border-top: 1px dashed var(--border);
+        padding-top: 14px;
+      }
+      .panels {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+        gap: 14px;
+      }
+      figure {
+        margin: 0;
+        min-width: 0;
+      }
+      figcaption {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      figcaption strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .canvas {
+        position: relative;
+        background: var(--canvas);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .canvas img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .canvas svg.overlay {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+      .overlay .mark {
+        fill: color-mix(in srgb, var(--issue) 14%, transparent);
+        stroke: var(--issue);
+        stroke-width: 2;
+        vector-effect: non-scaling-stroke;
+        transition: opacity 0.12s;
+      }
+      .overlay polyline.mark {
+        fill: none;
+        stroke-width: 3;
+      }
+      .overlay .mark.change {
+        fill: color-mix(in srgb, var(--change) 14%, transparent);
+        stroke: var(--change);
+      }
+      .overlay .mark.viewbox {
+        fill: none;
+        stroke-dasharray: 6 4;
+      }
+      .overlay .change {
+        display: none;
+      }
+      .overlay.focusing .mark {
+        opacity: 0.12;
+      }
+      .overlay.focusing .mark.focus {
+        opacity: 1;
+        display: inline;
+      }
+      body.no-overlay .overlay .mark:not(.focus) {
+        display: none;
+      }
+      .lists {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+        gap: 14px;
+        margin-top: 12px;
+      }
+      .lists h3 {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        margin: 0 0 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .lists ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 2px;
+      }
+      .lists li {
+        font-size: 12.5px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        cursor: default;
+        overflow-wrap: anywhere;
+      }
+      .lists li:hover {
+        background: var(--surface-2);
+      }
+      .lists li code {
+        font: 11.5px var(--mono);
+        color: var(--muted);
+        margin-right: 6px;
+      }
+      .lists .none {
+        color: var(--muted);
+        font-style: italic;
+      }
+      details.source {
+        margin-top: 10px;
+      }
+      details.source summary {
+        font-size: 12px;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      details.source pre {
+        font: 11.5px/1.45 var(--mono);
+        background: var(--surface-2);
+        border-radius: 8px;
+        padding: 10px;
+        overflow: auto;
+        max-height: 320px;
+        margin: 6px 0 0;
+      }
+      .source-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+        gap: 10px;
+      }
+      .empty {
+        text-align: center;
+        color: var(--muted);
+        padding: 48px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="bar">
+        <h1>nicevg fix gallery</h1>
+        <span class="summary" id="summary"></span>
+        <div class="controls">
+          <button class="chip" data-filter="all" aria-pressed="true">
+            All
+          </button>
+          <button class="chip" data-filter="failed" aria-pressed="false">
+            Failed
+          </button>
+          <button class="chip" data-filter="remaining" aria-pressed="false">
+            Issues remain
+          </button>
+          <input type="search" id="search" placeholder="Filter by title" />
+          <label class="toggle"
+            ><input type="checkbox" id="overlay" checked /> Issue overlay</label
+          >
+        </div>
+      </div>
+    </header>
+    <main id="cases"></main>
+    <script type="application/json" id="gallery-data">
+      __GALLERY_DATA__
+    </script>
+    <script>
+      const data = JSON.parse(
+        document.getElementById("gallery-data").textContent,
+      );
+      const svgNs = "http://www.w3.org/2000/svg";
+      const state = { filter: "all", query: "" };
+
+      const el = (tag, attrs = {}, children = []) => {
+        const node = document.createElement(tag);
+        for (const [key, value] of Object.entries(attrs)) {
+          if (key === "text") node.textContent = value;
+          else if (key === "html") node.innerHTML = value;
+          else node.setAttribute(key, value);
+        }
+        for (const child of children) node.append(child);
+        return node;
+      };
+      const svgEl = (tag, attrs = {}) => {
+        const node = document.createElementNS(svgNs, tag);
+        for (const [key, value] of Object.entries(attrs)) {
+          node.setAttribute(key, value);
+        }
+        return node;
+      };
+
+      // Test fixtures often carry no styling; give unstyled shapes readable
+      // defaults (zero specificity, so a diagram's own CSS still wins) and
+      // show connector direction.
+      const withDefaults = (svg) => {
+        const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+        const root = doc.documentElement;
+        if (root.nodeName !== "svg") return svg;
+        const defs = doc.createElementNS(svgNs, "defs");
+        defs.innerHTML =
+          '<marker id="nicevg-gallery-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5d6573"/></marker>' +
+          "<style>" +
+          ":where(rect:not([fill])){fill:#f4f6fa}" +
+          ":where(rect:not([stroke])){stroke:#5d6573;stroke-width:1.2}" +
+          ":where(text:not([fill])){fill:#16181d;font-family:system-ui,sans-serif}" +
+          ":where(line,path,polyline):not([fill]){fill:none}" +
+          ":where(line,path,polyline):not([stroke]){stroke:#5d6573;stroke-width:1.4}" +
+          ":where([data-from]):not([marker-end]){marker-end:url(#nicevg-gallery-arrow)}" +
+          "</style>";
+        root.insertBefore(defs, root.firstChild);
+        return new XMLSerializer().serializeToString(doc);
+      };
+
+      const viewBoxOf = (svg, report) => {
+        const match = /viewBox\s*=\s*"([^"]+)"/.exec(svg);
+        if (match) return match[1];
+        const b = report.drawingBounds ?? {
+          x: 0,
+          y: 0,
+          width: 300,
+          height: 150,
+        };
+        return [b.x - 20, b.y - 20, b.width + 40, b.height + 40].join(" ");
+      };
+
+      // Shapes in the report that an issue or change refers to, by element id.
+      const shapesFor = (ids, report, details) => {
+        const shapes = [];
+        for (const id of ids) {
+          const node = report.diagram.nodes.find((item) => item.id === id);
+          const label = report.diagram.labels.find((item) => item.id === id);
+          const connector = report.diagram.connectors.find(
+            (item) => item.id === id,
+          );
+          const box = (node ?? label)?.bounds;
+          if (box) {
+            shapes.push(
+              svgEl("rect", {
+                x: box.x - 2,
+                y: box.y - 2,
+                width: box.width + 4,
+                height: box.height + 4,
+                rx: 3,
+              }),
+            );
+          }
+          if (connector) {
+            shapes.push(
+              svgEl("polyline", {
+                points: connector.points.map((p) => `${p.x},${p.y}`).join(" "),
+              }),
+            );
+          }
+          if (id === "svg" && details?.requiredViewBox) {
+            const r = details.requiredViewBox;
+            const shape = svgEl("rect", {
+              x: r.x,
+              y: r.y,
+              width: r.width,
+              height: r.height,
+            });
+            shape.dataset.viewbox = "true";
+            shapes.push(shape);
+          }
+        }
+        return shapes;
+      };
+
+      const panel = (title, svg, report, marks) => {
+        const overlay = svgEl("svg", {
+          class: "overlay",
+          viewBox: viewBoxOf(svg, report),
+        });
+        for (const { key, kind, ids, details } of marks) {
+          for (const shape of shapesFor(ids, report, details)) {
+            shape.classList.add("mark");
+            if (kind === "change") shape.classList.add("change");
+            if (shape.dataset.viewbox) shape.classList.add("viewbox");
+            shape.dataset.key = key;
+            overlay.append(shape);
+          }
+        }
+        const img = el("img", {
+          alt: `${title} diagram`,
+          loading: "lazy",
+          src:
+            "data:image/svg+xml;charset=utf-8," +
+            encodeURIComponent(withDefaults(svg)),
+        });
+        const issues = report.issues.length;
+        return {
+          overlay,
+          figure: el("figure", {}, [
+            el("figcaption", {}, [
+              el("strong", { text: title }),
+              el("span", {
+                text:
+                  issues === 0
+                    ? "no issues"
+                    : `${issues} issue${issues === 1 ? "" : "s"}`,
+              }),
+            ]),
+            el("div", { class: "canvas" }, [img, overlay]),
+          ]),
+        };
+      };
+
+      const focus = (overlays, key) => {
+        for (const overlay of overlays) {
+          overlay.classList.toggle("focusing", key !== null);
+          for (const mark of overlay.querySelectorAll(".mark")) {
+            mark.classList.toggle("focus", mark.dataset.key === key);
+          }
+        }
+      };
+
+      const list = (heading, items, overlays) => {
+        const ul = el("ul");
+        if (items.length === 0)
+          ul.append(el("li", { class: "none", text: "none" }));
+        for (const item of items) {
+          const li = el("li", {}, [
+            el("code", { text: item.code }),
+            item.message,
+          ]);
+          li.addEventListener("mouseenter", () => focus(overlays, item.key));
+          li.addEventListener("mouseleave", () => focus(overlays, null));
+          ul.append(li);
+        }
+        return el("div", {}, [el("h3", { text: heading }), ul]);
+      };
+
+      const renderCall = (call, index, total) => {
+        const beforeMarks = call.before.issues.map((issue, i) => ({
+          key: `b${i}`,
+          kind: "issue",
+          ids: issue.elements,
+          details: issue.details,
+        }));
+        const afterMarks = [
+          ...call.after.issues.map((issue, i) => ({
+            key: `a${i}`,
+            kind: "issue",
+            ids: issue.elements,
+            details: issue.details,
+          })),
+          ...call.changes.map((change, i) => ({
+            key: `c${i}`,
+            kind: "change",
+            ids: change.elements,
+          })),
+        ];
+        const before = panel("Before", call.input, call.before, beforeMarks);
+        const after = panel("After fix", call.output, call.after, afterMarks);
+        const keyed = (items, prefix) =>
+          items.map((item, i) => ({ ...item, key: `${prefix}${i}` }));
+        return el("div", { class: "call" }, [
+          total > 1
+            ? el("div", {
+                class: "summary",
+                text: `fix() call ${index + 1} of ${total}`,
+              })
+            : "",
+          el("div", { class: "panels" }, [before.figure, after.figure]),
+          el("div", { class: "lists" }, [
+            list("Issues before", keyed(call.before.issues, "b"), [
+              before.overlay,
+            ]),
+            list("Changes applied", keyed(call.changes, "c"), [after.overlay]),
+            list("Issues after", keyed(call.after.issues, "a"), [
+              after.overlay,
+            ]),
+          ]),
+          el("details", { class: "source" }, [
+            el("summary", { text: "SVG source" }),
+            el("div", { class: "source-grid" }, [
+              el("pre", { text: call.input.trim() }),
+              el("pre", { text: call.output.trim() }),
+            ]),
+          ]),
+        ]);
+      };
+
+      const scenarioHtml = (text) =>
+        text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/^(Given|When|Then|And)\b/gm, "<b>$1</b>");
+
+      const remaining = (item) =>
+        item.calls.some((call) => call.after.issues.length > 0);
+
+      const render = () => {
+        const main = document.getElementById("cases");
+        main.replaceChildren();
+        const visible = data.cases.filter(
+          (item) =>
+            (state.filter === "all" ||
+              (state.filter === "failed" && item.outcome.status === "failed") ||
+              (state.filter === "remaining" && remaining(item))) &&
+            item.title.toLowerCase().includes(state.query),
+        );
+        for (const item of visible) {
+          const status = item.outcome.status;
+          main.append(
+            el("section", { class: `case ${status}` }, [
+              el("div", { class: "case-head" }, [
+                el("span", { class: `pill ${status}`, text: status }),
+                remaining(item)
+                  ? el("span", {
+                      class: "pill remaining",
+                      text: "issues remain",
+                    })
+                  : "",
+                el("h2", { text: item.title }),
+              ]),
+              el("p", { class: "scenario", html: scenarioHtml(item.scenario) }),
+              item.outcome.message
+                ? el("pre", { class: "failure", text: item.outcome.message })
+                : "",
+              ...(item.calls.length === 0
+                ? [
+                    el("p", {
+                      class: "summary",
+                      text: "No fix() call recorded.",
+                    }),
+                  ]
+                : item.calls.map((call, i) =>
+                    renderCall(call, i, item.calls.length),
+                  )),
+            ]),
+          );
+        }
+        if (visible.length === 0) {
+          main.append(el("p", { class: "empty", text: "No cases match." }));
+        }
+      };
+
+      const failed = data.cases.filter(
+        (item) => item.outcome.status === "failed",
+      ).length;
+      document.getElementById("summary").textContent =
+        `${data.cases.length} cases · ${failed} failed · ` +
+        `generated ${new Date(data.generatedAt).toLocaleString()}`;
+      for (const chip of document.querySelectorAll(".chip")) {
+        chip.addEventListener("click", () => {
+          state.filter = chip.dataset.filter;
+          for (const other of document.querySelectorAll(".chip")) {
+            other.setAttribute("aria-pressed", String(other === chip));
+          }
+          render();
+        });
+      }
+      document.getElementById("search").addEventListener("input", (event) => {
+        state.query = event.target.value.trim().toLowerCase();
+        render();
+      });
+      document.getElementById("overlay").addEventListener("change", (event) => {
+        document.body.classList.toggle("no-overlay", !event.target.checked);
+      });
+      render();
+    </script>
+  </body>
+</html>

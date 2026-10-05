@@ -21,7 +21,8 @@
     "lint": "eslint .",
     "format": "prettier --write . && eslint --fix .",
     "check": "bun run typecheck && eslint . && prettier --check .",
-    "test": "bun test"
+    "test": "bun test",
+    "gallery": "bun run tools/fix-gallery/build.ts"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.8.11",
