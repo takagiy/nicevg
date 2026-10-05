@@ -31,6 +31,7 @@ export interface DiagramConnector {
 export interface DiagramLabel {
   id: string;
   bounds: Bounds;
+  connector?: string;
 }
 
 export interface UnsupportedElement {
@@ -139,25 +140,41 @@ const localRectBounds = (element: Element): Bounds => ({
   height: numberAttribute(element, "height"),
 });
 
-const textBounds = (element: Element): Bounds => {
-  const translation = elementTranslation(element);
-  const fontSize = numberAttribute(element, "font-size") || 16;
-  const width = Math.round(element.textContent.length * fontSize * 0.59);
-  const anchor = element.getAttribute("text-anchor");
-  const anchorX = numberAttribute(element, "x") + translation.x;
+// Estimates the box of a text run from its anchor point; glyph metrics are
+// approximated by an average advance of 0.59em.
+const measureText = (
+  length: number,
+  fontSize: number,
+  anchorPoint: Point,
+  anchor: string | null,
+): Bounds => {
+  const width = Math.round(length * fontSize * 0.59);
   const x =
     anchor === "middle"
-      ? anchorX - width / 2
+      ? anchorPoint.x - width / 2
       : anchor === "end"
-        ? anchorX - width
-        : anchorX;
+        ? anchorPoint.x - width
+        : anchorPoint.x;
 
   return {
     x,
-    y: numberAttribute(element, "y") + translation.y - fontSize,
+    y: anchorPoint.y - fontSize,
     width,
     height: Math.round(fontSize * 1.2),
   };
+};
+
+const textBounds = (element: Element): Bounds => {
+  const translation = elementTranslation(element);
+  return measureText(
+    element.textContent.length,
+    numberAttribute(element, "font-size") || 16,
+    {
+      x: numberAttribute(element, "x") + translation.x,
+      y: numberAttribute(element, "y") + translation.y,
+    },
+    element.getAttribute("text-anchor"),
+  );
 };
 
 const connectorPoints = (element: Element): Point[] => {
@@ -562,6 +579,58 @@ const inspectLabelOverlaps = (labels: DiagramLabel[]): DiagramIssue[] => {
   return issues;
 };
 
+const segmentsOverlap = (
+  [firstStart, firstEnd]: [Point, Point],
+  [secondStart, secondEnd]: [Point, Point],
+): boolean => {
+  const shared = (a1: number, a2: number, b1: number, b2: number) =>
+    Math.min(Math.max(a1, a2), Math.max(b1, b2)) -
+      Math.max(Math.min(a1, a2), Math.min(b1, b2)) >
+    0;
+  const horizontal = (start: Point, end: Point) => start.y === end.y;
+  const vertical = (start: Point, end: Point) => start.x === end.x;
+  if (
+    horizontal(firstStart, firstEnd) &&
+    horizontal(secondStart, secondEnd) &&
+    firstStart.y === secondStart.y
+  ) {
+    return shared(firstStart.x, firstEnd.x, secondStart.x, secondEnd.x);
+  }
+  if (
+    vertical(firstStart, firstEnd) &&
+    vertical(secondStart, secondEnd) &&
+    firstStart.x === secondStart.x
+  ) {
+    return shared(firstStart.y, firstEnd.y, secondStart.y, secondEnd.y);
+  }
+  return false;
+};
+
+const connectorSegments = (points: Point[]): Array<[Point, Point]> =>
+  points.slice(0, -1).flatMap((point, index): Array<[Point, Point]> => {
+    const next = points[index + 1];
+    return next === undefined ? [] : [[point, next]];
+  });
+
+const routesOverlap = (first: Point[], second: Point[]): boolean =>
+  connectorSegments(first).some((segment) =>
+    connectorSegments(second).some((other) => segmentsOverlap(segment, other)),
+  );
+
+const inspectConnectorOverlaps = (
+  connectors: DiagramConnector[],
+): DiagramIssue[] =>
+  connectors.flatMap((first, index): DiagramIssue[] =>
+    connectors
+      .slice(index + 1)
+      .filter((second) => routesOverlap(first.points, second.points))
+      .map((second) => ({
+        code: "connector-overlap",
+        message: `Connectors "${first.id}" and "${second.id}" overlap along a segment.`,
+        elements: [first.id, second.id],
+      })),
+  );
+
 const pointIsInside = (point: Point, bounds: Bounds): boolean =>
   point.x > bounds.x &&
   point.x < bounds.x + bounds.width &&
@@ -668,63 +737,528 @@ const routeIsClear = (points: Point[], obstacles: Bounds[]): boolean =>
     );
   });
 
+// Finds a spot for a connector label beside one of the connector's segments,
+// trying the longest segment first and fanning out from its midpoint. The
+// label keeps the connector clearance from every route and stays at least
+// 4px away from other labels and nodes.
+const placeLabel = (
+  length: number,
+  fontSize: number,
+  route: Point[],
+  routes: Point[][],
+  blocked: Bounds[],
+  clearance = 8,
+): { anchorPoint: Point; anchor: string; bounds: Bounds } | null => {
+  const gap = clearance + 1;
+  const height = Math.round(fontSize * 1.2);
+  const segments = connectorSegments(route)
+    .map((segment, index) => ({ segment, index }))
+    .sort(
+      (first, second) =>
+        segmentLength(second.segment) - segmentLength(first.segment) ||
+        first.index - second.index,
+    );
+  const fits = (bounds: Bounds) =>
+    routes.every((other) =>
+      connectorSegments(other).every(
+        ([from, to]) =>
+          !segmentIntersectsInterior(
+            from,
+            to,
+            inflateBounds(bounds, clearance),
+          ),
+      ),
+    ) &&
+    blocked.every(
+      (other) => intersection(bounds, inflateBounds(other, 4)) === null,
+    );
+  for (const { segment } of segments) {
+    const [from, to] = segment;
+    const horizontal = from.y === to.y;
+    for (let step = 0; step <= 20; step += 1) {
+      const fraction =
+        0.5 + (step % 2 === 0 ? 1 : -1) * Math.ceil(step / 2) * 0.05;
+      if (fraction < 0 || fraction > 1) continue;
+      const along = {
+        x: Math.round(from.x + (to.x - from.x) * fraction),
+        y: Math.round(from.y + (to.y - from.y) * fraction),
+      };
+      const beside = Math.round(along.y + fontSize / 2);
+      const candidates: Array<{ anchorPoint: Point; anchor: string }> =
+        horizontal
+          ? [
+              {
+                anchorPoint: {
+                  x: along.x,
+                  y: along.y - gap - height + fontSize,
+                },
+                anchor: "middle",
+              },
+              {
+                anchorPoint: { x: along.x, y: along.y + gap + fontSize },
+                anchor: "middle",
+              },
+            ]
+          : [
+              { anchorPoint: { x: along.x + gap, y: beside }, anchor: "start" },
+              { anchorPoint: { x: along.x - gap, y: beside }, anchor: "end" },
+            ];
+      for (const candidate of candidates) {
+        const bounds = measureText(
+          length,
+          fontSize,
+          candidate.anchorPoint,
+          candidate.anchor,
+        );
+        const withinSegment = horizontal
+          ? bounds.x >= Math.min(from.x, to.x) &&
+            bounds.x + bounds.width <= Math.max(from.x, to.x)
+          : bounds.y >= Math.min(from.y, to.y) &&
+            bounds.y + bounds.height <= Math.max(from.y, to.y);
+        if (withinSegment && fits(bounds)) {
+          return { ...candidate, bounds };
+        }
+      }
+    }
+  }
+  return null;
+};
+
+const segmentLength = ([from, to]: [Point, Point]): number =>
+  Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
+
+type ConnectorPorts = ReturnType<typeof connectorPorts>;
+
+const sideOf = (point: Point, bounds: Bounds): string =>
+  point.x === bounds.x
+    ? "left"
+    : point.x === bounds.x + bounds.width
+      ? "right"
+      : point.y === bounds.y
+        ? "top"
+        : "bottom";
+
+// Spreads the endpoints that share a node side evenly along that side, ordered
+// by the position of the node at the other end, so parallel connectors do not
+// collapse onto one line.
+const spreadPorts = (
+  connectors: Array<{ id: string; source: Bounds; target: Bounds }>,
+): Map<string, ConnectorPorts> => {
+  const ports = new Map(
+    connectors.map((connector) => [
+      connector.id,
+      connectorPorts(connector.source, connector.target),
+    ]),
+  );
+  const sides = new Map<
+    string,
+    Array<{ id: string; end: "start" | "end"; bounds: Bounds; other: Bounds }>
+  >();
+  for (const connector of connectors) {
+    const port = ports.get(connector.id);
+    if (port === undefined) continue;
+    for (const [end, bounds, other] of [
+      ["start", connector.source, connector.target],
+      ["end", connector.target, connector.source],
+    ] as const) {
+      const key = `${formatBounds(bounds)}:${sideOf(port[end], bounds)}`;
+      sides.set(key, [
+        ...(sides.get(key) ?? []),
+        { id: connector.id, end, bounds, other },
+      ]);
+    }
+  }
+  for (const [key, users] of sides) {
+    const alongX = key.endsWith(":top") || key.endsWith(":bottom");
+    const centre = (bounds: Bounds) =>
+      alongX ? bounds.x + bounds.width / 2 : bounds.y + bounds.height / 2;
+    const ordered = users
+      .map((user, index) => ({ user, index }))
+      .sort(
+        (first, second) =>
+          centre(first.user.other) - centre(second.user.other) ||
+          first.index - second.index,
+      );
+    ordered.forEach(({ user }, index) => {
+      const port = ports.get(user.id);
+      if (port === undefined) return;
+      const fraction = (index + 1) / (ordered.length + 1);
+      const point = port[user.end];
+      ports.set(user.id, {
+        ...port,
+        [user.end]: alongX
+          ? {
+              x: Math.round(user.bounds.x + user.bounds.width * fraction),
+              y: point.y,
+            }
+          : {
+              x: point.x,
+              y: Math.round(user.bounds.y + user.bounds.height * fraction),
+            },
+      });
+    });
+  }
+  alignFacingPorts(connectors, ports);
+  return ports;
+};
+
+// Straightens connectors between facing sides: when one end's coordinate also
+// fits on the other end's side, away from its corners and at least a lane
+// away from other ports there, both ends share it.
+const alignFacingPorts = (
+  connectors: Array<{ id: string; source: Bounds; target: Bounds }>,
+  ports: Map<string, ConnectorPorts>,
+  margin = 8,
+): void => {
+  const taken = (bounds: Bounds, side: string, value: number, id: string) =>
+    connectors.some((other) => {
+      if (other.id === id) return false;
+      const port = ports.get(other.id);
+      if (port === undefined) return false;
+      return (["start", "end"] as const).some((end) => {
+        const owner = end === "start" ? other.source : other.target;
+        const point = port[end];
+        return (
+          owner === bounds &&
+          sideOf(point, owner) === side &&
+          Math.abs(
+            (side === "left" || side === "right" ? point.y : point.x) - value,
+          ) < laneSpacing
+        );
+      });
+    });
+  for (const connector of connectors) {
+    const port = ports.get(connector.id);
+    if (port === undefined) continue;
+    const startSide = sideOf(port.start, connector.source);
+    const endSide = sideOf(port.end, connector.target);
+    const facing =
+      (startSide === "right" && endSide === "left") ||
+      (startSide === "left" && endSide === "right") ||
+      (startSide === "bottom" && endSide === "top") ||
+      (startSide === "top" && endSide === "bottom");
+    if (!facing) continue;
+    const alongY = startSide === "left" || startSide === "right";
+    const coordinate = (point: Point) => (alongY ? point.y : point.x);
+    if (coordinate(port.start) === coordinate(port.end)) continue;
+    const fits = (bounds: Bounds, value: number) =>
+      alongY
+        ? value >= bounds.y + margin &&
+          value <= bounds.y + bounds.height - margin
+        : value >= bounds.x + margin &&
+          value <= bounds.x + bounds.width - margin;
+    const moved = (point: Point, value: number): Point =>
+      alongY ? { x: point.x, y: value } : { x: value, y: point.y };
+    const startValue = coordinate(port.start);
+    const endValue = coordinate(port.end);
+    if (
+      fits(connector.target, startValue) &&
+      !taken(connector.target, endSide, startValue, connector.id)
+    ) {
+      ports.set(connector.id, { ...port, end: moved(port.end, startValue) });
+    } else if (
+      fits(connector.source, endValue) &&
+      !taken(connector.source, startSide, endValue, connector.id)
+    ) {
+      ports.set(connector.id, { ...port, start: moved(port.start, endValue) });
+    }
+  }
+};
+
 const routeConnector = (
   source: Bounds,
   target: Bounds,
   rawObstacles: Bounds[],
+  ports = connectorPorts(source, target),
+  occupied: Point[][] = [],
   clearance = 8,
 ): Point[] => {
-  const { start, end, horizontal } = connectorPorts(source, target);
+  const { start, end } = ports;
   const obstacles = rawObstacles.map((bounds) =>
     inflateBounds(bounds, clearance),
   );
   const direct = [start, end];
-  if (routeIsClear(direct, obstacles)) {
+  if (
+    (start.x === end.x || start.y === end.y) &&
+    routeIsClear(direct, obstacles) &&
+    occupied.every((other) => !routesOverlap(direct, other))
+  ) {
     return direct;
   }
 
-  const candidates = horizontal
-    ? rawObstacles.flatMap((bounds) => [
-        bounds.y - clearance,
-        bounds.y + bounds.height + clearance,
-      ])
-    : rawObstacles.flatMap((bounds) => [
-        bounds.x - clearance,
-        bounds.x + bounds.width + clearance,
-      ]);
-  const routes = candidates
-    .map((coordinate) =>
-      horizontal
-        ? [
-            start,
-            { x: start.x, y: coordinate },
-            { x: end.x, y: coordinate },
-            end,
-          ]
-        : [
-            start,
-            { x: coordinate, y: start.y },
-            { x: coordinate, y: end.y },
-            end,
-          ],
-    )
-    .filter((route) => routeIsClear(route, obstacles))
-    .sort((first, second) => {
-      const routeLength = (route: Point[]) =>
-        route.slice(0, -1).reduce((total, point, index) => {
-          const next = route[index + 1];
-          return next === undefined
-            ? total
-            : total + Math.abs(next.x - point.x) + Math.abs(next.y - point.y);
-        }, 0);
-      return (
-        routeLength(first) - routeLength(second) ||
-        (horizontal
-          ? (first[1]?.y ?? 0) - (second[1]?.y ?? 0)
-          : (first[1]?.x ?? 0) - (second[1]?.x ?? 0))
+  // Step straight out of each port before searching, and keep the search
+  // clear of the end nodes too, so detours meet node sides at right angles
+  // instead of running along them.
+  const outward = (point: Point, bounds: Bounds): Point => {
+    const side = sideOf(point, bounds);
+    return {
+      x:
+        point.x +
+        (side === "left" ? -clearance : side === "right" ? clearance : 0),
+      y:
+        point.y +
+        (side === "top" ? -clearance : side === "bottom" ? clearance : 0),
+    };
+  };
+  const detour = searchOrthogonalRoute(
+    outward(start, source),
+    outward(end, target),
+    [
+      ...obstacles,
+      inflateBounds(source, clearance),
+      inflateBounds(target, clearance),
+    ],
+    occupied,
+    axisOf(start, source),
+    axisOf(end, target),
+  );
+  return detour === null
+    ? direct
+    : withoutRedundantPoints([start, ...detour, end]);
+};
+
+const withoutRedundantPoints = (points: Point[]): Point[] =>
+  points.filter((point, index) => {
+    const before = points[index - 1];
+    const after = points[index + 1];
+    if (before === undefined || after === undefined) return true;
+    return !(
+      (before.x === point.x && point.x === after.x) ||
+      (before.y === point.y && point.y === after.y)
+    );
+  });
+
+const bendPenalty = 40;
+const laneSpacing = 10;
+
+// Minimal binary heap ordered by [cost, state] for deterministic ties.
+class MinQueue {
+  private items: Array<[number, number]> = [];
+
+  get size(): number {
+    return this.items.length;
+  }
+
+  private less(a: number, b: number): boolean {
+    const first = this.items[a];
+    const second = this.items[b];
+    if (first === undefined || second === undefined) return false;
+    return (
+      first[0] < second[0] || (first[0] === second[0] && first[1] < second[1])
+    );
+  }
+
+  private swap(a: number, b: number): void {
+    const first = this.items[a];
+    const second = this.items[b];
+    if (first === undefined || second === undefined) return;
+    this.items[a] = second;
+    this.items[b] = first;
+  }
+
+  push(item: [number, number]): void {
+    this.items.push(item);
+    let index = this.items.length - 1;
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (!this.less(index, parent)) break;
+      this.swap(index, parent);
+      index = parent;
+    }
+  }
+
+  pop(): [number, number] | undefined {
+    const top = this.items[0];
+    const last = this.items.pop();
+    if (top === undefined || last === undefined || this.items.length === 0) {
+      return top;
+    }
+    this.items[0] = last;
+    let index = 0;
+    for (;;) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      let smallest = index;
+      if (left < this.items.length && this.less(left, smallest))
+        smallest = left;
+      if (right < this.items.length && this.less(right, smallest))
+        smallest = right;
+      if (smallest === index) break;
+      this.swap(index, smallest);
+      index = smallest;
+    }
+    return top;
+  }
+}
+
+// 0: horizontal, 1: vertical
+type Axis = 0 | 1;
+
+const axisOf = (point: Point, bounds: Bounds): Axis => {
+  const side = sideOf(point, bounds);
+  return side === "left" || side === "right" ? 0 : 1;
+};
+
+// Dijkstra over a sparse orthogonal grid built from obstacle edges, the
+// channels between them and the two ports. Returns null when no path exists.
+const searchOrthogonalRoute = (
+  start: Point,
+  end: Point,
+  obstacles: Bounds[],
+  occupied: Point[][],
+  startAxis: Axis,
+  endAxis: Axis,
+): Point[] | null => {
+  const axis = (pick: (point: Point) => number, low: "x" | "y") => {
+    const size = low === "x" ? "width" : "height";
+    // Lanes beside connectors already drawn let new routes run alongside
+    // them when every other line through a channel is taken.
+    const lanes = occupied
+      .flatMap(connectorSegments)
+      .flatMap(([from, to]) =>
+        pick(from) === pick(to)
+          ? [pick(from) - laneSpacing, pick(from) + laneSpacing]
+          : [],
       );
-    });
-  return routes[0] ?? direct;
+    const edges = [
+      pick(start),
+      pick(end),
+      ...obstacles.flatMap((bounds) => [
+        bounds[low],
+        bounds[low] + bounds[size],
+      ]),
+    ];
+    const sorted = [...new Set(edges)].sort((a, b) => a - b);
+    // Midlines of the gaps between edges, rounded to whole units
+    const channels = sorted
+      .slice(1)
+      .map((value, index) =>
+        Math.round(((sorted[index] ?? value) + value) / 2),
+      );
+    return [...new Set([...sorted, ...channels, ...lanes])].sort(
+      (a, b) => a - b,
+    );
+  };
+  const xs = axis((point) => point.x, "x");
+  const ys = axis((point) => point.y, "y");
+  // Grid lines include every obstacle edge, so an edge between neighbouring
+  // grid points enters an obstacle exactly when its midpoint is inside it.
+  const blockedCell = new Uint8Array(xs.length * ys.length);
+  const blockedHorizontal = new Uint8Array(xs.length * ys.length);
+  const blockedVertical = new Uint8Array(xs.length * ys.length);
+  // Edges on an obstacle's clearance outline carry a tiny extra cost that only
+  // breaks ties, so equal detours run mid-channel instead of skirting a node.
+  const outlineHorizontal = new Uint8Array(xs.length * ys.length);
+  const outlineVertical = new Uint8Array(xs.length * ys.length);
+  for (const bounds of obstacles) {
+    const left = xs.indexOf(bounds.x);
+    const right = xs.indexOf(bounds.x + bounds.width);
+    const top = ys.indexOf(bounds.y);
+    const bottom = ys.indexOf(bounds.y + bounds.height);
+    for (let yi = top; yi <= bottom; yi += 1) {
+      for (let xi = left; xi <= right; xi += 1) {
+        const index = yi * xs.length + xi;
+        const insideX = xi > left && xi < right;
+        const insideY = yi > top && yi < bottom;
+        if (insideX && insideY) blockedCell[index] = 1;
+        if (insideY && xi < right) blockedHorizontal[index] = 1;
+        if (insideX && yi < bottom) blockedVertical[index] = 1;
+        if ((yi === top || yi === bottom) && xi < right) {
+          outlineHorizontal[index] = 1;
+        }
+        if ((xi === left || xi === right) && yi < bottom) {
+          outlineVertical[index] = 1;
+        }
+      }
+    }
+  }
+  // Grid edges that share any length with another connector's segment are
+  // taken, including segments shorter than one grid step.
+  for (const [from, to] of occupied.flatMap(connectorSegments)) {
+    if (from.y === to.y) {
+      const yi = ys.indexOf(from.y);
+      if (yi === -1) continue;
+      for (let xi = 0; xi < xs.length - 1; xi += 1) {
+        const low = xs[xi] ?? 0;
+        const high = xs[xi + 1] ?? 0;
+        if (high > Math.min(from.x, to.x) && low < Math.max(from.x, to.x)) {
+          blockedHorizontal[yi * xs.length + xi] = 1;
+        }
+      }
+    } else if (from.x === to.x) {
+      const xi = xs.indexOf(from.x);
+      if (xi === -1) continue;
+      for (let yi = 0; yi < ys.length - 1; yi += 1) {
+        const low = ys[yi] ?? 0;
+        const high = ys[yi + 1] ?? 0;
+        if (high > Math.min(from.y, to.y) && low < Math.max(from.y, to.y)) {
+          blockedVertical[yi * xs.length + xi] = 1;
+        }
+      }
+    }
+  }
+  const key = (xi: number, yi: number) => yi * xs.length + xi;
+  const startKey = key(xs.indexOf(start.x), ys.indexOf(start.y));
+  const endKey = key(xs.indexOf(end.x), ys.indexOf(end.y));
+  const pointOf = (cell: number): Point => ({
+    x: xs[cell % xs.length] ?? 0,
+    y: ys[Math.floor(cell / xs.length)] ?? 0,
+  });
+  // state = cell * 2 + (0: arrived horizontally, 1: arrived vertically)
+  const distance = new Map<number, number>();
+  const previous = new Map<number, number>();
+  const queue = new MinQueue();
+  queue.push([0, startKey * 2 + startAxis]);
+  distance.set(startKey * 2 + startAxis, 0);
+  let reached: number | null = null;
+  while (queue.size > 0) {
+    const [cost, state] = queue.pop() ?? [0, 0];
+    if (cost > (distance.get(state) ?? Infinity)) continue;
+    const cell = Math.floor(state / 2);
+    if (cell === endKey) {
+      reached = state;
+      break;
+    }
+    const point = pointOf(cell);
+    const xi = cell % xs.length;
+    const yi = Math.floor(cell / xs.length);
+    const neighbours: Array<[number, number]> = [
+      [xi - 1, yi],
+      [xi + 1, yi],
+      [xi, yi - 1],
+      [xi, yi + 1],
+    ];
+    for (const [nxi, nyi] of neighbours) {
+      if (nxi < 0 || nyi < 0 || nxi >= xs.length || nyi >= ys.length) continue;
+      const nextCell = key(nxi, nyi);
+      const next = pointOf(nextCell);
+      if (nextCell !== endKey && blockedCell[nextCell] === 1) continue;
+      const vertical = nxi === xi ? 1 : 0;
+      const edge = key(Math.min(xi, nxi), Math.min(yi, nyi));
+      const blocked = vertical === 1 ? blockedVertical : blockedHorizontal;
+      if (blocked[edge] === 1) continue;
+      // The path continues straight out of the start stub and straight into
+      // the end stub, so turning onto or off them counts as a bend.
+      const bend =
+        (state % 2 !== vertical ? bendPenalty : 0) +
+        (nextCell === endKey && vertical !== endAxis ? bendPenalty : 0);
+      const nextState = nextCell * 2 + vertical;
+      const length = Math.abs(next.x - point.x) + Math.abs(next.y - point.y);
+      const outline = vertical === 1 ? outlineVertical : outlineHorizontal;
+      const nextCost = cost + length * (outline[edge] === 1 ? 1.01 : 1) + bend;
+      if (nextCost >= (distance.get(nextState) ?? Infinity)) continue;
+      distance.set(nextState, nextCost);
+      previous.set(nextState, state);
+      queue.push([nextCost, nextState]);
+    }
+  }
+  if (reached === null) return null;
+  const path: Point[] = [];
+  for (let state: number | undefined = reached; state !== undefined;) {
+    path.unshift(pointOf(Math.floor(state / 2)));
+    state = previous.get(state);
+  }
+  return withoutRedundantPoints(path);
 };
 
 export const analyze = (svg: string): AnalysisReport => {
@@ -827,6 +1361,9 @@ export const analyze = (svg: string): AnalysisReport => {
             label.getAttribute("id") ||
             `label-${String(index + 1)}`,
           bounds: textBounds(label),
+          ...(label.getAttribute("data-label-for")
+            ? { connector: label.getAttribute("data-label-for") ?? "" }
+            : {}),
         },
       ];
     },
@@ -869,6 +1406,7 @@ export const analyze = (svg: string): AnalysisReport => {
     ...inspectLabelOverlaps(labels),
     ...inspectConnectorLabelClearance(connectors, labels),
     ...inspectConnectorEndpoints(nodes, connectors),
+    ...inspectConnectorOverlaps(connectors),
   ];
 
   return {
@@ -986,29 +1524,67 @@ export const fix = (svg: string): FixResult => {
           "connector-node-crossing",
           "connector-label-clearance",
           "connector-endpoint-inside",
+          "connector-overlap",
         ].includes(issue.code),
       )
-      .flatMap((issue) => issue.elements.slice(0, 1)),
+      .flatMap((issue) =>
+        issue.code === "connector-overlap"
+          ? issue.elements
+          : issue.elements.slice(0, 1),
+      ),
   );
   const nodesById = new Map(
     report.diagram.nodes.map((node) => [node.id, node]),
   );
-  for (const connector of report.diagram.connectors) {
+  const reroutes = report.diagram.connectors.flatMap((connector) => {
     const followsMovedNode =
       movedNodeIds.has(connector.from) || movedNodeIds.has(connector.to);
-    if (!connectorsWithIssues.has(connector.id) && !followsMovedNode) continue;
+    if (!connectorsWithIssues.has(connector.id) && !followsMovedNode) return [];
     const source = nodesById.get(connector.from);
     const target = nodesById.get(connector.to);
-    if (source === undefined || target === undefined) continue;
+    if (source === undefined || target === undefined) return [];
+    return [{ connector, source, target }];
+  });
+  const ports = spreadPorts(
+    reroutes.map(({ connector, source, target }) => ({
+      id: connector.id,
+      source: source.bounds,
+      target: target.bounds,
+    })),
+  );
+  const reroutedIds = new Set(reroutes.map(({ connector }) => connector.id));
+  const settledRoutes = report.diagram.connectors
+    .filter((connector) => !reroutedIds.has(connector.id))
+    .map((connector) => connector.points);
+  const finalRoutes = new Map<string, Point[]>(
+    report.diagram.connectors.map((connector) => [
+      connector.id,
+      connector.points,
+    ]),
+  );
+  for (const { connector, source, target } of reroutes) {
     const obstacles = [
       ...report.diagram.nodes
         .filter(
           (node) => node.id !== connector.from && node.id !== connector.to,
         )
         .map((node) => node.bounds),
-      ...report.diagram.labels.map((label) => label.bounds),
+      ...report.diagram.labels
+        .filter(
+          (label) =>
+            label.connector === undefined || !reroutedIds.has(label.connector),
+        )
+        .map((label) => label.bounds),
     ];
-    const route = routeConnector(source.bounds, target.bounds, obstacles);
+    const route = routeConnector(
+      source.bounds,
+      target.bounds,
+      obstacles,
+      ports.get(connector.id),
+      settledRoutes,
+    );
+    settledRoutes.push(route);
+    finalRoutes.set(connector.id, route);
     const connectorElement = ["line", "polyline", "path"]
       .flatMap((tagName) => Array.from(document.getElementsByTagName(tagName)))
       .find(
@@ -1046,6 +1622,43 @@ export const fix = (svg: string): FixResult => {
       code: "route-connector",
       message: `Rerouted connector "${connector.id}" around diagram obstacles.`,
       elements: [connector.id],
+    });
+  }
+
+  const movingLabels = report.diagram.labels.filter(
+    (label) =>
+      label.connector !== undefined && reroutedIds.has(label.connector),
+  );
+  const labelObstacles = report.diagram.labels
+    .filter((label) => !movingLabels.includes(label))
+    .map((label) => label.bounds);
+  const labelElements = Array.from(document.getElementsByTagName("text"));
+  for (const label of movingLabels) {
+    const connectorId = label.connector ?? "";
+    const route = finalRoutes.get(connectorId);
+    const element = labelElements.find(
+      (candidate) =>
+        (candidate.getAttribute("data-label") ||
+          candidate.getAttribute("id")) === label.id,
+    );
+    if (route === undefined || element === undefined) continue;
+    const placement = placeLabel(
+      element.textContent.length,
+      numberAttribute(element, "font-size") || 16,
+      route,
+      [...finalRoutes.values()],
+      [...labelObstacles, ...report.diagram.nodes.map((node) => node.bounds)],
+    );
+    if (placement === null) continue;
+    const translation = elementTranslation(element);
+    element.setAttribute("x", String(placement.anchorPoint.x - translation.x));
+    element.setAttribute("y", String(placement.anchorPoint.y - translation.y));
+    element.setAttribute("text-anchor", placement.anchor);
+    labelObstacles.push(placement.bounds);
+    changes.push({
+      code: "move-label",
+      message: `Moved label "${label.id}" beside connector "${connectorId}".`,
+      elements: [label.id, connectorId],
     });
   }
   report = analyze(serializer.serializeToString(document));

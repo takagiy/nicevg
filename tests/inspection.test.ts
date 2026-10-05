@@ -329,4 +329,74 @@ describe("diagram inspection", () => {
       },
     });
   });
+
+  test("reports connectors that run along the same segment", () => {
+    /**
+     * Given a request and a reply drawn on the same horizontal line
+     * When the diagram is analyzed
+     * Then the pair of overlapping connectors is reported
+     */
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
+        <g data-node="client">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Client</text>
+        </g>
+        <g data-node="server">
+          <rect x="260" y="20" width="100" height="56" />
+          <text x="310" y="53" text-anchor="middle" font-size="14">Server</text>
+        </g>
+        <line id="request" data-from="client" data-to="server"
+          x1="120" y1="48" x2="260" y2="48" />
+        <line id="reply" data-from="server" data-to="client"
+          x1="260" y1="48" x2="120" y2="48" />
+      </svg>
+    `;
+
+    const report = analyze(svg);
+
+    expect(report.issues).toContainEqual({
+      code: "connector-overlap",
+      message: 'Connectors "request" and "reply" overlap along a segment.',
+      elements: ["request", "reply"],
+    });
+  });
+
+  test("does not report connectors that only cross each other", () => {
+    /**
+     * Given a horizontal and a vertical connector that cross at one point
+     * When the diagram is analyzed
+     * Then no connector overlap is reported
+     */
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
+        <g data-node="west">
+          <rect x="0" y="100" width="80" height="40" />
+          <text x="40" y="125" text-anchor="middle" font-size="14">West</text>
+        </g>
+        <g data-node="east">
+          <rect x="300" y="100" width="80" height="40" />
+          <text x="340" y="125" text-anchor="middle" font-size="14">East</text>
+        </g>
+        <g data-node="north">
+          <rect x="150" y="0" width="80" height="40" />
+          <text x="190" y="25" text-anchor="middle" font-size="14">North</text>
+        </g>
+        <g data-node="south">
+          <rect x="150" y="200" width="80" height="40" />
+          <text x="190" y="225" text-anchor="middle" font-size="14">South</text>
+        </g>
+        <line id="across" data-from="west" data-to="east"
+          x1="80" y1="120" x2="300" y2="120" />
+        <line id="down" data-from="north" data-to="south"
+          x1="190" y1="40" x2="190" y2="200" />
+      </svg>
+    `;
+
+    const report = analyze(svg);
+
+    expect(
+      report.issues.some((issue) => issue.code === "connector-overlap"),
+    ).toBe(false);
+  });
 });
