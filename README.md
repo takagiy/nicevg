@@ -56,7 +56,7 @@ console.log(result.svg, result.changes, result.report);
 
 ## SVG contract
 
-通常の `<g>` に直接 `<rect>` と `<text>` が入っていればノードとして推定する。LLM から安定した SVG を受け取る場合は、次の属性で意味を明示する。
+通常の `<g>` に直接 `<rect>` または `<circle>` と `<text>` が入っていればノードとして推定する。LLM から安定した SVG を受け取る場合は、次の属性で意味を明示する。
 
 ```xml
 <g data-node="source">
@@ -77,6 +77,7 @@ console.log(result.svg, result.changes, result.report);
 />
 ```
 
+- ノードの形は `<rect>` または `<circle>`。円形ノードは外接矩形を `bounds` とし、`shape: "circle"` で区別する。ラベルの余白、コネクタの横切りと端点は円そのもので判定し、修正では中心を保ったまま半径を広げ、コネクタの端を円周まで伸ばす。
 - 構造図の包含は、子の `data-node` グループを親の `data-node` グループ内にネストする。
 - 意図したノード重複には `data-allow-overlap="true"` を付ける。
 - ノード外のラベルには `data-label="label-id"` を付ける。

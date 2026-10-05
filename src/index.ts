@@ -10,6 +10,8 @@ export interface Bounds {
 
 export interface DiagramNode {
   id: string;
+  // Circular nodes report their circle's bounding box; rectangles omit shape.
+  shape?: "circle";
   bounds: Bounds;
   labelBounds: Bounds[];
   parentId?: string;
@@ -132,6 +134,23 @@ const rectBounds = (element: Element): Bounds => {
     height: numberAttribute(element, "height"),
   };
 };
+
+const circleBounds = (element: Element): Bounds => {
+  const translation = elementTranslation(element);
+  const radius = numberAttribute(element, "r");
+  return {
+    x: numberAttribute(element, "cx") + translation.x - radius,
+    y: numberAttribute(element, "cy") + translation.y - radius,
+    width: radius * 2,
+    height: radius * 2,
+  };
+};
+
+const isNodeShape = (element: Element): boolean =>
+  element.tagName === "rect" || element.tagName === "circle";
+
+const shapeBounds = (element: Element): Bounds =>
+  element.tagName === "circle" ? circleBounds(element) : rectBounds(element);
 
 const localRectBounds = (element: Element): Bounds => ({
   x: numberAttribute(element, "x"),
@@ -326,12 +345,9 @@ const inspectTextFit = (nodes: DiagramNode[], padding = 12): DiagramIssue[] =>
     }
 
     const fits =
-      labelBounds.x >= node.bounds.x + padding &&
-      labelBounds.y >= node.bounds.y + padding &&
-      labelBounds.x + labelBounds.width <=
-        node.bounds.x + node.bounds.width - padding &&
-      labelBounds.y + labelBounds.height <=
-        node.bounds.y + node.bounds.height - padding;
+      node.shape === "circle"
+        ? fitsInCircle(labelBounds, node.bounds, padding)
+        : fitsInBox(labelBounds, node.bounds, padding);
     if (fits) {
       return [];
     }
@@ -348,6 +364,31 @@ const inspectTextFit = (nodes: DiagramNode[], padding = 12): DiagramIssue[] =>
       },
     ];
   });
+
+const fitsInBox = (label: Bounds, box: Bounds, padding: number): boolean =>
+  label.x >= box.x + padding &&
+  label.y >= box.y + padding &&
+  label.x + label.width <= box.x + box.width - padding &&
+  label.y + label.height <= box.y + box.height - padding;
+
+// Radius a circle centred like `box` needs so that every corner of the label
+// keeps `padding` from its edge.
+const radiusEnclosing = (label: Bounds, box: Bounds, padding: number) => {
+  const centreX = box.x + box.width / 2;
+  const centreY = box.y + box.height / 2;
+  const dx = Math.max(
+    Math.abs(label.x - centreX),
+    Math.abs(label.x + label.width - centreX),
+  );
+  const dy = Math.max(
+    Math.abs(label.y - centreY),
+    Math.abs(label.y + label.height - centreY),
+  );
+  return Math.hypot(dx, dy) + padding;
+};
+
+const fitsInCircle = (label: Bounds, box: Bounds, padding: number): boolean =>
+  radiusEnclosing(label, box, padding) <= box.width / 2;
 
 const intersection = (first: Bounds, second: Bounds): Bounds | null => {
   const left = Math.max(first.x, second.x);
@@ -491,6 +532,41 @@ const segmentIntersectsInterior = (
   return entering <= 1 && leaving >= 0;
 };
 
+// Distance from a point to the segment between start and end.
+const distanceToSegment = (point: Point, start: Point, end: Point): number => {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const t =
+    lengthSquared === 0
+      ? 0
+      : Math.max(
+          0,
+          Math.min(
+            1,
+            ((point.x - start.x) * dx + (point.y - start.y) * dy) /
+              lengthSquared,
+          ),
+        );
+  return Math.hypot(start.x + t * dx - point.x, start.y + t * dy - point.y);
+};
+
+const centreOf = (bounds: Bounds): Point => ({
+  x: bounds.x + bounds.width / 2,
+  y: bounds.y + bounds.height / 2,
+});
+
+// Whether a segment passes through the open interior of a node's shape.
+const segmentEntersNode = (
+  start: Point,
+  end: Point,
+  node: DiagramNode,
+): boolean =>
+  node.shape === "circle"
+    ? distanceToSegment(centreOf(node.bounds), start, end) <
+      node.bounds.width / 2 - 0.001
+    : segmentIntersectsInterior(start, end, node.bounds);
+
 const inspectConnectorCrossings = (
   nodes: DiagramNode[],
   connectors: DiagramConnector[],
@@ -502,10 +578,7 @@ const inspectConnectorCrossings = (
       }
       const crosses = connector.points.slice(0, -1).some((point, index) => {
         const next = connector.points[index + 1];
-        return (
-          next !== undefined &&
-          segmentIntersectsInterior(point, next, node.bounds)
-        );
+        return next !== undefined && segmentEntersNode(point, next, node);
       });
       if (!crosses) {
         return [];
@@ -678,6 +751,17 @@ const pointIsInside = (point: Point, bounds: Bounds): boolean =>
   point.y > bounds.y &&
   point.y < bounds.y + bounds.height;
 
+// Endpoints on a circle are written with whole-unit coordinates, so a point
+// within half a unit of the circle counts as on it.
+const pointIsInsideNode = (point: Point, node: DiagramNode): boolean =>
+  node.shape === "circle"
+    ? Math.hypot(
+        point.x - centreOf(node.bounds).x,
+        point.y - centreOf(node.bounds).y,
+      ) <
+      node.bounds.width / 2 - 0.5
+    : pointIsInside(point, node.bounds);
+
 const inspectConnectorEndpoints = (
   nodes: DiagramNode[],
   connectors: DiagramConnector[],
@@ -692,7 +776,7 @@ const inspectConnectorEndpoints = (
     if (
       start !== undefined &&
       source !== undefined &&
-      pointIsInside(start, source.bounds)
+      pointIsInsideNode(start, source)
     ) {
       issues.push({
         code: "connector-endpoint-inside",
@@ -704,7 +788,7 @@ const inspectConnectorEndpoints = (
     if (
       end !== undefined &&
       target !== undefined &&
-      pointIsInside(end, target.bounds)
+      pointIsInsideNode(end, target)
     ) {
       issues.push({
         code: "connector-endpoint-inside",
@@ -1142,6 +1226,57 @@ const chooseSides = (
   return start === undefined || end === undefined ? fallback : { start, end };
 };
 
+// Routes meet the bounding box of a node; on a circular node, slide each end
+// along its first or last segment until it reaches the circle, keeping the
+// route orthogonal. Coordinates are rounded to whole units.
+const onCircle = (port: Point, next: Point, node: DiagramNode): Point => {
+  if (node.shape !== "circle") return port;
+  const centre = centreOf(node.bounds);
+  const radius = node.bounds.width / 2;
+  if (port.y === next.y && port.x !== next.x) {
+    const offset = port.y - centre.y;
+    if (Math.abs(offset) >= radius) return port;
+    const reach = Math.sqrt(radius * radius - offset * offset);
+    return {
+      x: Math.round(centre.x + (port.x < centre.x ? -reach : reach)),
+      y: port.y,
+    };
+  }
+  if (port.x === next.x && port.y !== next.y) {
+    const offset = port.x - centre.x;
+    if (Math.abs(offset) >= radius) return port;
+    const reach = Math.sqrt(radius * radius - offset * offset);
+    return {
+      x: port.x,
+      y: Math.round(centre.y + (port.y < centre.y ? -reach : reach)),
+    };
+  }
+  return port;
+};
+
+const endOnShapes = (
+  route: Point[],
+  source: DiagramNode,
+  target: DiagramNode,
+): Point[] => {
+  const [first, second] = route;
+  const last = route.at(-1);
+  const beforeLast = route.at(-2);
+  if (
+    first === undefined ||
+    second === undefined ||
+    last === undefined ||
+    beforeLast === undefined
+  ) {
+    return route;
+  }
+  return [
+    onCircle(first, second, source),
+    ...route.slice(1, -1),
+    onCircle(last, beforeLast, target),
+  ];
+};
+
 const withoutRedundantPoints = (points: Point[]): Point[] =>
   points.filter((point, index) => {
     const before = points[index - 1];
@@ -1458,9 +1593,7 @@ export const analyze = (svg: string): AnalysisReport => {
     );
     const annotation = group.getAttribute("data-node");
     const isAnnotated = annotation !== "";
-    const directBox = directElements.find(
-      (element) => element.tagName === "rect",
-    );
+    const directBox = directElements.find(isNodeShape);
     const directLabels = directElements.filter(
       (element) => element.tagName === "text",
     );
@@ -1472,7 +1605,7 @@ export const analyze = (svg: string): AnalysisReport => {
     }
 
     const box = isAnnotated
-      ? group.getElementsByTagName("rect").item(0)
+      ? (Array.from(group.getElementsByTagName("*")).find(isNodeShape) ?? null)
       : (directBox ?? null);
     if (box === null) {
       return [];
@@ -1509,7 +1642,10 @@ export const analyze = (svg: string): AnalysisReport => {
 
     return {
       id: recognized.id,
-      bounds: rectBounds(recognized.box),
+      ...(recognized.box.tagName === "circle"
+        ? { shape: "circle" as const }
+        : {}),
+      bounds: shapeBounds(recognized.box),
       labelBounds: recognized.labels.map(textBounds),
       ...(parentId === undefined ? {} : { parentId }),
       ...(recognized.allowOverlap ? { allowOverlap: true } : {}),
@@ -1630,11 +1766,27 @@ const fixOnce = (svg: string): FixResult => {
     const directElements = Array.from(group.childNodes).filter(
       (child): child is Element => child.nodeType === 1,
     );
-    const box = directElements.find((element) => element.tagName === "rect");
+    const box = directElements.find(isNodeShape);
     const labels = directElements.filter(
       (element) => element.tagName === "text",
     );
     if (box === undefined || labels.length === 0) continue;
+    if (box.tagName === "circle") {
+      const measured = enclosingBounds(labels.map(textBounds));
+      if (measured === null) continue;
+      const radius = numberAttribute(box, "r");
+      const needed = Math.ceil(
+        radiusEnclosing(measured, circleBounds(box), 12),
+      );
+      if (needed <= radius) continue;
+      box.setAttribute("r", String(needed));
+      changes.push({
+        code: "expand-node",
+        message: `Expanded node "${nodeId}" from radius ${radius} to ${needed}.`,
+        elements: [nodeId],
+      });
+      continue;
+    }
     const current = rectBounds(box);
     const local = localRectBounds(box);
     const translation = {
@@ -1874,12 +2026,16 @@ const fixOnce = (svg: string): FixResult => {
   );
   for (const { connector, source, target } of reroutes) {
     const obstacles = obstaclesFor(connector);
-    const route = routeConnector(
-      source.bounds,
-      target.bounds,
-      obstacles,
-      ports.get(connector.id),
-      settledRoutes,
+    const route = endOnShapes(
+      routeConnector(
+        source.bounds,
+        target.bounds,
+        obstacles,
+        ports.get(connector.id),
+        settledRoutes,
+      ),
+      source,
+      target,
     );
     settledRoutes.push(route);
     finalRoutes.set(connector.id, route);
@@ -1906,6 +2062,14 @@ const fixOnce = (svg: string): FixResult => {
         continue;
       }
       path.setAttribute(attribute.name, attribute.value);
+    }
+    // A line is never filled, but a path is filled black by default.
+    if (
+      connectorElement.tagName === "line" &&
+      !path.hasAttribute("fill") &&
+      !/(^|;)\s*fill\s*:/.test(path.getAttribute("style") ?? "")
+    ) {
+      path.setAttribute("fill", "none");
     }
     path.setAttribute(
       "d",

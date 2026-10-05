@@ -443,4 +443,114 @@ describe("diagram inspection", () => {
       "label-detached",
     );
   });
+
+  test("reports a label that cuts into a circular node's padding", () => {
+    /**
+     * Given two circular nodes: one whose two-line label fits its bounding
+     *   box with padding but reaches within 12px of the circle, and one with
+     *   a short label near its centre
+     * When the diagram is analyzed
+     * Then only the first is reported as overflowing
+     */
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200">
+        <g data-node="crowded">
+          <circle cx="80" cy="80" r="50" />
+          <text x="80" y="77" text-anchor="middle" font-size="14">Received</text>
+          <text x="80" y="97" text-anchor="middle" font-size="14">Received</text>
+        </g>
+        <g data-node="roomy">
+          <circle cx="240" cy="80" r="50" />
+          <text x="240" y="85" text-anchor="middle" font-size="14">Start</text>
+        </g>
+      </svg>
+    `;
+
+    const report = analyze(svg);
+
+    expect(
+      report.issues
+        .filter((issue) => issue.code === "text-overflow")
+        .map((issue) => issue.elements),
+    ).toEqual([["crowded"]]);
+  });
+
+  test("reports connectors through a circle but not past its bounding corners", () => {
+    /**
+     * Given a circular node, an L-shaped connector that turns inside a corner
+     *   of the circle's bounding box without touching the circle, and a
+     *   straight connector through the circle's centre
+     * When the diagram is analyzed
+     * Then only the straight connector is reported as crossing the node
+     */
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -100 400 280">
+        <g data-node="stop">
+          <circle cx="200" cy="80" r="40" />
+          <text x="200" y="85" text-anchor="middle" font-size="14">Stop</text>
+        </g>
+        <g data-node="north">
+          <rect x="140" y="-76" width="50" height="56" />
+          <text x="165" y="-43" text-anchor="middle" font-size="14">N</text>
+        </g>
+        <g data-node="west">
+          <rect x="40" y="22" width="60" height="56" />
+          <text x="70" y="55" text-anchor="middle" font-size="14">W</text>
+        </g>
+        <g data-node="left">
+          <rect x="0" y="100" width="40" height="56" />
+          <text x="20" y="133" text-anchor="middle" font-size="14">L</text>
+        </g>
+        <g data-node="right">
+          <rect x="320" y="52" width="40" height="56" />
+          <text x="340" y="85" text-anchor="middle" font-size="14">R</text>
+        </g>
+        <path id="corner" data-from="north" data-to="west"
+          d="M 165 -20 L 165 50 L 100 50" />
+        <path id="through" data-from="left" data-to="right"
+          d="M 40 128 L 120 128 L 120 80 L 320 80" />
+      </svg>
+    `;
+
+    const report = analyze(svg);
+
+    expect(
+      report.issues
+        .filter((issue) => issue.code === "connector-node-crossing")
+        .map((issue) => issue.elements),
+    ).toEqual([["through", "stop"]]);
+  });
+
+  test("accepts endpoints on a circle and reports ones inside it", () => {
+    /**
+     * Given a circular node with one connector starting on its circle, at a
+     *   point inside the bounding box, and another starting inside the circle
+     * When the diagram is analyzed
+     * Then only the connector starting inside the circle is reported
+     */
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -60 420 220">
+        <g data-node="hub">
+          <circle cx="200" cy="80" r="50" />
+          <text x="200" y="85" text-anchor="middle" font-size="14">Hub</text>
+        </g>
+        <g data-node="east">
+          <rect x="320" y="-40" width="60" height="56" />
+          <text x="350" y="-7" text-anchor="middle" font-size="14">E</text>
+        </g>
+        <path id="on-circle" data-from="hub" data-to="east"
+          d="M 230 40 L 230 -12 L 320 -12" />
+        <path id="inside" data-from="hub" data-to="east"
+          d="M 215 60 L 290 60 L 290 0 L 320 0" />
+      </svg>
+    `;
+
+    const report = analyze(svg);
+
+    expect(
+      report.issues
+        .filter((issue) => issue.code === "connector-endpoint-inside")
+        .map((issue) => issue.elements),
+    ).toEqual([["inside", "hub"]]);
+  });
 });

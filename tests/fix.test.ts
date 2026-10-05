@@ -5,6 +5,7 @@ import {
   bendCount,
   connectorPoints,
   contains,
+  distanceFromCircle,
   distanceToRoute,
   entersBox,
   entersPerpendicularly,
@@ -123,6 +124,42 @@ describe("fix", () => {
     expect(result.svg).toMatchSnapshot();
   });
 
+  test("grows a circular node around its label without moving either", () => {
+    /**
+     * Given a circular node whose label reaches within 12px of its circle
+     * When the diagram is fixed
+     * Then the radius grows until the label fits, while the centre and the
+     *   text coordinates stay put
+     */
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200">
+        <g data-node="confirm">
+          <circle cx="120" cy="100" r="40" />
+          <text x="120" y="105" text-anchor="middle" font-size="14">Confirmed</text>
+        </g>
+      </svg>
+    `;
+
+    const result = fix(svg);
+    const document = parse(result.svg);
+    const circle = document.getElementsByTagName("circle").item(0);
+    const text = document.getElementsByTagName("text").item(0);
+
+    expect({
+      cx: circle?.getAttribute("cx"),
+      cy: circle?.getAttribute("cy"),
+    }).toEqual({ cx: "120", cy: "100" });
+    expect(Number(circle?.getAttribute("r"))).toBeGreaterThan(40);
+    expect({ x: text?.getAttribute("x"), y: text?.getAttribute("y") }).toEqual({
+      x: "120",
+      y: "105",
+    });
+    expect(issueCodes(result.report)).not.toContain("text-overflow");
+
+    expect(qualityOf(result.report)).toMatchSnapshot();
+    expect(result.svg).toMatchSnapshot();
+  });
+
   test("pushes overlapping nodes apart while preserving their order", () => {
     /**
      * Given two same-row nodes that overlap by 30px
@@ -175,6 +212,24 @@ describe("fix", () => {
     expect(result.svg).toMatchSnapshot();
   });
 
+  test("keeps a rerouted line unfilled once it becomes a path", () => {
+    /**
+     * Given a line without a fill, which SVG never fills, that has to detour
+     * When the diagram is fixed
+     * Then the bent path that replaces it is not filled either, while
+     *   its other attributes carry over
+     */
+    const result = fix(blockedRow());
+    const path = parse(result.svg).getElementById("flow");
+
+    expect(path?.tagName).toBe("path");
+    expect(path?.getAttribute("fill")).toBe("none");
+    expect(path?.getAttribute("data-from")).toBe("source");
+
+    expect(qualityOf(result.report)).toMatchSnapshot();
+    expect(result.svg).toMatchSnapshot();
+  });
+
   test("leaves and enters node sides perpendicularly when detouring", () => {
     /**
      * Given a connector that must detour around a node between its ends
@@ -191,6 +246,95 @@ describe("fix", () => {
     expect(entersPerpendicularly(points, target)).toBe(true);
     expect(runsAlong(points, source)).toBe(false);
     expect(runsAlong(points, target)).toBe(false);
+    expect(result.report.issues).toEqual([]);
+
+    expect(qualityOf(result.report)).toMatchSnapshot();
+    expect(result.svg).toMatchSnapshot();
+  });
+
+  test("ends a rerouted connector on a circular node's circle", () => {
+    /**
+     * Given a connector from inside a circular node to a facing box whose
+     *   middle sits so much lower than the circle's centre that the port on
+     *   the circle's side moves down to meet it
+     * When the diagram is fixed
+     * Then the connector stays orthogonal and starts on the circle itself,
+     *   not on its bounding box
+     */
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+        <g data-node="start">
+          <circle cx="70" cy="80" r="30" />
+          <text x="70" y="85" text-anchor="middle" font-size="14">Go</text>
+        </g>
+        <g data-node="target">
+          <rect x="240" y="73" width="100" height="56" />
+          <text x="290" y="106" text-anchor="middle" font-size="14">Target</text>
+        </g>
+        <line id="flow" data-from="start" data-to="target"
+          x1="70" y1="80" x2="290" y2="101" />
+      </svg>
+    `;
+
+    const result = fix(svg);
+    const points = connectorPoints(result.report, "flow");
+    const start = points[0] ?? { x: 0, y: 0 };
+
+    expect(isOrthogonal(points)).toBe(true);
+    expect(
+      distanceFromCircle(start, nodeBounds(result.report, "start")),
+    ).toBeLessThanOrEqual(0.5);
+    expect(
+      entersPerpendicularly(points, nodeBounds(result.report, "target")),
+    ).toBe(true);
+    expect(result.report.issues).toEqual([]);
+
+    expect(qualityOf(result.report)).toMatchSnapshot();
+    expect(result.svg).toMatchSnapshot();
+  });
+
+  test("spreads connectors on one side of a circle, each ending on it", () => {
+    /**
+     * Given two connectors from inside a circular node to two boxes stacked
+     *   on its right
+     * When the diagram is fixed
+     * Then both leave the circle's right half from separate points on the
+     *   circle, without overlapping
+     */
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
+        <g data-node="hub">
+          <circle cx="80" cy="120" r="40" />
+          <text x="80" y="125" text-anchor="middle" font-size="14">Hub</text>
+        </g>
+        <g data-node="upper">
+          <rect x="240" y="60" width="100" height="56" />
+          <text x="290" y="93" text-anchor="middle" font-size="14">Upper</text>
+        </g>
+        <g data-node="lower">
+          <rect x="240" y="136" width="100" height="56" />
+          <text x="290" y="169" text-anchor="middle" font-size="14">Lower</text>
+        </g>
+        <line id="to-upper" data-from="hub" data-to="upper"
+          x1="80" y1="120" x2="290" y2="88" />
+        <line id="to-lower" data-from="hub" data-to="lower"
+          x1="80" y1="120" x2="290" y2="164" />
+      </svg>
+    `;
+
+    const result = fix(svg);
+    const hub = nodeBounds(result.report, "hub");
+    const upper = connectorPoints(result.report, "to-upper");
+    const lower = connectorPoints(result.report, "to-lower");
+
+    for (const route of [upper, lower]) {
+      const start = route[0] ?? { x: 0, y: 0 };
+      expect(isOrthogonal(route)).toBe(true);
+      expect(distanceFromCircle(start, hub)).toBeLessThanOrEqual(0.5);
+      expect(start.x).toBeGreaterThan(hub.x + hub.width / 2);
+    }
+    expect(upper[0]).not.toEqual(lower[0]);
+    expect(overlapsRoute(upper, lower)).toBe(false);
     expect(result.report.issues).toEqual([]);
 
     expect(qualityOf(result.report)).toMatchSnapshot();

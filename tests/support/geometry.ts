@@ -220,3 +220,13 @@ export const qualityOf = (report: AnalysisReport) => ({
     );
   }).length,
 });
+
+// Distance of a point from the circle inscribed in a circular node's bounds.
+export const distanceFromCircle = (point: Point, box: Bounds): number =>
+  Math.abs(
+    Math.hypot(
+      point.x - (box.x + box.width / 2),
+      point.y - (box.y + box.height / 2),
+    ) -
+      box.width / 2,
+  );

@@ -48,6 +48,50 @@ describe("analyze", () => {
     expect(report.diagram.nodes.map((node) => node.id)).toEqual(["review"]);
   });
 
+  test("recognizes an annotated circle as a circular node", () => {
+    /**
+     * Given an annotated group whose shape is a circle
+     * When the SVG is analyzed
+     * Then it is a circular node whose bounds are the circle's bounding box
+     */
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160">
+        <g data-node="start">
+          <circle cx="80" cy="70" r="40" />
+          <text x="80" y="75" text-anchor="middle" font-size="14">Start</text>
+        </g>
+      </svg>
+    `;
+
+    const [node] = analyze(svg).diagram.nodes;
+
+    expect(node?.id).toBe("start");
+    expect(node?.shape).toBe("circle");
+    expect(node?.bounds).toEqual({ x: 40, y: 30, width: 80, height: 80 });
+  });
+
+  test("infers a circular node from a group containing a circle and text", () => {
+    /**
+     * Given an unannotated group with a direct circle and text child
+     * When the SVG is analyzed
+     * Then the group is exposed as a circular node using its id
+     */
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160">
+        <g id="done">
+          <circle cx="80" cy="70" r="40" />
+          <text x="80" y="75" text-anchor="middle" font-size="14">Done</text>
+        </g>
+      </svg>
+    `;
+
+    const nodes = analyze(svg).diagram.nodes;
+
+    expect(nodes.map((node) => [node.id, node.shape])).toEqual([
+      ["done", "circle"],
+    ]);
+  });
+
   test("recognizes an annotated connector between nodes", () => {
     /**
      * Given a line with explicit source and target node ids
