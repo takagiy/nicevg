@@ -1,0 +1,41 @@
+{
+  "name": "nicevg",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Deterministic checks and repairs for SVG diagrams.",
+  "license": "MIT",
+  "author": "Yuki Takagi <takagiy.4dev@gmail.com>",
+  "bin": {
+    "nicevg": "./src/cli.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "LICENSE"
+  ],
+  "scripts": {
+    "nicevg": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write . && eslint --fix .",
+    "check": "bun run typecheck && eslint . && prettier --check .",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.8.11",
+    "commander": "^14.0.1",
+    "svg-pathdata": "^8.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.37.0",
+    "@types/bun": "latest",
+    "eslint": "^9.37.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0"
+  },
+  "packageManager": "bun@1.3.12"
+}
