@@ -3,9 +3,9 @@ source: tests/fix.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "bends": 8,
+  "bends": 2,
   "detachedLabels": 0,
   "diagonalSegments": 0,
-  "parallelDensity": 18.61,
+  "parallelDensity": 0.4,
   "remainingIssues": 0
 }

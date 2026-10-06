@@ -1388,6 +1388,69 @@ fn places_a_label_beside_the_middle_when_a_parallel_connector_is_across_its_own(
     assert_fix_snapshots!(result);
 }
 
+/// Given a straight connector with a reply running 13px below it, so its
+///   label goes above, where another connector runs 19px above the label
+///   over the left half and turns up
+/// When the diagram is fixed
+/// Then the label still sits at the middle of its connector: twice as far
+///   from the other connector as from its own, it reads as its own
+#[test]
+fn keeps_a_label_at_the_middle_when_another_connector_runs_a_little_further_off() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+        <g data-node="customer"><rect x="40" y="276" width="120" height="52"/><text x="100" y="307" text-anchor="middle" font-size="13">Customer</text></g>
+        <g data-node="checkout"><rect x="500" y="250" width="120" height="100"/><text x="560" y="305" text-anchor="middle" font-size="13">Check out</text></g>
+        <g data-node="browse"><rect x="270" y="100" width="100" height="103"/><text x="320" y="156" text-anchor="middle" font-size="13">Browse</text></g>
+        <path id="details" data-from="customer" data-to="checkout" d="M 160 297 L 500 297"/>
+        <path id="confirmation" data-from="checkout" data-to="customer" d="M 500 310 L 160 310"/>
+        <path id="listings" data-from="browse" data-to="customer" d="M 319 203 L 319 256 L 120 256 L 120 276"/>
+        <text data-label="details-label" data-label-for="details" x="330" y="380" text-anchor="middle" font-size="11">address, card token</text>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let label = label_bounds(&result.report, "details-label");
+    let middle = 330.0;
+
+    assert!(distance_to_route(&label, &connector_points(&result.report, "details")) <= 16.0);
+    assert!(
+        (label.x + label.width / 2.0 - middle).abs() <= 20.0,
+        "{label:?} is pushed away from the middle"
+    );
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given a straight connector whose label fits on either side, with
+///   another connector running 24px from the spot above and nothing near
+///   the spot below
+/// When the diagram is fixed
+/// Then the label goes below, further from the other connector
+#[test]
+fn places_a_label_on_the_side_further_from_other_connectors() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
+        <g data-node="a"><rect x="20" y="176" width="100" height="48"/><text x="70" y="205" text-anchor="middle" font-size="14">A</text></g>
+        <g data-node="b"><rect x="520" y="176" width="100" height="48"/><text x="570" y="205" text-anchor="middle" font-size="14">B</text></g>
+        <g data-node="c"><rect x="120" y="40" width="100" height="48"/><text x="170" y="69" text-anchor="middle" font-size="14">C</text></g>
+        <g data-node="d"><rect x="420" y="40" width="100" height="48"/><text x="470" y="69" text-anchor="middle" font-size="14">D</text></g>
+        <path id="flow" data-from="a" data-to="b" d="M 120 200 L 520 200"/>
+        <path id="other" data-from="c" data-to="d" d="M 170 88 L 170 150 L 470 150 L 470 88"/>
+        <text data-label="flow-label" data-label-for="flow" x="320" y="380" text-anchor="middle" font-size="14">Retry</text>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let label = label_bounds(&result.report, "flow-label");
+
+    assert!(distance_to_route(&label, &connector_points(&result.report, "flow")) <= 16.0);
+    assert!(label.y > 200.0, "{label:?} is not below its connector");
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a long straight connector crossed through its middle by another
 ///   connector, with its label detached
 /// When the diagram is fixed

@@ -6,8 +6,8 @@ use std::collections::{BinaryHeap, HashMap};
 
 use crate::diagram::DiagramNode;
 use crate::geometry::{
-    Bounds, Point, hypot, intersection, point, round, route_is_clear, routes_overlap, segment_intersects_interior,
-    segment_length, segments, without_redundant_points,
+    Bounds, Point, distance_to_route, hypot, intersection, point, round, route_is_clear, routes_overlap,
+    segment_intersects_interior, segment_length, segments, without_redundant_points,
 };
 
 pub const BEND_PENALTY: f64 = 40.0;
@@ -1069,9 +1069,14 @@ pub fn label_landmarks(route: &[Point], routes: &[Vec<Point>]) -> Vec<Point> {
     landmarks
 }
 
-/// How far a label keeps from other connectors when it can, so it reads as
-/// belonging to its own.
-pub const LABEL_CLEAR_OF_OTHERS: f64 = 20.0;
+/// How far a label keeps from other connectors when it can: twice its gap
+/// to its own line, so it reads as belonging to its own.
+pub const LABEL_CLEAR_OF_OTHERS: f64 = 2.0 * (CLEARANCE + 1.0);
+/// Other connectors nearer a label than this still make it a little less
+/// clear: each pixel nearer weighs like this many pixels nearer one of its
+/// connector's crossings, bends or ends.
+const LABEL_COMFORT: f64 = 30.0;
+const CROWDED_LABEL_WEIGHT: f64 = 3.0;
 
 /// Whether `other` runs parallel to `beside`, the segment a label sits
 /// beside, on its far side: the label's own line then lies between them,
@@ -1150,18 +1155,43 @@ fn find_label_spot(
             })
     };
     // Other connectors passing close make it unclear which one a label
-    // belongs to: a spot well clear of them is preferred when there is one.
+    // belongs to: a spot clear of them is preferred when there is one, and
+    // among those, one further from them.
     let own = segments(route);
-    let others: Vec<(Point, Point)> = route_segments
+    let others: Vec<Vec<(Point, Point)>> = routes
         .iter()
-        .filter(|segment| !own.contains(segment))
-        .copied()
-        .collect();
-    let clear_of_others = |bounds: &Bounds, beside: (Point, Point)| {
-        let inflated = bounds.inflate(LABEL_CLEAR_OF_OTHERS);
-        others.iter().all(|other| {
-            runs_across(beside, bounds, *other) || !segment_intersects_interior(other.0, other.1, &inflated)
+        .map(|other| {
+            segments(other)
+                .into_iter()
+                .filter(|segment| !own.contains(segment))
+                .collect::<Vec<_>>()
         })
+        .filter(|other| !other.is_empty())
+        .collect();
+    // How near each other connector comes to a label beside `beside`.
+    let distances = |bounds: &Bounds, beside: (Point, Point)| {
+        others
+            .iter()
+            .map(|other| {
+                other
+                    .iter()
+                    .filter(|segment| !runs_across(beside, bounds, **segment))
+                    .map(|(c, d)| distance_to_route(bounds, &[*c, *d]))
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .collect::<Vec<f64>>()
+    };
+    let clear_of_others = |bounds: &Bounds, beside: (Point, Point)| {
+        distances(bounds, beside)
+            .iter()
+            .all(|distance| *distance >= LABEL_CLEAR_OF_OTHERS)
+    };
+    let crowding = |bounds: &Bounds, beside: (Point, Point)| {
+        distances(bounds, beside)
+            .iter()
+            .map(|distance| (LABEL_COMFORT - distance).max(0.0))
+            .sum::<f64>()
+            * CROWDED_LABEL_WEIGHT
     };
     let landmarks = label_landmarks(route, routes);
     let clearance = |bounds: &Bounds| {
@@ -1176,7 +1206,8 @@ fn find_label_spot(
     };
     // Every spot that fits, in order of preference: the longest segment
     // first, from its middle outwards. The one furthest from the nearest
-    // crossing, bend or end wins; ties keep that order.
+    // crossing, bend or end wins, less for other connectors near it; ties
+    // keep that order.
     let find = |fits: &dyn Fn(&Bounds, (Point, Point)) -> bool| {
         ordered
             .iter()
@@ -1218,12 +1249,11 @@ fn find_label_spot(
                 })
             })
             .filter(|(bounds, _, beside)| fits(bounds, *beside))
-            .map(|(bounds, anchor, _)| Placement { anchor, bounds })
-            .fold(None, |best: Option<(f64, Placement)>, placement| {
-                let distance = clearance(&placement.bounds);
+            .fold(None, |best: Option<(f64, Placement)>, (bounds, anchor, beside)| {
+                let score = clearance(&bounds) - crowding(&bounds, beside);
                 match best {
-                    Some((best_distance, _)) if best_distance >= distance => best,
-                    _ => Some((distance, placement)),
+                    Some((best_score, _)) if best_score >= score => best,
+                    _ => Some((score, Placement { anchor, bounds })),
                 }
             })
             .map(|(_, placement)| placement)

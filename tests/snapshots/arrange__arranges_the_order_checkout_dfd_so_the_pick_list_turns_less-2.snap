@@ -119,11 +119,11 @@ expression: result.svg.as_str()
   <text data-label="f1-label" data-label-for="f1" class="flow-label" x="181" y="219" text-anchor="middle" font-size="11">search terms</text>
   <text data-label="f2-label" data-label-for="f2" class="flow-label" x="41" y="396" text-anchor="start" font-size="11">query</text>
   <text data-label="f3-label" data-label-for="f3" class="flow-label" x="3" y="384" text-anchor="end" font-size="11">product details</text>
-  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="328" y="235" text-anchor="start" font-size="11">listings</text>
+  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="220" y="276" text-anchor="middle" font-size="11">listings</text>
   <text data-label="f5-label" data-label-for="f5" class="flow-label" x="169" y="409" text-anchor="middle" font-size="11">items</text>
   <text data-label="f6-label" data-label-for="f6" class="flow-label" x="471" y="515" text-anchor="end" font-size="11">cart lines</text>
   <text data-label="f7-label" data-label-for="f7" class="flow-label" x="529" y="473" text-anchor="start" font-size="11">cart</text>
-  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="415" y="286" text-anchor="middle" font-size="11">address, card token</text>
+  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="330" y="286" text-anchor="middle" font-size="11">address, card token</text>
   <text data-label="f9-label" data-label-for="f9" class="flow-label" x="729" y="259" text-anchor="middle" font-size="11">payment request</text>
   <text data-label="f10-label" data-label-for="f10" class="flow-label" x="1048" y="120" text-anchor="middle" font-size="11">charge</text>
   <text data-label="f11-label" data-label-for="f11" class="flow-label" x="1049" y="175" text-anchor="middle" font-size="11">authorization</text>
@@ -136,6 +136,6 @@ expression: result.svg.as_str()
   <text data-label="f18-label" data-label-for="f18" class="flow-label" x="1159" y="292" text-anchor="middle" font-size="11">shipment</text>
   <text data-label="f19-label" data-label-for="f19" class="flow-label" x="1139" y="357" text-anchor="middle" font-size="11">tracking number</text>
   <text data-label="f20-label" data-label-for="f20" class="flow-label" x="1019" y="542" text-anchor="start" font-size="11">dispatch notice</text>
-  <text data-label="f21-label" data-label-for="f21" class="flow-label" x="1046" y="617" text-anchor="middle" font-size="11">email</text>
+  <text data-label="f21-label" data-label-for="f21" class="flow-label" x="1046" y="648" text-anchor="middle" font-size="11">email</text>
   <text data-label="f22-label" data-label-for="f22" class="flow-label" x="332" y="330" text-anchor="middle" font-size="11">confirmation</text>
 </svg>
