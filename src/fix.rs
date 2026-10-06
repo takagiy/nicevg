@@ -15,7 +15,7 @@ use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
     LABEL_CLEAR_OF_OTHERS, PortRequest, Sides, choose_sides, connector_ports, end_on_shapes, is_on_outline,
-    place_label, place_label_clear, route_connector, runs_across, side_of, spread_ports,
+    label_landmarks, place_label, place_label_clear, route_connector, runs_across, side_of, spread_ports,
 };
 use crate::text::{label_texts, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
@@ -100,7 +100,11 @@ fn fix_once(svg: &str, moved: &[String]) -> Result<FixResult, SvgInputError> {
         changes: Vec::new(),
         moved_node_ids: moved.to_vec(),
     };
-    let draft = expand_view_box(clarify_labels(reroute_connectors(separate_nodes(expand_nodes(draft)))));
+    let landmarks = connector_landmarks(&draft.report().diagram);
+    let draft = expand_view_box(settle_labels(
+        reroute_connectors(separate_nodes(expand_nodes(draft))),
+        &landmarks,
+    ));
     let written = serialize(&draft.document);
     Ok(FixResult {
         report: analyze(&written)?,
@@ -655,18 +659,34 @@ fn reroute_connectors(draft: Draft) -> Draft {
     placed
 }
 
-/// Moves connector labels that sit within a label clearance of another
-/// connector, where they could be taken for its label, to a spot beside
-/// their own connector clear of the others, when there is one.
-fn clarify_labels(draft: Draft) -> Draft {
+/// The crossings, bends and ends of every connector, by connector id.
+fn connector_landmarks(diagram: &Diagram) -> HashMap<String, Vec<Point>> {
+    let routes: Vec<Vec<Point>> = diagram.connectors.iter().map(|c| c.points.clone()).collect();
+    diagram
+        .connectors
+        .iter()
+        .map(|connector| (connector.id.clone(), label_landmarks(&connector.points, &routes)))
+        .collect()
+}
+
+/// Places connector labels again where they may no longer be the best
+/// spot: beside a connector whose crossings, bends or ends have changed
+/// since `before`, wherever the label came from, and within a label
+/// clearance of another connector, where it could be taken for that
+/// one's label, when a spot clear of the others exists.
+fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
     let report = draft.report();
     let diagram = &report.diagram;
     let routes: Vec<Vec<Point>> = diagram.connectors.iter().map(|c| c.points.clone()).collect();
-    let unclear: Vec<_> = diagram
+    let now = connector_landmarks(diagram);
+    let unsettled: Vec<_> = diagram
         .labels
         .iter()
         .filter_map(|label| {
             let connector = diagram.connector(label.connector.as_deref()?)?;
+            let stale = before
+                .get(&connector.id)
+                .is_some_and(|before| Some(before) != now.get(&connector.id));
             let beside = segments(&connector.points).into_iter().min_by(|a, b| {
                 distance_to_route(&label.bounds, &[a.0, a.1]).total_cmp(&distance_to_route(&label.bounds, &[b.0, b.1]))
             })?;
@@ -678,13 +698,13 @@ fn clarify_labels(draft: Draft) -> Draft {
                 .filter(|other| !runs_across(beside, &label.bounds, *other))
                 .map(|(c, d)| distance_to_route(&label.bounds, &[c, d]))
                 .fold(f64::INFINITY, f64::min);
-            (nearest < LABEL_CLEAR_OF_OTHERS).then_some((label, connector))
+            (stale || nearest < LABEL_CLEAR_OF_OTHERS).then_some((label, connector, stale))
         })
         .collect();
     let others: Vec<Bounds> = diagram.labels.iter().map(|label| label.bounds).collect();
-    let (clarified, _) = unclear
+    let (settled, _) = unsettled
         .into_iter()
-        .fold((draft, others), |(draft, obstacles), (label, connector)| {
+        .fold((draft, others), |(draft, obstacles), (label, connector, stale)| {
             let texts = label_texts(&draft.document, &label.id);
             if texts.is_empty() {
                 return (draft, obstacles);
@@ -695,14 +715,16 @@ fn clarify_labels(draft: Draft) -> Draft {
                 .copied()
                 .chain(label_blockers(diagram, &connector.id))
                 .collect();
-            let Some(placement) = place_label_clear(
+            let place = if stale { place_label } else { place_label_clear };
+            let Some(placement) = place(
                 label.bounds.width,
                 label.bounds.height,
                 &connector.points,
                 &routes,
                 &blocked,
                 &label_containers(diagram, &connector.id),
-            ) else {
+            )
+            .filter(|placement| placement.bounds != label.bounds) else {
                 return (draft, obstacles);
             };
             let updated = move_label(
@@ -712,10 +734,17 @@ fn clarify_labels(draft: Draft) -> Draft {
                 placement.bounds,
                 placement.anchor,
             );
-            let message = format!(
-                "Moved label \"{}\" clear of connectors other than \"{}\".",
-                label.id, connector.id
-            );
+            let message = if stale {
+                format!(
+                    "Moved label \"{}\" away from where \"{}\" now crosses, turns or ends.",
+                    label.id, connector.id
+                )
+            } else {
+                format!(
+                    "Moved label \"{}\" clear of connectors other than \"{}\".",
+                    label.id, connector.id
+                )
+            };
             let draft = draft.changed(updated, "move-label", message, &[&label.id, &connector.id]);
             let obstacles = obstacles
                 .into_iter()
@@ -729,7 +758,7 @@ fn clarify_labels(draft: Draft) -> Draft {
                 .collect();
             (draft, obstacles)
         });
-    clarified
+    settled
 }
 
 /// Node boxes a connector's label keeps clear of: every node except the

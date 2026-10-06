@@ -1430,6 +1430,55 @@ fn places_a_label_away_from_where_another_connector_crosses() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a straight connector with its label beside its middle, and another
+///   connector cutting through a node that, once rerouted, crosses the
+///   first one 65px from the label
+/// When the diagram is fixed
+/// Then the label moves to where it is furthest from the new crossing and
+///   the connector's ends: the crossing it was placed against has changed
+#[test]
+fn places_a_label_again_when_the_crossings_on_its_connector_change() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -60 660 320">
+        <g data-node="a1"><rect x="20" y="76" width="100" height="48"/><text x="70" y="105" text-anchor="middle" font-size="14">A1</text></g>
+        <g data-node="a2"><rect x="520" y="76" width="100" height="48"/><text x="570" y="105" text-anchor="middle" font-size="14">A2</text></g>
+        <g data-node="b1"><rect x="205" y="-40" width="100" height="48"/><text x="255" y="-11" text-anchor="middle" font-size="14">B1</text></g>
+        <g data-node="b2"><rect x="205" y="190" width="100" height="48"/><text x="255" y="219" text-anchor="middle" font-size="14">B2</text></g>
+        <line id="flow" data-from="a1" data-to="a2" x1="120" y1="100" x2="520" y2="100"/>
+        <path id="cross" data-from="b1" data-to="b2" d="M 255 8 L 255 40 L 570 40 L 570 214 L 305 214"/>
+        <text data-label="retry" data-label-for="flow" x="320" y="125" text-anchor="middle" font-size="14">Retry</text>
+      </svg>
+    "#;
+
+    let before = analyze(svg);
+    let result = fix(svg);
+    let flow = connector_points(&result.report, "flow");
+    let label = label_bounds(&result.report, "retry");
+    let gap = |p: Point| {
+        ((label.x - p.x).max(p.x - (label.x + label.width)).max(0.0))
+            .hypot((label.y - p.y).max(p.y - (label.y + label.height)).max(0.0))
+    };
+    let crossing = point(connector_points(&result.report, "cross")[0].x, 100.0);
+    let nearest = [crossing, flow[0], flow[flow.len() - 1]]
+        .into_iter()
+        .map(gap)
+        .fold(f64::INFINITY, f64::min);
+
+    assert!(!crosses_route(
+        &connector_points(&before, "flow"),
+        &connector_points(&before, "cross")
+    ));
+    assert!(crosses_route(&flow, &connector_points(&result.report, "cross")));
+    assert!(distance_to_route(&label, &flow) <= 16.0);
+    assert!(
+        nearest >= 75.0,
+        "{label:?} only {nearest}px from the crossing or an end"
+    );
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a connector drawn as a staircase of segments all shorter than its
 ///   tied label, which floats far away
 /// When the diagram is fixed

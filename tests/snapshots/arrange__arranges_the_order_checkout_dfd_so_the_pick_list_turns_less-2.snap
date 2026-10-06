@@ -123,7 +123,7 @@ expression: result.svg.as_str()
   <text data-label="f5-label" data-label-for="f5" class="flow-label" x="109" y="371" text-anchor="start" font-size="11">items</text>
   <text data-label="f6-label" data-label-for="f6" class="flow-label" x="471" y="515" text-anchor="end" font-size="11">cart lines</text>
   <text data-label="f7-label" data-label-for="f7" class="flow-label" x="529" y="473" text-anchor="start" font-size="11">cart</text>
-  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="365" y="266" text-anchor="middle" font-size="11">address, card token</text>
+  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="348" y="266" text-anchor="middle" font-size="11">address, card token</text>
   <text data-label="f9-label" data-label-for="f9" class="flow-label" x="729" y="259" text-anchor="middle" font-size="11">payment request</text>
   <text data-label="f10-label" data-label-for="f10" class="flow-label" x="1048" y="120" text-anchor="middle" font-size="11">charge</text>
   <text data-label="f11-label" data-label-for="f11" class="flow-label" x="1049" y="175" text-anchor="middle" font-size="11">authorization</text>

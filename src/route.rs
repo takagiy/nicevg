@@ -1003,6 +1003,30 @@ fn crossing_point(a: Point, b: Point, c: Point, d: Point) -> Point {
     point(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y))
 }
 
+/// Where a connector is crossed by others, turns and ends: a label reads
+/// best well away from these, sorted so two sets compare equal when the
+/// same.
+pub fn label_landmarks(route: &[Point], routes: &[Vec<Point>]) -> Vec<Point> {
+    let own = segments(route);
+    let others: Vec<(Point, Point)> = routes
+        .iter()
+        .flat_map(|other| segments(other))
+        .filter(|segment| !own.contains(segment))
+        .collect();
+    let mut landmarks: Vec<Point> = own
+        .iter()
+        .flat_map(|(a, b)| {
+            others
+                .iter()
+                .filter(move |(c, d)| chords_cross(*a, *b, *c, *d))
+                .map(move |(c, d)| crossing_point(*a, *b, *c, *d))
+        })
+        .chain(route.iter().copied())
+        .collect();
+    landmarks.sort_by(|p, q| p.x.total_cmp(&q.x).then(p.y.total_cmp(&q.y)));
+    landmarks
+}
+
 /// How far a label keeps from other connectors when it can, so it reads as
 /// belonging to its own.
 pub const LABEL_CLEAR_OF_OTHERS: f64 = 20.0;
@@ -1097,18 +1121,7 @@ fn find_label_spot(
             runs_across(beside, bounds, *other) || !segment_intersects_interior(other.0, other.1, &inflated)
         })
     };
-    // A label reads best well away from where its connector is crossed by
-    // others, turns and ends.
-    let landmarks: Vec<Point> = own
-        .iter()
-        .flat_map(|(a, b)| {
-            others
-                .iter()
-                .filter(move |(c, d)| chords_cross(*a, *b, *c, *d))
-                .map(move |(c, d)| crossing_point(*a, *b, *c, *d))
-        })
-        .chain(route.iter().copied())
-        .collect();
+    let landmarks = label_landmarks(route, routes);
     let clearance = |bounds: &Bounds| {
         landmarks
             .iter()

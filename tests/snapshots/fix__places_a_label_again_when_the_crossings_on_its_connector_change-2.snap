@@ -1,0 +1,14 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -60 660 320">
+        <g data-node="a1"><rect x="20" y="76" width="100" height="48"/><text x="70" y="105" text-anchor="middle" font-size="14">A1</text></g>
+        <g data-node="a2"><rect x="520" y="76" width="100" height="48"/><text x="570" y="105" text-anchor="middle" font-size="14">A2</text></g>
+        <g data-node="b1"><rect x="205" y="-40" width="100" height="48"/><text x="255" y="-11" text-anchor="middle" font-size="14">B1</text></g>
+        <g data-node="b2"><rect x="205" y="190" width="100" height="48"/><text x="255" y="219" text-anchor="middle" font-size="14">B2</text></g>
+        <line id="flow" data-from="a1" data-to="a2" x1="120" y1="100" x2="520" y2="100"/>
+        <path id="cross" data-from="b1" data-to="b2" d="M 255 8 L 255 190"/>
+        <text data-label="retry" data-label-for="flow" x="380" y="88" text-anchor="middle" font-size="14">Retry</text>
+      </svg>
