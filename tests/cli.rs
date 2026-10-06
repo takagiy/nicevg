@@ -97,13 +97,13 @@ fn invalid_svg_exits_with_status_2_and_a_concise_input_error() {
 
 /// Given a valid diagram on standard input
 /// When the CLI is also given an argument, as the old fix and check
-///   commands took
+///   commands and the old --arrange option took
 /// Then it fails without writing anything to standard output
 #[test]
 fn rejects_file_and_subcommand_arguments_because_input_is_stdin_only() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>"#;
 
-    for argument in ["fix", "diagram.svg"] {
+    for argument in ["fix", "diagram.svg", "--arrange"] {
         let result = run(svg, &[argument]);
 
         assert_ne!(result.status, 0);
@@ -114,21 +114,20 @@ fn rejects_file_and_subcommand_arguments_because_input_is_stdin_only() {
 
 /// Given a diagram whose connector bends only because one node sits 24px
 ///   off, on standard input
-/// When the CLI runs with --arrange
+/// When the CLI runs
 /// Then it writes the arranged SVG, with the connector straight, and
 ///   succeeds
 #[test]
-fn arranges_nodes_when_asked_to() {
+fn arranges_nodes_by_default() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 200">
       <g data-node="notify"><circle cx="100" cy="110" r="54"/><text x="100" y="115" text-anchor="middle" font-size="13">7 Notify</text></g>
       <g data-node="mail"><rect x="280" y="60" width="130" height="52"/><text x="345" y="91" text-anchor="middle" font-size="13">Email service</text></g>
       <path id="email" data-from="notify" data-to="mail" d="M 154 110 L 220 110 L 220 86 L 280 86"/>
     </svg>"#;
 
-    let plain = run(svg, &[]);
-    let arranged = run(svg, &["--arrange"]);
+    let result = run(svg, &[]);
 
-    assert_eq!(arranged.status, 0);
-    assert_eq!(bend_count(&connector_points(&analyze(&plain.stdout), "email")), 2);
-    assert_eq!(bend_count(&connector_points(&analyze(&arranged.stdout), "email")), 0);
+    assert_eq!(result.status, 0);
+    assert_eq!(bend_count(&connector_points(&analyze(svg), "email")), 2);
+    assert_eq!(bend_count(&connector_points(&analyze(&result.stdout), "email")), 0);
 }

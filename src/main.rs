@@ -3,30 +3,21 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-/// Repair mechanical layout errors in an SVG diagram read from stdin and
-/// write the result to stdout.
+/// Repair mechanical layout errors in an SVG diagram read from stdin, move
+/// nodes a little so connectors bend, cross and crowd less, and write the
+/// result to stdout.
 #[derive(Parser)]
 #[command(name = "nicevg", version)]
-struct Cli {
-    /// Also move nodes a little, keeping the rough layout, so connectors
-    /// bend, cross and crowd less.
-    #[arg(long)]
-    arrange: bool,
-}
+struct Cli {}
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    Cli::parse();
     let mut input = String::new();
     if let Err(error) = std::io::stdin().read_to_string(&mut input) {
         eprintln!("Invalid SVG: {error}");
         return ExitCode::from(2);
     }
-    let result = if cli.arrange {
-        nicevg::arrange(&input)
-    } else {
-        nicevg::fix(&input)
-    };
-    match result {
+    match nicevg::arrange(&input) {
         Ok(result) => {
             let mut stdout = std::io::stdout().lock();
             let _ = writeln!(stdout, "{}", result.svg);
