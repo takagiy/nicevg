@@ -46,14 +46,14 @@ expression: result.svg.as_str()
         </g>
         <path id="f57" data-from="partneradp" data-to="mq" d="M 1762 790 L 1762 960"/>
         <path id="f58" data-from="domadp" data-to="mq" d="M 2070 300 L 1973 300 L 1973 990 L 1860 990"/>
-        <path id="f70" data-from="ledger" data-to="regrep" d="M 1048 990 L 1559 990 L 1559 814 L 2168 814 L 2168 790"/>
-        <path id="f71" data-from="aml" data-to="regrep" d="M 1454 60 L 1983 60 L 1983 760 L 2070 760"/>
-        <path id="f75" data-from="aml" data-to="audit" d="M 1454 80 L 1993 80 L 1993 980 L 2070 980"/>
-        <path id="f76" data-from="tfront" data-to="audit" d="M 236 300 L 1963 300 L 1963 1000 L 2070 1000"/>
+        <path id="f70" data-from="ledger" data-to="regrep" d="M 950 960 L 950 814 L 2168 814 L 2168 790"/>
+        <path id="f71" data-from="aml" data-to="regrep" d="M 1454 60 L 1993 60 L 1993 760 L 2070 760"/>
+        <path id="f75" data-from="aml" data-to="audit" d="M 1454 80 L 1953 80 L 1953 980 L 2070 980"/>
+        <path id="f76" data-from="tfront" data-to="audit" d="M 236 300 L 1933 300 L 1933 1000 L 2070 1000"/>
         <text data-label="l57" data-label-for="f57" x="1771" y="880" font-size="12" text-anchor="start">status event</text>
-        <text data-label="l58" data-label-for="f58" x="1911" y="979" font-size="12" text-anchor="middle">status event</text>
-        <text data-label="l70" data-label-for="f70" x="1864" y="835" font-size="12" text-anchor="middle">transactions</text>
-        <text data-label="l71" data-label-for="f71" x="1974" y="275" font-size="12" text-anchor="end">STR candidates</text>
-        <text data-label="l75" data-label-for="f75" x="2002" y="535" font-size="12" text-anchor="start">screening log</text>
-        <text data-label="l76" data-label-for="f76" x="1100" y="289" font-size="12" text-anchor="middle">teller log</text>
+        <text data-label="l58" data-label-for="f58" x="1982" y="857" font-size="12" text-anchor="start">status event</text>
+        <text data-label="l70" data-label-for="f70" x="1559" y="803" font-size="12" text-anchor="middle">transactions</text>
+        <text data-label="l71" data-label-for="f71" x="2002" y="415" font-size="12" text-anchor="start">STR candidates</text>
+        <text data-label="l75" data-label-for="f75" x="1944" y="265" font-size="12" text-anchor="end">screening log</text>
+        <text data-label="l76" data-label-for="f76" x="1085" y="289" font-size="12" text-anchor="middle">teller log</text>
       </svg>

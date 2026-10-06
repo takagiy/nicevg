@@ -1,0 +1,13 @@
+---
+source: tests/arrange.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420">
+        <g data-node="checkout"><circle cx="100" cy="200" r="50"/><text x="100" y="205" text-anchor="middle" font-size="13">Check out</text></g>
+        <g data-node="authorize"><circle cx="360" cy="70" r="50"/><text x="360" y="75" text-anchor="middle" font-size="13">Authorize</text></g>
+        <g data-node="allocate"><circle cx="360" cy="330" r="50"/><text x="360" y="335" text-anchor="middle" font-size="13">Allocate</text></g>
+        <g data-node="ship"><circle cx="530" cy="190" r="50"/><text x="530" y="195" text-anchor="middle" font-size="13">Ship</text></g>
+        <path id="approval" data-from="authorize" data-to="checkout" d="M 310 70 L 100 70 L 100 150"/>
+        <path id="picklist" data-from="allocate" data-to="ship" d="M 360 280 L 360 190 L 480 190"/>
+      </svg>

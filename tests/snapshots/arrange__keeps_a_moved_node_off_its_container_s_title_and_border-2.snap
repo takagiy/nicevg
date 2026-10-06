@@ -1,0 +1,28 @@
+---
+source: tests/arrange.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -20 700 400">
+        <g data-node="cluster">
+          <rect x="20" y="40" width="300" height="200"/>
+          <text x="36" y="68" font-size="13">Kubernetes cluster (EKS)</text>
+          <g data-node="auth">
+            <rect x="60" y="90" width="128" height="48"/>
+            <text x="124" y="119" text-anchor="middle" font-size="13">Auth service</text>
+          </g>
+        </g>
+        <g data-node="above">
+          <rect x="460" y="4" width="160" height="48"/>
+          <text x="540" y="33" text-anchor="middle" font-size="13">Above</text>
+        </g>
+        <g data-node="idp">
+          <rect x="460" y="72" width="160" height="48"/>
+          <text x="540" y="101" text-anchor="middle" font-size="13">Identity provider</text>
+        </g>
+        <g data-node="below">
+          <rect x="460" y="140" width="160" height="48"/>
+          <text x="540" y="169" text-anchor="middle" font-size="13">Below</text>
+        </g>
+        <path id="oidc" data-from="auth" data-to="idp" d="M 188 114 L 400 114 L 400 96 L 460 96"/>
+      </svg>

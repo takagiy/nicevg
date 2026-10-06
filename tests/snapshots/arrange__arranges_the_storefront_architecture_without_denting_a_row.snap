@@ -1,9 +1,9 @@
 ---
-source: tests/fix.rs
+source: tests/arrange.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "bends": 10,
+  "bends": 21,
   "detachedLabels": 0,
   "diagonalSegments": 0,
   "remainingIssues": 0

@@ -1,8 +1,11 @@
 //! Deterministic checks and repairs for SVG diagrams.
 //!
 //! [`analyze`] reads a diagram and reports mechanical layout errors;
-//! [`fix`] repairs the ones it can. Both are pure functions of the SVG text.
+//! [`fix`] repairs the ones it can, and [`arrange`] also nudges nodes so
+//! connectors bend, cross and crowd less. All three are pure functions of the
+//! SVG text.
 
+mod arrange;
 mod arrow;
 mod diagram;
 mod fix;
@@ -15,6 +18,7 @@ mod xml;
 
 use serde::Serialize;
 
+pub use arrange::arrange;
 pub use diagram::{Diagram, DiagramConnector, DiagramLabel, DiagramNode, Shape, UnsupportedElement};
 pub use fix::{FixChange, FixResult, fix, fix_with_passes};
 pub use geometry::{Bounds, Point};

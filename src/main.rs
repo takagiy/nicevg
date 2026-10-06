@@ -7,16 +7,26 @@ use clap::Parser;
 /// write the result to stdout.
 #[derive(Parser)]
 #[command(name = "nicevg", version)]
-struct Cli {}
+struct Cli {
+    /// Also move nodes a little, keeping the rough layout, so connectors
+    /// bend, cross and crowd less.
+    #[arg(long)]
+    arrange: bool,
+}
 
 fn main() -> ExitCode {
-    Cli::parse();
+    let cli = Cli::parse();
     let mut input = String::new();
     if let Err(error) = std::io::stdin().read_to_string(&mut input) {
         eprintln!("Invalid SVG: {error}");
         return ExitCode::from(2);
     }
-    match nicevg::fix(&input) {
+    let result = if cli.arrange {
+        nicevg::arrange(&input)
+    } else {
+        nicevg::fix(&input)
+    };
+    match result {
         Ok(result) => {
             let mut stdout = std::io::stdout().lock();
             let _ = writeln!(stdout, "{}", result.svg);

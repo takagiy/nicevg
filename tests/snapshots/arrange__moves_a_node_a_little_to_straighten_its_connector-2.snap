@@ -1,0 +1,16 @@
+---
+source: tests/arrange.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 220">
+        <g data-node="notify">
+          <rect x="20" y="100" width="130" height="56"/>
+          <text x="85" y="133" text-anchor="middle" font-size="13">Notify</text>
+        </g>
+        <g data-node="mail" transform="translate(0 48)">
+          <rect x="280" y="52" width="130" height="56"/>
+          <text x="345" y="85" text-anchor="middle" font-size="13">Email service</text>
+        </g>
+        <path id="email" data-from="notify" data-to="mail" d="M 150 128 L 280 128"/>
+      </svg>

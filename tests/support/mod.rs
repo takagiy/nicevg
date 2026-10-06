@@ -30,6 +30,10 @@ pub fn fix_with_passes(svg: &str, passes: usize) -> FixResult {
     record(svg, nicevg::fix_with_passes(svg, passes).expect("valid SVG"))
 }
 
+pub fn arrange(svg: &str) -> FixResult {
+    record(svg, nicevg::arrange(svg).expect("valid SVG"))
+}
+
 fn record(input: &str, result: FixResult) -> FixResult {
     if let Ok(directory) = std::env::var("NICEVG_RECORD_DIR") {
         let test = std::thread::current()
@@ -244,6 +248,40 @@ pub fn crosses_route(first: &[Point], second: &[Point]) -> bool {
             .iter()
             .any(|other| crosses(segment, other) || crosses(other, segment))
     })
+}
+
+/// Pairs of parallel segments from different connectors running closer
+/// than `distance` (but not on the same line) for at least 20px.
+pub fn crowded_pairs(report: &AnalysisReport, distance: f64) -> usize {
+    let routes: Vec<Vec<(Point, Point)>> = report
+        .diagram
+        .connectors
+        .iter()
+        .map(|connector| segments(&connector.points))
+        .collect();
+    let close = |(a, b): &(Point, Point), (c, d): &(Point, Point)| {
+        let span = |p: f64, q: f64| (p.min(q), p.max(q));
+        let (gap, (low, high), (other_low, other_high)) = if a.y == b.y && c.y == d.y {
+            ((a.y - c.y).abs(), span(a.x, b.x), span(c.x, d.x))
+        } else if a.x == b.x && c.x == d.x {
+            ((a.x - c.x).abs(), span(a.y, b.y), span(c.y, d.y))
+        } else {
+            return false;
+        };
+        gap > 0.0 && gap < distance && high.min(other_high) - low.max(other_low) >= 20.0
+    };
+    routes
+        .iter()
+        .enumerate()
+        .flat_map(|(index, first)| {
+            routes[index + 1..].iter().map(move |second| {
+                first
+                    .iter()
+                    .map(|a| second.iter().filter(|b| close(a, b)).count())
+                    .sum::<usize>()
+            })
+        })
+        .sum()
 }
 
 pub fn inflate(box_: &Bounds, amount: f64) -> Bounds {

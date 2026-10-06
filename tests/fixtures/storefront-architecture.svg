@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1470 700" width="1470" height="700">
+
+  <style>
+    text { font-family: system-ui, sans-serif; fill: #1f2937; }
+    .title { font-size: 20px; font-weight: 700; }
+    .caption { font-size: 12px; fill: #6b7280; }
+    .container > rect { fill: #f8fafc; stroke: #94a3b8; stroke-dasharray: 6 4; }
+    .container > text { font-size: 13px; font-weight: 600; fill: #475569; }
+    .actor circle { fill: #fef3c7; stroke: #b45309; stroke-width: 1.5; }
+    .client rect { fill: #e0f2fe; stroke: #0369a1; }
+    .edge rect { fill: #ede9fe; stroke: #6d28d9; }
+    .service rect { fill: #dcfce7; stroke: #15803d; }
+    .store rect { fill: #ffedd5; stroke: #c2410c; }
+    .external rect { fill: #f1f5f9; stroke: #334155; stroke-width: 2; }
+    .process circle { fill: #dbeafe; stroke: #1d4ed8; stroke-width: 1.5; }
+    .entity rect { fill: #fef3c7; stroke: #92400e; stroke-width: 2; }
+    .datastore rect { fill: #f0fdf4; stroke: #166534; }
+    .flow { stroke: #475569; stroke-width: 1.4; marker-end: url(#arrow); }
+    .flow-label { font-size: 11px; fill: #334155; font-style: italic; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
+  <text data-label="title" class="title" x="24" y="40" font-size="20">Storefront platform — system architecture</text>
+  <text data-label="caption" class="caption" x="24" y="62" font-size="12">Clients, edge, services on Kubernetes, managed data stores and external providers</text>
+  <g data-node="customer" class="actor">
+    <circle cx="70" cy="170" r="34"/>
+    <text x="70" y="175" text-anchor="middle" font-size="13">Customer</text>
+  </g>
+  <g data-node="staff" class="actor">
+    <circle cx="70" cy="400" r="34"/>
+    <text x="70" y="405" text-anchor="middle" font-size="13">Ops staff</text>
+  </g>
+  <g data-node="web" class="client">
+    <rect x="150" y="110" width="128" height="48" rx="6"/>
+    <text x="214" y="139" text-anchor="middle" font-size="13">Web storefront</text>
+  </g>
+  <g data-node="mobile" class="client">
+    <rect x="150" y="220" width="128" height="48" rx="6"/>
+    <text x="214" y="249" text-anchor="middle" font-size="13">Mobile app</text>
+  </g>
+  <g data-node="admin" class="client">
+    <rect x="150" y="376" width="128" height="48" rx="6"/>
+    <text x="214" y="405" text-anchor="middle" font-size="13">Admin console</text>
+  </g>
+  <g data-node="cdn" class="edge">
+    <rect x="340" y="110" width="128" height="48" rx="6"/>
+    <text x="404" y="139" text-anchor="middle" font-size="13">CDN</text>
+  </g>
+  <g data-node="gateway" class="edge">
+    <rect x="340" y="270" width="128" height="48" rx="6"/>
+    <text x="404" y="299" text-anchor="middle" font-size="13">API gateway</text>
+  </g>
+  <g data-node="cluster" class="container">
+    <rect x="540" y="80" width="640" height="430" rx="10"/>
+    <text x="556" y="104">Kubernetes cluster (EKS)</text>
+    <g data-node="auth" class="service">
+      <rect x="580" y="130" width="128" height="48" rx="6"/>
+      <text x="644" y="159" text-anchor="middle" font-size="13">Auth service</text>
+    </g>
+    <g data-node="catalog" class="service">
+      <rect x="800" y="130" width="128" height="48" rx="6"/>
+      <text x="864" y="159" text-anchor="middle" font-size="13">Catalog service</text>
+    </g>
+    <g data-node="cart" class="service">
+      <rect x="1020" y="130" width="128" height="48" rx="6"/>
+      <text x="1084" y="159" text-anchor="middle" font-size="13">Cart service</text>
+    </g>
+    <g data-node="order" class="service">
+      <rect x="580" y="290" width="128" height="48" rx="6"/>
+      <text x="644" y="319" text-anchor="middle" font-size="13">Order service</text>
+    </g>
+    <g data-node="payment" class="service">
+      <rect x="800" y="290" width="128" height="48" rx="6"/>
+      <text x="864" y="319" text-anchor="middle" font-size="13">Payment service</text>
+    </g>
+    <g data-node="inventory" class="service">
+      <rect x="1020" y="290" width="128" height="48" rx="6"/>
+      <text x="1084" y="319" text-anchor="middle" font-size="13">Inventory service</text>
+    </g>
+    <g data-node="notify" class="service">
+      <rect x="800" y="430" width="128" height="48" rx="6"/>
+      <text x="864" y="459" text-anchor="middle" font-size="13">Notification worker</text>
+    </g>
+  </g>
+  <g data-node="data" class="container">
+    <rect x="540" y="550" width="680" height="110" rx="10"/>
+    <text x="556" y="574">Managed data stores</text>
+    <g data-node="postgres" class="store">
+      <rect x="580" y="600" width="128" height="48" rx="6"/>
+      <text x="644" y="629" text-anchor="middle" font-size="13">PostgreSQL</text>
+    </g>
+    <g data-node="kafka" class="store">
+      <rect x="760" y="600" width="110" height="48" rx="6"/>
+      <text x="815" y="629" text-anchor="middle" font-size="13">Kafka</text>
+    </g>
+    <g data-node="search" class="store">
+      <rect x="910" y="600" width="120" height="48" rx="6"/>
+      <text x="970" y="629" text-anchor="middle" font-size="13">OpenSearch</text>
+    </g>
+    <g data-node="redis" class="store">
+      <rect x="1070" y="600" width="110" height="48" rx="6"/>
+      <text x="1125" y="629" text-anchor="middle" font-size="13">Redis</text>
+    </g>
+  </g>
+  <g data-node="idp" class="external">
+    <rect x="1290" y="130" width="140" height="48" rx="6"/>
+    <text x="1360" y="159" text-anchor="middle" font-size="13">Identity provider</text>
+  </g>
+  <g data-node="psp" class="external">
+    <rect x="1290" y="290" width="140" height="48" rx="6"/>
+    <text x="1360" y="319" text-anchor="middle" font-size="13">Payment provider</text>
+  </g>
+  <g data-node="mail" class="external">
+    <rect x="1290" y="430" width="140" height="48" rx="6"/>
+    <text x="1360" y="459" text-anchor="middle" font-size="13">Email delivery</text>
+  </g>
+  <line id="f1" class="flow" data-from="customer" data-to="web" x1="70" y1="170" x2="214" y2="134"/>
+  <line id="f2" class="flow" data-from="customer" data-to="mobile" x1="70" y1="170" x2="214" y2="244"/>
+  <line id="f3" class="flow" data-from="staff" data-to="admin" x1="70" y1="400" x2="214" y2="400"/>
+  <line id="f4" class="flow" data-from="web" data-to="cdn" x1="214" y1="134" x2="404" y2="134"/>
+  <line id="f5" class="flow" data-from="mobile" data-to="gateway" x1="214" y1="244" x2="404" y2="294"/>
+  <line id="f6" class="flow" data-from="cdn" data-to="gateway" x1="404" y1="134" x2="404" y2="294"/>
+  <line id="f7" class="flow" data-from="admin" data-to="gateway" x1="214" y1="400" x2="404" y2="294"/>
+  <line id="f8" class="flow" data-from="gateway" data-to="auth" x1="404" y1="294" x2="644" y2="154"/>
+  <line id="f9" class="flow" data-from="gateway" data-to="catalog" x1="404" y1="294" x2="864" y2="154"/>
+  <line id="f10" class="flow" data-from="gateway" data-to="cart" x1="404" y1="294" x2="1084" y2="154"/>
+  <line id="f11" class="flow" data-from="gateway" data-to="order" x1="404" y1="294" x2="644" y2="314"/>
+  <line id="f12" class="flow" data-from="auth" data-to="idp" x1="644" y1="154" x2="1360" y2="154"/>
+  <line id="f13" class="flow" data-from="catalog" data-to="search" x1="864" y1="154" x2="970" y2="624"/>
+  <line id="f14" class="flow" data-from="catalog" data-to="postgres" x1="864" y1="154" x2="644" y2="624"/>
+  <line id="f15" class="flow" data-from="cart" data-to="redis" x1="1084" y1="154" x2="1125" y2="624"/>
+  <line id="f16" class="flow" data-from="order" data-to="postgres" x1="644" y1="314" x2="644" y2="624"/>
+  <line id="f17" class="flow" data-from="order" data-to="payment" x1="644" y1="314" x2="864" y2="314"/>
+  <line id="f18" class="flow" data-from="order" data-to="inventory" x1="644" y1="314" x2="1084" y2="314"/>
+  <line id="f19" class="flow" data-from="order" data-to="kafka" x1="644" y1="314" x2="815" y2="624"/>
+  <line id="f20" class="flow" data-from="payment" data-to="psp" x1="864" y1="314" x2="1360" y2="314"/>
+  <line id="f21" class="flow" data-from="inventory" data-to="postgres" x1="1084" y1="314" x2="644" y2="624"/>
+  <line id="f22" class="flow" data-from="kafka" data-to="notify" x1="815" y1="624" x2="864" y2="454"/>
+  <line id="f23" class="flow" data-from="notify" data-to="mail" x1="864" y1="454" x2="1360" y2="454"/>
+  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="309" y="134" text-anchor="middle" font-size="11">HTTPS</text>
+  <text data-label="f5-label" data-label-for="f5" class="flow-label" x="309" y="269" text-anchor="middle" font-size="11">HTTPS</text>
+  <text data-label="f6-label" data-label-for="f6" class="flow-label" x="404" y="214" text-anchor="middle" font-size="11">API calls</text>
+  <text data-label="f7-label" data-label-for="f7" class="flow-label" x="309" y="347" text-anchor="middle" font-size="11">HTTPS</text>
+  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="524" y="224" text-anchor="middle" font-size="11">token check</text>
+  <text data-label="f9-label" data-label-for="f9" class="flow-label" x="634" y="224" text-anchor="middle" font-size="11">REST</text>
+  <text data-label="f10-label" data-label-for="f10" class="flow-label" x="744" y="224" text-anchor="middle" font-size="11">REST</text>
+  <text data-label="f11-label" data-label-for="f11" class="flow-label" x="524" y="304" text-anchor="middle" font-size="11">REST</text>
+  <text data-label="f12-label" data-label-for="f12" class="flow-label" x="1002" y="154" text-anchor="middle" font-size="11">OIDC</text>
+  <text data-label="f13-label" data-label-for="f13" class="flow-label" x="917" y="389" text-anchor="middle" font-size="11">queries</text>
+  <text data-label="f15-label" data-label-for="f15" class="flow-label" x="1104.5" y="389" text-anchor="middle" font-size="11">sessions</text>
+  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="644" y="469" text-anchor="middle" font-size="11">SQL</text>
+  <text data-label="f17-label" data-label-for="f17" class="flow-label" x="754" y="314" text-anchor="middle" font-size="11">gRPC</text>
+  <text data-label="f18-label" data-label-for="f18" class="flow-label" x="864" y="314" text-anchor="middle" font-size="11">gRPC</text>
+  <text data-label="f19-label" data-label-for="f19" class="flow-label" x="729.5" y="469" text-anchor="middle" font-size="11">order events</text>
+  <text data-label="f20-label" data-label-for="f20" class="flow-label" x="1112" y="314" text-anchor="middle" font-size="11">charges</text>
+  <text data-label="f22-label" data-label-for="f22" class="flow-label" x="839.5" y="539" text-anchor="middle" font-size="11">consume</text>
+  <text data-label="f23-label" data-label-for="f23" class="flow-label" x="1112" y="454" text-anchor="middle" font-size="11">send</text>
+</svg>

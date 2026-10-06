@@ -74,25 +74,31 @@ pub fn fix(svg: &str) -> Result<FixResult, SvgInputError> {
 /// placed late, and labels left without a slot get another try. A pass is
 /// kept only while it reduces the issues.
 pub fn fix_with_passes(svg: &str, max_passes: usize) -> Result<FixResult, SvgInputError> {
+    fix_after_moves(svg, &[], max_passes)
+}
+
+/// Fixes a document whose nodes `moved` were just moved, so the connectors
+/// attached to them are rerouted to follow.
+pub(crate) fn fix_after_moves(svg: &str, moved: &[String], max_passes: usize) -> Result<FixResult, SvgInputError> {
     fn refine(best: FixResult, remaining: usize) -> Result<FixResult, SvgInputError> {
         if remaining == 0 || best.report.issues.is_empty() {
             return Ok(best);
         }
-        let next = fix_once(&best.svg)?;
+        let next = fix_once(&best.svg, &[])?;
         if next.report.issues.len() >= best.report.issues.len() {
             return Ok(best);
         }
         let changes = [best.changes, next.changes.clone()].concat();
         refine(FixResult { changes, ..next }, remaining - 1)
     }
-    refine(fix_once(svg)?, max_passes.saturating_sub(1))
+    refine(fix_once(svg, moved)?, max_passes.saturating_sub(1))
 }
 
-fn fix_once(svg: &str) -> Result<FixResult, SvgInputError> {
+fn fix_once(svg: &str, moved: &[String]) -> Result<FixResult, SvgInputError> {
     let draft = Draft {
         document: parse(svg)?,
         changes: Vec::new(),
-        moved_node_ids: Vec::new(),
+        moved_node_ids: moved.to_vec(),
     };
     let draft = expand_view_box(reroute_connectors(separate_nodes(expand_nodes(draft))));
     let written = serialize(&draft.document);

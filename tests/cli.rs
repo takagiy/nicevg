@@ -111,3 +111,24 @@ fn rejects_file_and_subcommand_arguments_because_input_is_stdin_only() {
         assert_ne!(result.stderr, "");
     }
 }
+
+/// Given a diagram whose connector bends only because one node sits 24px
+///   off, on standard input
+/// When the CLI runs with --arrange
+/// Then it writes the arranged SVG, with the connector straight, and
+///   succeeds
+#[test]
+fn arranges_nodes_when_asked_to() {
+    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 200">
+      <g data-node="notify"><circle cx="100" cy="110" r="54"/><text x="100" y="115" text-anchor="middle" font-size="13">7 Notify</text></g>
+      <g data-node="mail"><rect x="280" y="60" width="130" height="52"/><text x="345" y="91" text-anchor="middle" font-size="13">Email service</text></g>
+      <path id="email" data-from="notify" data-to="mail" d="M 154 110 L 220 110 L 220 86 L 280 86"/>
+    </svg>"#;
+
+    let plain = run(svg, &[]);
+    let arranged = run(svg, &["--arrange"]);
+
+    assert_eq!(arranged.status, 0);
+    assert_eq!(bend_count(&connector_points(&analyze(&plain.stdout), "email")), 2);
+    assert_eq!(bend_count(&connector_points(&analyze(&arranged.stdout), "email")), 0);
+}

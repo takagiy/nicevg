@@ -11,6 +11,9 @@ use crate::geometry::{
 };
 
 pub const BEND_PENALTY: f64 = 40.0;
+/// Choosing sides weighs bends more than routing does: a side that saves a
+/// bend wins even when the route to it runs a little longer.
+const SIDE_BEND_PENALTY: f64 = 80.0;
 /// Below one unit of length: changing a side only wins when it saves length
 /// or bends, never on a tie.
 pub const SIDE_CHANGE_COST: f64 = 0.5;
@@ -18,6 +21,12 @@ pub const SIDE_CHANGE_COST: f64 = 0.5;
 /// one neighbour never forces an extra bend but a bundle can.
 pub const CROWDING_COST: f64 = 30.0;
 pub const LANE_SPACING: f64 = 10.0;
+/// Running beside another connector costs this much extra per unit of
+/// length: a lot within a lane of it, a little within two lanes.
+const CLOSE_RUN_COST: f64 = 2.0;
+const NEAR_RUN_COST: f64 = 0.2;
+/// Crossing another connector costs about as much as a bend.
+const CROSSING_PENALTY: f64 = 40.0;
 pub const CLEARANCE: f64 = 8.0;
 /// How far a route runs straight into its target before the last bend,
 /// longest first. An arrowhead is about 10px long, so the clearance alone
@@ -235,14 +244,27 @@ impl PartialOrd for Entry {
 /// between them, lanes beside drawn connectors and the terminals. Starts
 /// from whichever start terminal and stops at whichever end terminal is
 /// cheapest overall.
-pub fn search(starts: &[Terminal], ends: &[Terminal], obstacles: &[Bounds], occupied: &[Vec<Point>]) -> Option<Found> {
+pub fn search(
+    starts: &[Terminal],
+    ends: &[Terminal],
+    obstacles: &[Bounds],
+    occupied: &[Vec<Point>],
+    bend_penalty: f64,
+) -> Option<Found> {
     let occupied_segments: Vec<(Point, Point)> = occupied.iter().flat_map(|route| segments(route)).collect();
     let axis = |pick: fn(&Point) -> f64, low: fn(&Bounds) -> f64, high: fn(&Bounds) -> f64| {
-        // Lanes beside connectors already drawn let new routes run alongside
-        // them when every other line through a channel is taken.
+        // Lanes one and two lanes beside connectors already drawn let new
+        // routes run alongside them when every other line through a
+        // channel is taken, keeping clear of them when there is room.
         let lanes = occupied_segments.iter().flat_map(|(from, to)| {
-            (pick(from) == pick(to))
-                .then(|| [pick(from) - LANE_SPACING, pick(from) + LANE_SPACING])
+            let at = pick(from);
+            (at == pick(to))
+                .then_some([
+                    at - 2.0 * LANE_SPACING,
+                    at - LANE_SPACING,
+                    at + LANE_SPACING,
+                    at + 2.0 * LANE_SPACING,
+                ])
                 .into_iter()
                 .flatten()
         });
@@ -309,6 +331,64 @@ pub fn search(starts: &[Terminal], ends: &[Terminal], obstacles: &[Bounds], occu
             let (first, last) = steps_covering(&ys, from.y, to.y);
             for yi in first as isize..=last {
                 blocked_vertical[key(xi, yi as usize)] = true;
+            }
+        }
+    }
+
+    // Grid edges running parallel to another connector's segment, closer
+    // than two lanes, cost extra: closely packed lines read as one band.
+    let mut near_horizontal = vec![0.0f64; cells];
+    let mut near_vertical = vec![0.0f64; cells];
+    let near_cost = |distance: f64| {
+        if distance <= 0.0 || distance >= 2.0 * LANE_SPACING {
+            0.0
+        } else if distance < LANE_SPACING {
+            CLOSE_RUN_COST
+        } else {
+            NEAR_RUN_COST
+        }
+    };
+    for (from, to) in &occupied_segments {
+        if from.y == to.y {
+            let (first, last) = steps_covering(&xs, from.x, to.x);
+            for (yi, y) in ys.iter().enumerate() {
+                let extra = near_cost((y - from.y).abs());
+                for xi in (first as isize..=last).filter(|_| extra > 0.0) {
+                    let index = key(xi as usize, yi);
+                    near_horizontal[index] = near_horizontal[index].max(extra);
+                }
+            }
+        } else if from.x == to.x {
+            let (first, last) = steps_covering(&ys, from.y, to.y);
+            for (xi, x) in xs.iter().enumerate() {
+                let extra = near_cost((x - from.x).abs());
+                for yi in (first as isize..=last).filter(|_| extra > 0.0) {
+                    let index = key(xi, yi as usize);
+                    near_vertical[index] = near_vertical[index].max(extra);
+                }
+            }
+        }
+    }
+
+    // Grid edges that cross another connector's segment, or reach a point
+    // inside it, cost a crossing. An edge ending on the segment counts, the
+    // one leaving it does not, so passing straight through counts once.
+    let mut crossing_horizontal = vec![false; cells];
+    let mut crossing_vertical = vec![false; cells];
+    for (from, to) in &occupied_segments {
+        if from.x == to.x {
+            let (low, high) = (from.y.min(to.y), from.y.max(to.y));
+            for (yi, _) in ys.iter().enumerate().filter(|(_, y)| low < **y && **y < high) {
+                for xi in (0..width.saturating_sub(1)).filter(|xi| xs[*xi] < from.x && from.x <= xs[xi + 1]) {
+                    crossing_horizontal[key(xi, yi)] = true;
+                }
+            }
+        } else if from.y == to.y {
+            let (low, high) = (from.x.min(to.x), from.x.max(to.x));
+            for (xi, _) in xs.iter().enumerate().filter(|(_, x)| low < **x && **x < high) {
+                for yi in (0..ys.len().saturating_sub(1)).filter(|yi| ys[*yi] < from.y && from.y <= ys[yi + 1]) {
+                    crossing_vertical[key(xi, yi)] = true;
+                }
             }
         }
     }
@@ -386,9 +466,9 @@ pub fn search(starts: &[Terminal], ends: &[Terminal], obstacles: &[Bounds], occu
             }
             // The path continues straight out of the start stub and straight
             // into the end stub, so turning onto or off them counts as a bend.
-            let bend = (if state % 2 != vertical { BEND_PENALTY } else { 0.0 })
+            let bend = (if state % 2 != vertical { bend_penalty } else { 0.0 })
                 + end.map_or(0.0, |(_, terminal)| {
-                    terminal.cost + if vertical != terminal.axis { BEND_PENALTY } else { 0.0 }
+                    terminal.cost + if vertical != terminal.axis { bend_penalty } else { 0.0 }
                 });
             let next_state = next_cell * 2 + vertical;
             let next = point_of(next_cell);
@@ -398,7 +478,20 @@ pub fn search(starts: &[Terminal], ends: &[Terminal], obstacles: &[Bounds], occu
             } else {
                 &outline_horizontal
             };
-            let next_cost = cost + length * if outline[edge] { 1.01 } else { 1.0 } + bend;
+            let near = if vertical == 1 {
+                near_vertical[edge]
+            } else {
+                near_horizontal[edge]
+            };
+            let crossing = if vertical == 1 {
+                crossing_vertical[edge]
+            } else {
+                crossing_horizontal[edge]
+            };
+            let next_cost = cost
+                + length * (if outline[edge] { 1.01 } else { 1.0 } + near)
+                + bend
+                + if crossing { CROSSING_PENALTY } else { 0.0 };
             if next_cost >= distance[next_state] {
                 continue;
             }
@@ -454,6 +547,7 @@ pub fn route_connector(
         ),
         &all_obstacles,
         occupied,
+        BEND_PENALTY,
     ) {
         Some(found) => without_redundant_points(
             &std::iter::once(ports.start)
@@ -500,6 +594,7 @@ pub fn choose_sides(
         &terminals(target, fallback.end),
         &obstacles,
         occupied,
+        SIDE_BEND_PENALTY,
     );
     match found.and_then(|found| Some((Side::ALL.get(found.start?)?, Side::ALL.get(found.end?)?))) {
         Some((start, end)) => Sides {
@@ -628,7 +723,7 @@ fn would_cross(sides: Sides, (a, b): (Point, Point), (c, d): (Point, Point)) -> 
 }
 
 /// Whether two straight segments pass through each other.
-fn chords_cross(a: Point, b: Point, c: Point, d: Point) -> bool {
+pub(crate) fn chords_cross(a: Point, b: Point, c: Point, d: Point) -> bool {
     let turn = |p: Point, q: Point, r: Point| ((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)).signum();
     turn(a, b, c) * turn(a, b, d) < 0.0 && turn(c, d, a) * turn(c, d, b) < 0.0
 }

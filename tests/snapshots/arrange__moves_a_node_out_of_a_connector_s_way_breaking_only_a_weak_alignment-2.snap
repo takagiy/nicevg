@@ -1,0 +1,17 @@
+---
+source: tests/arrange.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -25 920 255">
+        <g data-node="cluster">
+          <rect x="0" y="-5" width="660" height="215"/>
+          <text x="12" y="20" font-size="13">Cluster</text>
+          <g data-node="order"><rect x="20" y="80" width="128" height="48"/><text x="84" y="109" text-anchor="middle" font-size="13">Order service</text></g>
+          <g data-node="payment"><rect x="234" y="80" width="140" height="48"/><text x="304" y="109" text-anchor="middle" font-size="13">Payment service</text></g>
+          <g data-node="inventory" transform="translate(0 -33)"><rect x="460" y="80" width="156" height="48"/><text x="538" y="109" text-anchor="middle" font-size="13">Inventory service</text></g>
+        </g>
+        <g data-node="psp"><rect x="730" y="80" width="150" height="48"/><text x="805" y="109" text-anchor="middle" font-size="13">Payment provider</text></g>
+        <line id="grpc" data-from="order" data-to="payment" x1="148" y1="104" x2="234" y2="104"/>
+        <path id="charges" data-from="payment" data-to="psp" d="M 374 104 L 730 104"/>
+      </svg>
