@@ -58,9 +58,9 @@ expression: result.svg.as_str()
         <path id="f48" data-from="route" data-to="partneradp" d="M 446 315 L 438 315 L 438 760 L 446 760"/>
         <path id="f56" data-from="partner" data-to="partneradp" d="M 1258 760 L 642 760"/>
         <text data-label="l35" data-label-for="f35" x="431" y="183" font-size="12" text-anchor="start">cleared order</text>
-        <text data-label="l37" data-label-for="f37" x="393" y="540" font-size="12" text-anchor="end">cached rate</text>
+        <text data-label="l37" data-label-for="f37" x="393" y="631" font-size="12" text-anchor="end">cached rate</text>
         <text data-label="l42" data-label-for="f42" x="255" y="190" font-size="12" text-anchor="start">quote</text>
-        <text data-label="l44" data-label-for="f44" x="331" y="289" font-size="12" text-anchor="middle">priced order</text>
+        <text data-label="l44" data-label-for="f44" x="320" y="289" font-size="12" text-anchor="middle">priced order</text>
         <text data-label="l46" data-label-for="f46" x="747" y="289" font-size="12" text-anchor="middle">domestic</text>
         <text data-label="l47" data-label-for="f47" x="553" y="420" font-size="12" text-anchor="start">MT103</text>
         <text data-label="l48" data-label-for="f48" x="447" y="587" font-size="12" text-anchor="start">corridor</text>

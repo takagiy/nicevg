@@ -12,9 +12,9 @@ expression: result.svg.as_str()
             <text x="310" y="193" text-anchor="middle" font-size="14">Target</text>
           </g>
           <path id="flow" data-from="source" data-to="target" d="M 120 48 L 190 48 L 190 188 L 260 188"/>
-          <text data-label="retry" data-label-for="flow" x="199" y="107" font-size="14" text-anchor="start">
-            <tspan x="199">Retry</tspan>
-            <tspan x="199" dy="17">with backoff</tspan>
-            <tspan x="199" dy="17">3 times</tspan>
+          <text data-label="retry" data-label-for="flow" x="181" y="107" font-size="14" text-anchor="end">
+            <tspan x="181">Retry</tspan>
+            <tspan x="181" dy="17">with backoff</tspan>
+            <tspan x="181" dy="17">3 times</tspan>
           </text>
         </svg>

@@ -11,11 +11,11 @@ use crate::diagram::{
     Diagram, DiagramConnector, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, holds_end, is_node_shape,
     node_group, number_attribute, rect_bounds, translation,
 };
-use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number};
+use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
     LABEL_CLEAR_OF_OTHERS, PortRequest, Sides, choose_sides, connector_ports, end_on_shapes, is_on_outline,
-    place_label, place_label_clear, route_connector, side_of, spread_ports,
+    place_label, place_label_clear, route_connector, runs_across, side_of, spread_ports,
 };
 use crate::text::{label_texts, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
@@ -667,11 +667,16 @@ fn clarify_labels(draft: Draft) -> Draft {
         .iter()
         .filter_map(|label| {
             let connector = diagram.connector(label.connector.as_deref()?)?;
+            let beside = segments(&connector.points).into_iter().min_by(|a, b| {
+                distance_to_route(&label.bounds, &[a.0, a.1]).total_cmp(&distance_to_route(&label.bounds, &[b.0, b.1]))
+            })?;
             let nearest = diagram
                 .connectors
                 .iter()
                 .filter(|other| other.id != connector.id)
-                .map(|other| distance_to_route(&label.bounds, &other.points))
+                .flat_map(|other| segments(&other.points))
+                .filter(|other| !runs_across(beside, &label.bounds, *other))
+                .map(|(c, d)| distance_to_route(&label.bounds, &[c, d]))
                 .fold(f64::INFINITY, f64::min);
             (nearest < LABEL_CLEAR_OF_OTHERS).then_some((label, connector))
         })

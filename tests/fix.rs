@@ -4,7 +4,7 @@
 
 mod support;
 
-use nicevg::FixResult;
+use nicevg::{FixResult, Point};
 use support::*;
 
 const RETRY_LABEL: &str = r#"<text data-label="retry" data-label-for="flow"
@@ -1346,6 +1346,84 @@ fn moves_a_label_away_from_a_connector_it_does_not_belong_to() {
     assert!(
         distance_to_route(&label, &connector_points(&result.report, "events")) >= 20.0,
         "{label:?}"
+    );
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given a straight connector with another connector running parallel 10px
+///   above most of it, and its label detached
+/// When the diagram is fixed
+/// Then the label sits below the middle of its connector: its own line lies
+///   between it and the other connector, so it is clear which one it
+///   belongs to, and the other connector does not push it towards an end
+#[test]
+fn places_a_label_beside_the_middle_when_a_parallel_connector_is_across_its_own() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -100 640 440">
+        <g data-node="a1"><rect x="20" y="76" width="100" height="48"/><text x="70" y="105" text-anchor="middle" font-size="14">A1</text></g>
+        <g data-node="a2"><rect x="500" y="76" width="100" height="48"/><text x="550" y="105" text-anchor="middle" font-size="14">A2</text></g>
+        <g data-node="b1"><rect x="150" y="-60" width="100" height="48"/><text x="200" y="-31" text-anchor="middle" font-size="14">B1</text></g>
+        <g data-node="b2"><rect x="400" y="-60" width="100" height="48"/><text x="450" y="-31" text-anchor="middle" font-size="14">B2</text></g>
+        <line id="flow" data-from="a1" data-to="a2" x1="120" y1="100" x2="500" y2="100"/>
+        <path id="other" data-from="b1" data-to="b2" d="M 200 -12 L 200 90 L 450 90 L 450 -12"/>
+        <text data-label="retry" data-label-for="flow" x="310" y="300" text-anchor="middle" font-size="14">Retry</text>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let label = label_bounds(&result.report, "retry");
+    let middle = 310.0;
+
+    assert_eq!(change_codes(&result), ["move-label"]);
+    assert!(distance_to_route(&label, &connector_points(&result.report, "flow")) <= 16.0);
+    assert!(label.y > 100.0, "{label:?} is not below its connector");
+    assert!(
+        (label.x + label.width / 2.0 - middle).abs() <= 40.0,
+        "{label:?} is pushed away from the middle"
+    );
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given a long straight connector crossed through its middle by another
+///   connector, with its label detached
+/// When the diagram is fixed
+/// Then the label moves beside its connector as far as it can from the
+///   crossing and from the connector's ends: midway between the crossing
+///   and one end, not beside the crossing nor at an arrowhead
+#[test]
+fn places_a_label_away_from_where_another_connector_crosses() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -60 640 340">
+        <g data-node="a1"><rect x="20" y="76" width="100" height="48"/><text x="70" y="105" text-anchor="middle" font-size="14">A1</text></g>
+        <g data-node="a2"><rect x="520" y="76" width="100" height="48"/><text x="570" y="105" text-anchor="middle" font-size="14">A2</text></g>
+        <g data-node="b1"><rect x="280" y="-40" width="100" height="48"/><text x="330" y="-11" text-anchor="middle" font-size="14">B1</text></g>
+        <g data-node="b2"><rect x="280" y="190" width="100" height="48"/><text x="330" y="219" text-anchor="middle" font-size="14">B2</text></g>
+        <line id="flow" data-from="a1" data-to="a2" x1="120" y1="100" x2="520" y2="100"/>
+        <line id="cross" data-from="b1" data-to="b2" x1="330" y1="8" x2="330" y2="190"/>
+        <text data-label="retry" data-label-for="flow" x="330" y="260" text-anchor="middle" font-size="14">Retry</text>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let label = label_bounds(&result.report, "retry");
+    let gap = |p: Point| {
+        ((label.x - p.x).max(p.x - (label.x + label.width)).max(0.0))
+            .hypot((label.y - p.y).max(p.y - (label.y + label.height)).max(0.0))
+    };
+    let nearest = [point(330.0, 100.0), point(120.0, 100.0), point(520.0, 100.0)]
+        .into_iter()
+        .map(gap)
+        .fold(f64::INFINITY, f64::min);
+
+    assert_eq!(change_codes(&result), ["move-label"]);
+    assert!(distance_to_route(&label, &connector_points(&result.report, "flow")) <= 16.0);
+    assert!(
+        nearest >= 75.0,
+        "{label:?} only {nearest}px from the crossing or an end"
     );
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 

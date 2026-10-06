@@ -13,8 +13,8 @@ expression: result.svg.as_str()
           </g>
           <path id="flow" data-from="source" data-to="target" d="M 120 48 L 190 48 L 190 188 L 260 188"/>
           <g data-label="retry" data-label-for="flow">
-            <text x="199" y="107" font-size="14" text-anchor="start">Retry</text>
-            <text x="199" y="124" font-size="14" text-anchor="start">with backoff</text>
-            <text x="199" y="141" font-size="14" text-anchor="start">3 times</text>
+            <text x="181" y="107" font-size="14" text-anchor="end">Retry</text>
+            <text x="181" y="124" font-size="14" text-anchor="end">with backoff</text>
+            <text x="181" y="141" font-size="14" text-anchor="end">3 times</text>
           </g>
         </svg>

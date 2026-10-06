@@ -6,7 +6,7 @@ use std::collections::{BinaryHeap, HashMap};
 
 use crate::diagram::DiagramNode;
 use crate::geometry::{
-    Bounds, Point, intersection, point, round, route_is_clear, routes_overlap, segment_intersects_interior,
+    Bounds, Point, hypot, intersection, point, round, route_is_clear, routes_overlap, segment_intersects_interior,
     segment_length, segments, without_redundant_points,
 };
 
@@ -993,9 +993,33 @@ fn bounds_at(x: f64, y: f64, width: f64, height: f64) -> Bounds {
 /// segments, trying the longest segment first and fanning out from its
 /// midpoint. The label keeps the connector clearance from every route and
 /// stays at least 4px away from other labels and nodes.
+/// Where two crossing segments meet.
+fn crossing_point(a: Point, b: Point, c: Point, d: Point) -> Point {
+    let denominator = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
+    if denominator == 0.0 {
+        return a;
+    }
+    let t = ((a.x - c.x) * (c.y - d.y) - (a.y - c.y) * (c.x - d.x)) / denominator;
+    point(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y))
+}
+
 /// How far a label keeps from other connectors when it can, so it reads as
 /// belonging to its own.
 pub const LABEL_CLEAR_OF_OTHERS: f64 = 20.0;
+
+/// Whether `other` runs parallel to `beside`, the segment a label sits
+/// beside, on its far side: the label's own line then lies between them,
+/// so the other connector leaves no doubt which one the label belongs to.
+pub fn runs_across((from, to): (Point, Point), label: &Bounds, (c, d): (Point, Point)) -> bool {
+    let centre = point(label.x + label.width / 2.0, label.y + label.height / 2.0);
+    if from.y == to.y && c.y == d.y {
+        (centre.y - from.y) * (c.y - from.y) < 0.0
+    } else if from.x == to.x && c.x == d.x {
+        (centre.x - from.x) * (c.x - from.x) < 0.0
+    } else {
+        false
+    }
+}
 
 /// `containers` are the boxes around the connector's ends: the label may
 /// sit inside or outside each, but not across its border.
@@ -1067,54 +1091,92 @@ fn find_label_spot(
         .filter(|segment| !own.contains(segment))
         .copied()
         .collect();
-    let clear_of_others = |bounds: &Bounds| {
+    let clear_of_others = |bounds: &Bounds, beside: (Point, Point)| {
         let inflated = bounds.inflate(LABEL_CLEAR_OF_OTHERS);
-        others
-            .iter()
-            .all(|(from, to)| !segment_intersects_interior(*from, *to, &inflated))
-    };
-    let find = |fits: &dyn Fn(&Bounds) -> bool| {
-        ordered.iter().find_map(|(_, (from, to))| {
-            let horizontal = from.y == to.y;
-            (0..=20).find_map(|step| {
-                let fraction = 0.5 + if step % 2 == 0 { 1.0 } else { -1.0 } * ((step as f64) / 2.0).ceil() * 0.05;
-                if !(0.0..=1.0).contains(&fraction) {
-                    return None;
-                }
-                let along = point(
-                    round(from.x + (to.x - from.x) * fraction),
-                    round(from.y + (to.y - from.y) * fraction),
-                );
-                let beside = round(along.y - height / 2.0);
-                let candidates: [(Bounds, &'static str); 2] = if horizontal {
-                    [
-                        (
-                            bounds_at(along.x - width / 2.0, along.y - gap - height, width, height),
-                            "middle",
-                        ),
-                        (bounds_at(along.x - width / 2.0, along.y + gap, width, height), "middle"),
-                    ]
-                } else {
-                    [
-                        (bounds_at(along.x + gap, beside, width, height), "start"),
-                        (bounds_at(along.x - gap - width, beside, width, height), "end"),
-                    ]
-                };
-                candidates.into_iter().find_map(|(bounds, anchor)| {
-                    let within = if horizontal {
-                        bounds.x >= from.x.min(to.x) && bounds.right() <= from.x.max(to.x)
-                    } else {
-                        bounds.y >= from.y.min(to.y) && bounds.bottom() <= from.y.max(to.y)
-                    };
-                    (within && fits(&bounds)).then_some(Placement { anchor, bounds })
-                })
-            })
+        others.iter().all(|other| {
+            runs_across(beside, bounds, *other) || !segment_intersects_interior(other.0, other.1, &inflated)
         })
     };
-    let clear = find(&|bounds| fits(bounds) && clear_of_others(bounds));
+    // A label reads best well away from where its connector is crossed by
+    // others, turns and ends.
+    let landmarks: Vec<Point> = own
+        .iter()
+        .flat_map(|(a, b)| {
+            others
+                .iter()
+                .filter(move |(c, d)| chords_cross(*a, *b, *c, *d))
+                .map(move |(c, d)| crossing_point(*a, *b, *c, *d))
+        })
+        .chain(route.iter().copied())
+        .collect();
+    let clearance = |bounds: &Bounds| {
+        landmarks
+            .iter()
+            .map(|p| {
+                let dx = (bounds.x - p.x).max(p.x - bounds.right()).max(0.0);
+                let dy = (bounds.y - p.y).max(p.y - bounds.bottom()).max(0.0);
+                hypot(dx, dy)
+            })
+            .fold(f64::INFINITY, f64::min)
+    };
+    // Every spot that fits, in order of preference: the longest segment
+    // first, from its middle outwards. The one furthest from the nearest
+    // crossing, bend or end wins; ties keep that order.
+    let find = |fits: &dyn Fn(&Bounds, (Point, Point)) -> bool| {
+        ordered
+            .iter()
+            .flat_map(|(_, (from, to))| {
+                let (from, to) = (*from, *to);
+                let horizontal = from.y == to.y;
+                (0..=20).flat_map(move |step| {
+                    let fraction = 0.5 + if step % 2 == 0 { 1.0 } else { -1.0 } * ((step as f64) / 2.0).ceil() * 0.05;
+                    let along = point(
+                        round(from.x + (to.x - from.x) * fraction),
+                        round(from.y + (to.y - from.y) * fraction),
+                    );
+                    let beside = round(along.y - height / 2.0);
+                    let candidates: [(Bounds, &'static str); 2] = if horizontal {
+                        [
+                            (
+                                bounds_at(along.x - width / 2.0, along.y - gap - height, width, height),
+                                "middle",
+                            ),
+                            (bounds_at(along.x - width / 2.0, along.y + gap, width, height), "middle"),
+                        ]
+                    } else {
+                        [
+                            (bounds_at(along.x + gap, beside, width, height), "start"),
+                            (bounds_at(along.x - gap - width, beside, width, height), "end"),
+                        ]
+                    };
+                    candidates
+                        .into_iter()
+                        .map(move |(bounds, anchor)| (bounds, anchor, (from, to)))
+                        .filter(move |_| (0.0..=1.0).contains(&fraction))
+                        .filter(move |(bounds, _, _)| {
+                            if horizontal {
+                                bounds.x >= from.x.min(to.x) && bounds.right() <= from.x.max(to.x)
+                            } else {
+                                bounds.y >= from.y.min(to.y) && bounds.bottom() <= from.y.max(to.y)
+                            }
+                        })
+                })
+            })
+            .filter(|(bounds, _, beside)| fits(bounds, *beside))
+            .map(|(bounds, anchor, _)| Placement { anchor, bounds })
+            .fold(None, |best: Option<(f64, Placement)>, placement| {
+                let distance = clearance(&placement.bounds);
+                match best {
+                    Some((best_distance, _)) if best_distance >= distance => best,
+                    _ => Some((distance, placement)),
+                }
+            })
+            .map(|(_, placement)| placement)
+    };
+    let clear = find(&|bounds, beside| fits(bounds) && clear_of_others(bounds, beside));
     if clear_only {
         clear
     } else {
-        clear.or_else(|| find(&fits))
+        clear.or_else(|| find(&|bounds, _| fits(bounds)))
     }
 }
