@@ -1,0 +1,223 @@
+---
+source: tests/arrange.rs
+expression: result.svg.as_str()
+---
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 2060" width="1200" height="2060">
+
+  <style>
+    text { font-family: system-ui, sans-serif; fill: #1f2937; }
+    .title { font-size: 20px; font-weight: 700; }
+    .caption { font-size: 12px; fill: #6b7280; }
+    .container &gt; rect { fill: #f8fafc; stroke: #94a3b8; stroke-dasharray: 6 4; }
+    .container &gt; text { font-size: 13px; font-weight: 600; fill: #475569; }
+    .actor circle { fill: #fef3c7; stroke: #b45309; stroke-width: 1.5; }
+    .client rect { fill: #e0f2fe; stroke: #0369a1; }
+    .edge rect { fill: #ede9fe; stroke: #6d28d9; }
+    .service rect { fill: #dcfce7; stroke: #15803d; }
+    .store rect { fill: #ffedd5; stroke: #c2410c; }
+    .external rect { fill: #f1f5f9; stroke: #334155; stroke-width: 2; }
+    .process circle { fill: #dbeafe; stroke: #1d4ed8; stroke-width: 1.5; }
+    .entity rect { fill: #fef3c7; stroke: #92400e; stroke-width: 2; }
+    .datastore rect { fill: #f0fdf4; stroke: #166534; }
+    .flow { stroke: #475569; stroke-width: 1.4; marker-end: url(#arrow); }
+    .flow-label { font-size: 11px; fill: #334155; font-style: italic; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
+  <text data-label="title" class="title" x="24" y="40" font-size="20">Loan origination — data flow diagram (level 1)</text>
+  <text data-label="caption" class="caption" x="24" y="62" font-size="12">From application to payout: nested parallel checks, a manual review branch and flows that skip ahead</text>
+  <g data-node="applicant" class="entity">
+    <rect x="470" y="90" width="140" height="52" rx="6"/>
+    <text x="540" y="121" text-anchor="middle" font-size="13">Applicant</text>
+  </g>
+  <g data-node="idp" class="entity">
+    <rect x="898" y="400" width="154" height="52" rx="6"/>
+    <text x="975" y="431" text-anchor="middle" font-size="13">Identity provider</text>
+  </g>
+  <g data-node="bureau" class="entity">
+    <rect x="40" y="655" width="130" height="52" rx="6"/>
+    <text x="105" y="686" text-anchor="middle" font-size="13">Credit bureau</text>
+  </g>
+  <g data-node="underwriter" class="entity" transform="translate(0 20)">
+    <rect x="1010" y="1115" width="130" height="52" rx="6"/>
+    <text x="1075" y="1146" text-anchor="middle" font-size="13">Underwriter</text>
+  </g>
+  <g data-node="bank" class="entity">
+    <rect x="900" y="1630" width="130" height="52" rx="6"/>
+    <text x="965" y="1661" text-anchor="middle" font-size="13">Payout bank</text>
+  </g>
+  <g data-node="messaging" class="entity">
+    <rect x="463" y="1970" width="154" height="52" rx="6"/>
+    <text x="540" y="2001" text-anchor="middle" font-size="13">Messaging service</text>
+  </g>
+  <g data-node="intake" class="process">
+    <circle cx="540" cy="250" r="82"/>
+    <text x="540" y="255" text-anchor="middle" font-size="13">1 Take application</text>
+  </g>
+  <g data-node="verify" class="process" transform="translate(0 20)">
+    <circle cx="540" cy="425" r="78"/>
+    <text x="540" y="430" text-anchor="middle" font-size="13">2 Verify identity</text>
+  </g>
+  <g data-node="credit" class="process">
+    <circle cx="380" cy="680" r="67"/>
+    <text x="380" y="685" text-anchor="middle" font-size="13">3 Check credit</text>
+  </g>
+  <g data-node="screen" class="process" transform="translate(57 0)">
+    <circle cx="720" cy="590" r="82"/>
+    <text x="720" y="595" text-anchor="middle" font-size="13">4 Screen applicant</text>
+  </g>
+  <g data-node="sanctions" class="process">
+    <circle cx="600" cy="780" r="78"/>
+    <text x="600" y="785" text-anchor="middle" font-size="13">5 Check sanctions</text>
+  </g>
+  <g data-node="fraud" class="process">
+    <circle cx="840" cy="780" r="63"/>
+    <text x="840" y="785" text-anchor="middle" font-size="13">6 Score fraud</text>
+  </g>
+  <g data-node="assess" class="process" transform="translate(0 40)">
+    <circle cx="540" cy="960" r="63"/>
+    <text x="540" y="965" text-anchor="middle" font-size="13">7 Assess risk</text>
+  </g>
+  <g data-node="review" class="process" transform="translate(0 20)">
+    <circle cx="760" cy="1140" r="63"/>
+    <text x="760" y="1145" text-anchor="middle" font-size="13">8 Review case</text>
+  </g>
+  <g data-node="offer" class="process">
+    <circle cx="540" cy="1310" r="60"/>
+    <text x="540" y="1315" text-anchor="middle" font-size="13">9 Make offer</text>
+  </g>
+  <g data-node="sign" class="process">
+    <circle cx="540" cy="1480" r="75"/>
+    <text x="540" y="1485" text-anchor="middle" font-size="13">10 Sign contract</text>
+  </g>
+  <g data-node="payout" class="process">
+    <circle cx="540" cy="1655" r="58"/>
+    <text x="540" y="1660" text-anchor="middle" font-size="13">11 Pay out</text>
+  </g>
+  <g data-node="notify" class="process">
+    <circle cx="540" cy="1820" r="56"/>
+    <text x="540" y="1825" text-anchor="middle" font-size="13">12 Notify</text>
+  </g>
+  <g data-node="applications" class="datastore">
+    <rect x="760" y="230" width="140" height="40" rx="6"/>
+    <text x="830" y="255" text-anchor="middle" font-size="13">D1 Applications</text>
+  </g>
+  <g data-node="customers" class="datastore" transform="translate(20 60)">
+    <rect x="220" y="405" width="130" height="40" rx="6"/>
+    <text x="285" y="430" text-anchor="middle" font-size="13">D2 Customers</text>
+  </g>
+  <g data-node="watchlists" class="datastore" transform="translate(0 40)">
+    <rect x="880" y="570" width="130" height="40" rx="6"/>
+    <text x="945" y="595" text-anchor="middle" font-size="13">D3 Watchlists</text>
+  </g>
+  <g data-node="signals" class="datastore" transform="translate(60 0)">
+    <rect x="956.5" y="760" width="147" height="40" rx="6"/>
+    <text x="1030" y="785" text-anchor="middle" font-size="13">D4 Fraud signals</text>
+  </g>
+  <g data-node="models" class="datastore">
+    <rect x="229.5" y="940" width="131" height="40" rx="6"/>
+    <text x="295" y="965" text-anchor="middle" font-size="13">D5 Risk models</text>
+  </g>
+  <g data-node="queue" class="datastore">
+    <rect x="860" y="1050" width="140" height="40" rx="6"/>
+    <text x="930" y="1075" text-anchor="middle" font-size="13">D6 Review queue</text>
+  </g>
+  <g data-node="offers" class="datastore">
+    <rect x="240" y="1290" width="120" height="40" rx="6"/>
+    <text x="300" y="1315" text-anchor="middle" font-size="13">D7 Offers</text>
+  </g>
+  <g data-node="contracts" class="datastore">
+    <rect x="760" y="1460" width="130" height="40" rx="6"/>
+    <text x="825" y="1485" text-anchor="middle" font-size="13">D8 Contracts</text>
+  </g>
+  <g data-node="ledger" class="datastore">
+    <rect x="240" y="1635" width="120" height="40" rx="6"/>
+    <text x="300" y="1660" text-anchor="middle" font-size="13">D9 Ledger</text>
+  </g>
+  <path id="f1" class="flow" data-from="applicant" data-to="intake" fill="none" d="M 540 142 L 540 168"/>
+  <path id="f2" class="flow" data-from="intake" data-to="applications" fill="none" d="M 622 250 L 760 250"/>
+  <path id="f3" class="flow" data-from="intake" data-to="verify" fill="none" d="M 540 332 L 540 367"/>
+  <path id="f4" class="flow" data-from="verify" data-to="idp" fill="none" d="M 614 419 L 898 419"/>
+  <path id="f5" class="flow" data-from="idp" data-to="verify" fill="none" d="M 898 435 L 617 435"/>
+  <path id="f6" class="flow" data-from="verify" data-to="customers" fill="none" d="M 466 419 L 305 419 L 305 465"/>
+  <path id="f7" class="flow" data-from="verify" data-to="credit" fill="none" d="M 466 471 L 380 471 L 380 613"/>
+  <path id="f8" class="flow" data-from="verify" data-to="screen" fill="none" d="M 566 519 L 566 563 L 700 563"/>
+  <path id="f9" class="flow" data-from="credit" data-to="bureau" fill="none" d="M 313 672 L 170 672"/>
+  <path id="f10" class="flow" data-from="bureau" data-to="credit" fill="none" d="M 170 690 L 314 690"/>
+  <path id="f11" class="flow" data-from="watchlists" data-to="screen" fill="none" d="M 945 610 L 945 590 L 859 590"/>
+  <path id="f12" class="flow" data-from="screen" data-to="sanctions" fill="none" d="M 700 617 L 600 617 L 600 702"/>
+  <path id="f13" class="flow" data-from="screen" data-to="fraud" fill="none" d="M 840 642 L 840 717"/>
+  <path id="f14" class="flow" data-from="signals" data-to="fraud" fill="none" d="M 1016.5 773 L 903 773"/>
+  <path id="f15" class="flow" data-from="fraud" data-to="signals" fill="none" d="M 903 787 L 1016.5 787"/>
+  <path id="f16" class="flow" data-from="credit" data-to="assess" fill="none" d="M 380 747 L 380 979 L 481 979"/>
+  <path id="f17" class="flow" data-from="sanctions" data-to="assess" fill="none" d="M 540 830 L 540 937"/>
+  <path id="f18" class="flow" data-from="fraud" data-to="assess" fill="none" d="M 840 843 L 840 979 L 599 979"/>
+  <path id="f19" class="flow" data-from="models" data-to="assess" fill="none" d="M 295 980 L 295 1021 L 481 1021"/>
+  <path id="f20" class="flow" data-from="assess" data-to="offer" fill="none" d="M 519 1059 L 519 1254"/>
+  <path id="f21" class="flow" data-from="assess" data-to="review" fill="none" d="M 603 1000 L 739 1000 L 739 1101"/>
+  <path id="f22" class="flow" data-from="review" data-to="queue" fill="none" d="M 781 1101 L 781 1070 L 860 1070"/>
+  <path id="f23" class="flow" data-from="review" data-to="underwriter" fill="none" d="M 822 1152 L 1010 1152"/>
+  <path id="f24" class="flow" data-from="underwriter" data-to="review" fill="none" d="M 1010 1170 L 822 1170"/>
+  <path id="f25" class="flow" data-from="review" data-to="offer" fill="none" d="M 760 1223 L 760 1290 L 597 1290"/>
+  <path id="f26" class="flow" data-from="intake" data-to="offer" fill="none" d="M 458 250 L 418 250 L 418 600 L 468 600 L 468 1226 L 560 1226 L 560 1253"/>
+  <path id="f27" class="flow" data-from="intake" data-to="notify" fill="none" d="M 469 209 L 192 209 L 192 1820 L 484 1820"/>
+  <path id="f28" class="flow" data-from="assess" data-to="notify" fill="none" d="M 599 1021 L 623 1021 L 623 1801 L 593 1801"/>
+  <path id="f29" class="flow" data-from="verify" data-to="sign" fill="none" d="M 514 519 L 514 763 L 441 763 L 441 1455 L 469 1455"/>
+  <path id="f30" class="flow" data-from="customers" data-to="payout" fill="none" d="M 240 485 L 202 485 L 202 1683 L 489 1683"/>
+  <path id="f31" class="flow" data-from="applicant" data-to="sign" fill="none" d="M 470 116 L 212 116 L 212 1505 L 469 1505"/>
+  <path id="f32" class="flow" data-from="offer" data-to="offers" fill="none" d="M 480 1310 L 360 1310"/>
+  <path id="f33" class="flow" data-from="offer" data-to="sign" fill="none" d="M 540 1370 L 540 1405"/>
+  <path id="f34" class="flow" data-from="offer" data-to="notify" fill="none" d="M 597 1330 L 643 1330 L 643 1839 L 593 1839"/>
+  <path id="f35" class="flow" data-from="sign" data-to="contracts" fill="none" d="M 615 1480 L 760 1480"/>
+  <path id="f36" class="flow" data-from="sign" data-to="payout" fill="none" d="M 540 1555 L 540 1597"/>
+  <path id="f37" class="flow" data-from="payout" data-to="ledger" fill="none" d="M 482 1655 L 360 1655"/>
+  <path id="f38" class="flow" data-from="payout" data-to="bank" fill="none" d="M 597 1647 L 900 1647"/>
+  <path id="f39" class="flow" data-from="bank" data-to="payout" fill="none" d="M 900 1665 L 597 1665"/>
+  <path id="f40" class="flow" data-from="payout" data-to="notify" fill="none" d="M 540 1713 L 540 1764"/>
+  <path id="f41" class="flow" data-from="notify" data-to="messaging" fill="none" d="M 540 1876 L 540 1970"/>
+  <text data-label="f1-label" data-label-for="f1" class="flow-label" x="549" y="160" text-anchor="start" font-size="11">application form</text>
+  <text data-label="f2-label" data-label-for="f2" class="flow-label" x="691" y="239" text-anchor="middle" font-size="11">application</text>
+  <text data-label="f3-label" data-label-for="f3" class="flow-label" x="549" y="355" text-anchor="start" font-size="11">applicant details</text>
+  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="756" y="408" text-anchor="middle" font-size="11">document scan</text>
+  <text data-label="f5-label" data-label-for="f5" class="flow-label" x="758" y="455" text-anchor="middle" font-size="11">verification result</text>
+  <text data-label="f6-label" data-label-for="f6" class="flow-label" x="361" y="408" text-anchor="middle" font-size="11">customer record</text>
+  <text data-label="f7-label" data-label-for="f7" class="flow-label" x="371" y="547" text-anchor="end" font-size="11">verified identity</text>
+  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="575" y="546" text-anchor="start" font-size="11">applicant profile</text>
+  <text data-label="f9-label" data-label-for="f9" class="flow-label" x="263" y="661" text-anchor="middle" font-size="11">inquiry</text>
+  <text data-label="f10-label" data-label-for="f10" class="flow-label" x="264" y="710" text-anchor="middle" font-size="11">credit report</text>
+  <text data-label="f11-label" data-label-for="f11" class="flow-label" x="954" y="604" text-anchor="start" font-size="11">watchlist entries</text>
+  <text data-label="f12-label" data-label-for="f12" class="flow-label" x="609" y="665" text-anchor="start" font-size="11">name matches</text>
+  <text data-label="f13-label" data-label-for="f13" class="flow-label" x="849" y="688" text-anchor="start" font-size="11">device data</text>
+  <text data-label="f14-label" data-label-for="f14" class="flow-label" x="960" y="762" text-anchor="middle" font-size="11">known patterns</text>
+  <text data-label="f15-label" data-label-for="f15" class="flow-label" x="960" y="807" text-anchor="middle" font-size="11">new signals</text>
+  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="371" y="868" text-anchor="end" font-size="11">credit score</text>
+  <text data-label="f17-label" data-label-for="f17" class="flow-label" x="549" y="889" text-anchor="start" font-size="11">sanctions result</text>
+  <text data-label="f18-label" data-label-for="f18" class="flow-label" x="720" y="968" text-anchor="middle" font-size="11">fraud score</text>
+  <text data-label="f19-label" data-label-for="f19" class="flow-label" x="369" y="1010" text-anchor="middle" font-size="11">scoring model</text>
+  <text data-label="f20-label" data-label-for="f20" class="flow-label" x="528" y="1162" text-anchor="start" font-size="11">auto decision</text>
+  <text data-label="f21-label" data-label-for="f21" class="flow-label" x="748" y="1045" text-anchor="start" font-size="11">borderline case</text>
+  <text data-label="f22-label" data-label-for="f22" class="flow-label" x="821" y="1090" text-anchor="middle" font-size="11">case</text>
+  <text data-label="f23-label" data-label-for="f23" class="flow-label" x="916" y="1141" text-anchor="middle" font-size="11">case file</text>
+  <text data-label="f24-label" data-label-for="f24" class="flow-label" x="916" y="1190" text-anchor="middle" font-size="11">review decision</text>
+  <text data-label="f25-label" data-label-for="f25" class="flow-label" x="769" y="1262" text-anchor="start" font-size="11">review outcome</text>
+  <text data-label="f26-label" data-label-for="f26" class="flow-label" x="409" y="343" text-anchor="end" font-size="11">amount and term</text>
+  <text data-label="f27-label" data-label-for="f27" class="flow-label" x="183" y="1261" text-anchor="end" font-size="11">acknowledgement</text>
+  <text data-label="f28-label" data-label-for="f28" class="flow-label" x="632" y="1260" text-anchor="start" font-size="11">decline notice</text>
+  <text data-label="f29-label" data-label-for="f29" class="flow-label" x="432" y="1183" text-anchor="end" font-size="11">verified identity</text>
+  <text data-label="f30-label" data-label-for="f30" class="flow-label" x="211" y="1568" text-anchor="start" font-size="11">bank account</text>
+  <text data-label="f31-label" data-label-for="f31" class="flow-label" x="221" y="1093" text-anchor="start" font-size="11">e-signature</text>
+  <text data-label="f32-label" data-label-for="f32" class="flow-label" x="402" y="1299" text-anchor="middle" font-size="11">offer</text>
+  <text data-label="f33-label" data-label-for="f33" class="flow-label" x="531" y="1393" text-anchor="end" font-size="11">offer terms</text>
+  <text data-label="f34-label" data-label-for="f34" class="flow-label" x="652" y="1564" text-anchor="start" font-size="11">offer details</text>
+  <text data-label="f35-label" data-label-for="f35" class="flow-label" x="702" y="1469" text-anchor="middle" font-size="11">signed contract</text>
+  <text data-label="f36-label" data-label-for="f36" class="flow-label" x="531" y="1581" text-anchor="end" font-size="11">disbursement order</text>
+  <text data-label="f37-label" data-label-for="f37" class="flow-label" x="421" y="1644" text-anchor="middle" font-size="11">ledger entry</text>
+  <text data-label="f38-label" data-label-for="f38" class="flow-label" x="764" y="1636" text-anchor="middle" font-size="11">transfer</text>
+  <text data-label="f39-label" data-label-for="f39" class="flow-label" x="764" y="1685" text-anchor="middle" font-size="11">settlement</text>
+  <text data-label="f40-label" data-label-for="f40" class="flow-label" x="531" y="1744" text-anchor="end" font-size="11">payout confirmation</text>
+  <text data-label="f41-label" data-label-for="f41" class="flow-label" x="549" y="1928" text-anchor="start" font-size="11">message</text>
+</svg>

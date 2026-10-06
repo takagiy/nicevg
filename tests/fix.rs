@@ -1479,6 +1479,42 @@ fn places_a_label_again_when_the_crossings_on_its_connector_change() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a box with two connectors leaving its left side for two nodes far
+///   below it, past a column of nodes in between, so both run down the left
+/// When the diagram is fixed
+/// Then the two connectors do not cross: the one leaving lower turns down
+///   inside the other
+#[test]
+fn trades_ports_on_a_side_so_two_connectors_leaving_it_do_not_cross() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 900">
+        <g data-node="intake"><rect x="260" y="20" width="120" height="48"/><text x="320" y="49" text-anchor="middle" font-size="13">Intake</text></g>
+        <g data-node="verify"><rect x="260" y="160" width="120" height="48"/><text x="320" y="189" text-anchor="middle" font-size="13">Verify</text></g>
+        <g data-node="assess"><rect x="260" y="320" width="120" height="48"/><text x="320" y="349" text-anchor="middle" font-size="13">Assess</text></g>
+        <g data-node="offer"><rect x="260" y="480" width="120" height="48"/><text x="320" y="509" text-anchor="middle" font-size="13">Offer</text></g>
+        <g data-node="notify"><rect x="260" y="760" width="120" height="48"/><text x="320" y="789" text-anchor="middle" font-size="13">Notify</text></g>
+        <g data-node="side"><rect x="440" y="20" width="120" height="48"/><text x="500" y="49" text-anchor="middle" font-size="13">Side</text></g>
+        <path id="checks" data-from="intake" data-to="verify" d="M 320 68 L 320 160"/>
+        <path id="scores" data-from="verify" data-to="assess" d="M 320 208 L 320 320"/>
+        <path id="decision" data-from="assess" data-to="offer" d="M 320 368 L 320 480"/>
+        <path id="details" data-from="offer" data-to="notify" d="M 320 528 L 320 760"/>
+        <path id="aside" data-from="intake" data-to="side" d="M 380 44 L 440 44"/>
+        <line id="terms" data-from="intake" data-to="offer" x1="320" y1="44" x2="320" y2="504"/>
+        <line id="receipt" data-from="intake" data-to="notify" x1="320" y1="44" x2="320" y2="784"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let terms = connector_points(&result.report, "terms");
+    let receipt = connector_points(&result.report, "receipt");
+
+    assert!(is_orthogonal(&terms) && is_orthogonal(&receipt));
+    assert!(!crosses_route(&terms, &receipt), "{terms:?} crosses {receipt:?}");
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a connector drawn as a staircase of segments all shorter than its
 ///   tied label, which floats far away
 /// When the diagram is fixed

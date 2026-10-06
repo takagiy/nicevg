@@ -11,11 +11,12 @@ use crate::diagram::{
     Diagram, DiagramConnector, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, holds_end, is_node_shape,
     node_group, number_attribute, rect_bounds, translation,
 };
-use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, segments};
+use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
-    LABEL_CLEAR_OF_OTHERS, PortRequest, Sides, choose_sides, connector_ports, end_on_shapes, is_on_outline,
-    label_landmarks, place_label, place_label_clear, route_connector, runs_across, side_of, spread_ports,
+    LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Side, Sides, choose_sides, chords_cross, connector_ports,
+    end_on_shapes, is_on_outline, label_landmarks, place_label, place_label_clear, route_connector, runs_across,
+    side_of, spread_ports,
 };
 use crate::text::{label_texts, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
@@ -523,85 +524,96 @@ fn reroute_connectors(draft: Draft) -> Draft {
         &fixed,
     );
 
+    let route_with = |reroute: &Reroute, ports: Ports, occupied: &[Vec<Point>]| {
+        end_on_shapes(
+            route_connector(
+                &reroute.source.bounds,
+                &reroute.target.bounds,
+                &obstacles_for(reroute.connector),
+                ports,
+                occupied,
+                &rails_for(reroute.connector),
+            ),
+            reroute.source,
+            reroute.target,
+        )
+    };
+    let first_ports: Vec<Ports> = reroutes
+        .iter()
+        .map(|reroute| {
+            ports
+                .get(&reroute.connector.id)
+                .copied()
+                .unwrap_or_else(|| connector_ports(&reroute.source.bounds, &reroute.target.bounds))
+        })
+        .collect();
+    let (_, first_routes) = reroutes.iter().zip(&first_ports).fold(
+        (settled.clone(), Vec::new()),
+        |(occupied, routes): (Vec<Vec<Point>>, Vec<Vec<Point>>), (reroute, ports)| {
+            let route = route_with(reroute, *ports, &occupied);
+            ([occupied, vec![route.clone()]].concat(), [routes, vec![route]].concat())
+        },
+    );
+    let final_routes = improve_ports(&reroutes, &settled, &fixed, first_ports, first_routes, &route_with);
+
     struct Routing {
         draft: Draft,
-        settled: Vec<Vec<Point>>,
         routes: Vec<(String, Vec<Point>)>,
     }
     let initial = Routing {
         draft: draft.clone(),
-        settled,
         routes: diagram
             .connectors
             .iter()
             .map(|c| (c.id.clone(), c.points.clone()))
             .collect(),
     };
-    let routed = reroutes.iter().fold(initial, |state, reroute| {
-        let connector = reroute.connector;
-        let route = end_on_shapes(
-            route_connector(
-                &reroute.source.bounds,
-                &reroute.target.bounds,
-                &obstacles_for(connector),
-                ports
-                    .get(&connector.id)
-                    .copied()
-                    .unwrap_or_else(|| connector_ports(&reroute.source.bounds, &reroute.target.bounds)),
-                &state.settled,
-                &rails_for(connector),
-            ),
-            reroute.source,
-            reroute.target,
-        );
-        let settled = [state.settled, vec![route.clone()]].concat();
-        let routes = with_route(state.routes, &connector.id, route.clone());
-        let document = &state.draft.document;
-        let Some(drawn) = drawn_connectors(document)
-            .into_iter()
-            .find(|drawn| drawn.id == connector.id || (drawn.from == connector.from && drawn.to == connector.to))
-        else {
-            return Routing {
-                settled,
-                routes,
-                ..state
-            };
-        };
-        let shaft = &drawn.shaft;
-        // Routes are in diagram coordinates; the shaft's own are inside its
-        // ancestors' translations.
-        let offset = translation(document, shaft);
-        let local: Vec<Point> = shaft_route(&drawn, &route)
-            .into_iter()
-            .map(|p| Point {
-                x: p.x - offset.x,
-                y: p.y - offset.y,
-            })
-            .collect();
-        let replacement = rerouted_element(
-            document.element(shaft),
-            &local,
-            document.needs_svg_namespace(&shaft[..shaft.len() - 1]),
-        );
-        let updated = drawn
-            .heads
+    let routed =
+        reroutes
             .iter()
-            .fold(
-                document.replace(shaft, replacement),
-                |document, head| match moved_head(&document, head, &route) {
-                    Some(polygon) => document.replace(&head.path, polygon),
-                    None => document,
-                },
-            );
-        let message = format!("Rerouted connector \"{}\" around diagram obstacles.", connector.id);
-        Routing {
-            draft: state
-                .draft
-                .changed(updated, "route-connector", message, &[&connector.id]),
-            settled,
-            routes,
-        }
-    });
+            .zip(final_routes)
+            .fold(initial, |state, (reroute, route)| {
+                let connector = reroute.connector;
+                let routes = with_route(state.routes, &connector.id, route.clone());
+                let document = &state.draft.document;
+                let Some(drawn) = drawn_connectors(document).into_iter().find(|drawn| {
+                    drawn.id == connector.id || (drawn.from == connector.from && drawn.to == connector.to)
+                }) else {
+                    return Routing { routes, ..state };
+                };
+                let shaft = &drawn.shaft;
+                // Routes are in diagram coordinates; the shaft's own are inside its
+                // ancestors' translations.
+                let offset = translation(document, shaft);
+                let local: Vec<Point> = shaft_route(&drawn, &route)
+                    .into_iter()
+                    .map(|p| Point {
+                        x: p.x - offset.x,
+                        y: p.y - offset.y,
+                    })
+                    .collect();
+                let replacement = rerouted_element(
+                    document.element(shaft),
+                    &local,
+                    document.needs_svg_namespace(&shaft[..shaft.len() - 1]),
+                );
+                let updated = drawn
+                    .heads
+                    .iter()
+                    .fold(document.replace(shaft, replacement), |document, head| match moved_head(
+                        &document, head, &route,
+                    ) {
+                        Some(polygon) => document.replace(&head.path, polygon),
+                        None => document,
+                    });
+                let message = format!("Rerouted connector \"{}\" around diagram obstacles.", connector.id);
+                Routing {
+                    draft: state
+                        .draft
+                        .changed(updated, "route-connector", message, &[&connector.id]),
+                    routes,
+                }
+            });
 
     let moving: Vec<_> = diagram
         .labels
@@ -799,6 +811,207 @@ fn end_container_ids<'a>(diagram: &'a Diagram, connector_id: &str) -> Vec<&'a st
 }
 
 /// Replaces or appends a connector's route, keeping the original order.
+/// Routes a connector with the given ports around the routes occupying the
+/// diagram.
+type RouteWith<'a> = dyn Fn(&Reroute, Ports, &[Vec<Point>]) -> Vec<Point> + 'a;
+
+/// Port changes that spreading ports evenly cannot see, tried once routes
+/// are drawn: two connectors on the same node side whose routes cross
+/// trade their ports there, and an end that steps aside just before its
+/// node slides along the side to the line it arrives on. A change stays
+/// when the connectors it reroutes cross less without turning more, or
+/// turn less without crossing more.
+fn improve_ports(
+    reroutes: &[Reroute],
+    settled: &[Vec<Point>],
+    fixed: &HashMap<String, Vec<f64>>,
+    ports: Vec<Ports>,
+    routes: Vec<Vec<Point>>,
+    route_with: &RouteWith,
+) -> Vec<Vec<Point>> {
+    // Reroutes the connectors at `changed`, in order, with their new ports,
+    // keeping the change when it is better.
+    let attempt = |(ports, routes): (Vec<Ports>, Vec<Vec<Point>>), changed: &[(usize, Ports)]| {
+        let others: Vec<Vec<Point>> = settled
+            .iter()
+            .cloned()
+            .chain(
+                routes
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| changed.iter().all(|(changed, _)| changed != index))
+                    .map(|(_, route)| route.clone()),
+            )
+            .collect();
+        let rerouted = changed
+            .iter()
+            .fold(Vec::new(), |rerouted: Vec<Vec<Point>>, (index, new)| {
+                let occupied = [others.clone(), rerouted.clone()].concat();
+                let route = route_with(&reroutes[*index], *new, &occupied);
+                [rerouted, vec![route]].concat()
+            });
+        let current: Vec<Vec<Point>> = changed.iter().map(|(index, _)| routes[*index].clone()).collect();
+        let cost = |set: &[Vec<Point>]| {
+            let crossed: usize = set
+                .iter()
+                .enumerate()
+                .map(|(index, route)| route_crossings(route, &others) + route_crossings(route, &set[index + 1..]))
+                .sum();
+            (crossed, set.iter().map(|route| turns(route)).sum::<usize>())
+        };
+        let (old, new) = (cost(&current), cost(&rerouted));
+        if new.0 <= old.0 && new.1 <= old.1 && new != old {
+            changed
+                .iter()
+                .zip(rerouted)
+                .fold((ports, routes), |(mut ports, mut routes), ((index, port), route)| {
+                    ports[*index] = *port;
+                    routes[*index] = route;
+                    (ports, routes)
+                })
+        } else {
+            (ports, routes)
+        }
+    };
+    // The node at one end of a connector (0 for its start, 1 for its end)
+    // and that end's port.
+    let node_at = |index: usize, end: usize| {
+        if end == 0 {
+            reroutes[index].source
+        } else {
+            reroutes[index].target
+        }
+    };
+    let port_at = |ports: &Ports, end: usize| if end == 0 { ports.start } else { ports.end };
+    let with_port = |ports: Ports, end: usize, p: Point| {
+        if end == 0 {
+            Ports { start: p, ..ports }
+        } else {
+            Ports { end: p, ..ports }
+        }
+    };
+    let pairs: Vec<(usize, usize, usize, usize)> = (0..reroutes.len())
+        .flat_map(|first| ((first + 1)..reroutes.len()).map(move |second| (first, second)))
+        .flat_map(|(first, second)| (0..2).flat_map(move |a| (0..2).map(move |b| (first, second, a, b))))
+        .collect();
+    let traded = pairs
+        .into_iter()
+        .fold((ports, routes), |(ports, routes), (first, second, a, b)| {
+            let (one, other) = (node_at(first, a), node_at(second, b));
+            let (p, q) = (port_at(&ports[first], a), port_at(&ports[second], b));
+            let shared = one.id == other.id && side_of(p, &one.bounds) == side_of(q, &other.bounds);
+            if !shared || route_crossings(&routes[first], std::slice::from_ref(&routes[second])) == 0 {
+                return (ports, routes);
+            }
+            let changed = [
+                (first, with_port(ports[first], a, q)),
+                (second, with_port(ports[second], b, p)),
+            ];
+            attempt((ports, routes), &changed)
+        });
+    let ends: Vec<(usize, usize)> = (0..reroutes.len()).flat_map(|index| [(index, 0), (index, 1)]).collect();
+    let (_, slid) = ends.into_iter().fold(traded, |(ports, routes), (index, end)| {
+        let node = node_at(index, end);
+        let port = port_at(&ports[index], end);
+        let side = side_of(port, &node.bounds);
+        let route: Vec<Point> = if end == 0 {
+            routes[index].iter().rev().copied().collect()
+        } else {
+            routes[index].clone()
+        };
+        let Some(line) = stepped_end(&route) else {
+            return (ports, routes);
+        };
+        let along_y = matches!(side, Side::Left | Side::Right);
+        let (low, length) = if along_y {
+            (node.bounds.y, node.bounds.height)
+        } else {
+            (node.bounds.x, node.bounds.width)
+        };
+        // A port near a circle's tangent would meet it at a glancing angle.
+        let margin = if node.shape.is_some() { length / 4.0 } else { 8.0 };
+        let current = &ports;
+        let taken: Vec<f64> = fixed
+            .get(&side_key(&node.bounds, side))
+            .into_iter()
+            .flatten()
+            .copied()
+            .chain((0..reroutes.len()).flat_map(|other| {
+                (0..2).filter_map(move |other_end| {
+                    if (other, other_end) == (index, end) {
+                        return None;
+                    }
+                    let owner = node_at(other, other_end);
+                    let p = port_at(&current[other], other_end);
+                    (owner.id == node.id && side_of(p, &owner.bounds) == side).then_some(if along_y {
+                        p.y
+                    } else {
+                        p.x
+                    })
+                })
+            }))
+            .collect();
+        if line < low + margin
+            || line > low + length - margin
+            || taken.iter().any(|other| (other - line).abs() < LANE_SPACING)
+        {
+            return (ports, routes);
+        }
+        let moved = if along_y {
+            point(port.x, line)
+        } else {
+            point(line, port.y)
+        };
+        let changed = [(index, with_port(ports[index], end, moved))];
+        attempt((ports, routes), &changed)
+    });
+    slid
+}
+
+/// Where a route steps aside just before its last point: its last three
+/// segments turn one way and back, so the end could lie on the line of the
+/// segment before the step instead. Gives that line's coordinate across
+/// the last segment.
+fn stepped_end(route: &[Point]) -> Option<f64> {
+    let n = route.len();
+    if n < 4 {
+        return None;
+    }
+    let (a, b, c, d) = (route[n - 4], route[n - 3], route[n - 2], route[n - 1]);
+    let direction = |p: Point, q: Point| ((q.x - p.x).signum(), (q.y - p.y).signum());
+    if direction(a, b) != direction(c, d) {
+        return None;
+    }
+    if c.y == d.y && a.y == b.y {
+        Some(b.y)
+    } else if c.x == d.x && a.x == b.x {
+        Some(b.x)
+    } else {
+        None
+    }
+}
+
+/// How many times a route crosses the others.
+fn route_crossings(route: &[Point], others: &[Vec<Point>]) -> usize {
+    let own = segments(route);
+    others
+        .iter()
+        .flat_map(|other| segments(other))
+        .map(|(c, d)| own.iter().filter(|(a, b)| chords_cross(*a, *b, c, d)).count())
+        .sum()
+}
+
+/// How many times a route changes direction.
+fn turns(route: &[Point]) -> usize {
+    route
+        .windows(3)
+        .filter(|w| {
+            let (a, b, c) = (w[0], w[1], w[2]);
+            (b.x - a.x) * (c.y - b.y) != (b.y - a.y) * (c.x - b.x)
+        })
+        .count()
+}
+
 fn with_route(routes: Vec<(String, Vec<Point>)>, id: &str, route: Vec<Point>) -> Vec<(String, Vec<Point>)> {
     if routes.iter().any(|(existing, _)| existing == id) {
         routes

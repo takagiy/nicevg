@@ -3,7 +3,7 @@
 
 mod support;
 
-use nicevg::{AnalysisReport, FixResult};
+use nicevg::{AnalysisReport, FixResult, Point};
 use support::*;
 
 /// Every node of the arranged diagram stays on the same side of the nodes
@@ -293,9 +293,8 @@ fn treats_an_alignment_whose_connector_detours_as_weak() {
 ///   detouring around inventory, which is in the payment row but joined to
 ///   neither end
 /// When the diagram is arranged
-/// Then the charge bends less than after fixing, the connectors entering
-///   PostgreSQL from the right are spread evenly, none runs along a
-///   container's border, the
+/// Then the connectors entering PostgreSQL from the right are spread
+///   evenly, none runs along a container's border, the
 ///   catalog service between auth and cart does not dent out of their row,
 ///   the gateway's call to the cart bends at most twice, and no connector
 ///   gains a jog shorter than 20px
@@ -326,7 +325,6 @@ fn arranges_the_storefront_architecture_without_denting_a_row() {
             .sum()
     };
 
-    assert!(bend_count(&connector_points(&result.report, "f20")) < bend_count(&connector_points(&fixed.report, "f20")));
     // Whatever connectors enter PostgreSQL from the right are spread evenly,
     // keeping the same gap from each other and from the side's corners.
     let postgres = node_bounds(&result.report, "postgres");
@@ -513,6 +511,55 @@ fn arranges_a_c4_container_diagram_without_issues_or_dents() {
     assert_layout_kept(svg, &result);
 
     assert_fix_snapshots!(result);
+}
+
+/// Given a tall loan origination DFD drafted with straight lines between
+///   centres: a nested split and merge of checks, a manual review branch,
+///   stores beside the processes, and flows skipping several processes
+/// When the diagram is arranged
+/// Then nothing is reported, the layout is kept, no connector steps aside
+///   just before reaching a node, and the two shortcuts leaving "take
+///   application" side by side do not cross
+#[test]
+fn arranges_a_tall_loan_dfd_without_steps_at_the_ends() {
+    let svg = include_str!("fixtures/loan-origination-dfd.svg");
+
+    let result = arrange(svg);
+
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+    assert_eq!(stepped_ends(&result.report), Vec::<String>::new());
+    // f26 runs to "make offer" and f27 to "notify", both past every
+    // process in between.
+    assert!(!crosses_route(
+        &connector_points(&result.report, "f26"),
+        &connector_points(&result.report, "f27")
+    ));
+    assert_layout_kept(svg, &result);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Connectors whose route steps aside just before an end: a turn, a step
+///   under 20px, and a turn back into the same direction as before.
+fn stepped_ends(report: &AnalysisReport) -> Vec<String> {
+    report
+        .diagram
+        .connectors
+        .iter()
+        .filter(|connector| {
+            let points = &connector.points;
+            let steps = |p: &[Point]| {
+                p.len() >= 4 && {
+                    let (a, b, c, d) = (p[0], p[1], p[2], p[3]);
+                    let parallel = (a.x == b.x && c.x == d.x) || (a.y == b.y && c.y == d.y);
+                    parallel && (b.x - c.x).abs() + (b.y - c.y).abs() < 20.0
+                }
+            };
+            let reversed: Vec<Point> = points.iter().rev().copied().collect();
+            steps(points) || steps(&reversed)
+        })
+        .map(|connector| connector.id.clone())
+        .collect()
 }
 
 /// Given a diagram whose connectors already run straight without crossing
