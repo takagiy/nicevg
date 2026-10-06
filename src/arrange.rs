@@ -26,6 +26,8 @@ use crate::{AnalysisReport, SvgInputError, parse};
 const MAX_SHIFT: f64 = 60.0;
 const NUDGES: [f64; 2] = [20.0, 40.0];
 const MAX_STEPS: usize = 12;
+/// Joins the ids of nodes whose connectors a candidate reroutes together.
+const TOGETHER: &str = "\u{1f}";
 
 const ISSUE_COST: f64 = 1000.0;
 const CROSSING_COST: f64 = 150.0;
@@ -47,6 +49,8 @@ const LOOSE_ALIGNMENT_COST: f64 = 50.0;
 /// the node is joined to the line.
 const JOINED_DENT_COST: f64 = 300.0;
 const LOOSE_DENT_COST: f64 = 200.0;
+/// Every node that leaves a line it was on.
+const OFF_LINE_COST: f64 = 40.0;
 /// A connector with any bend reads as a detour, on top of its bends.
 const BENT_COST: f64 = 60.0;
 /// A step shorter than this in the middle of a route is a jog: the line
@@ -159,8 +163,9 @@ fn evaluate_all(context: &Context, state: &State, candidates: &[(String, Move)])
 /// them may have moved since they were last routed.
 fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<State> {
     let in_place = step.dx == 0.0 && step.dy == 0.0;
+    let ids: Vec<String> = id.split(TOGETHER).map(str::to_owned).collect();
     let mut document = parse(&state.result.svg).ok()?;
-    let group = node_group(&document, id)?;
+    let group = node_group(&document, &ids[0])?;
     let transform = translated(document.element(&group).attr("transform"), step);
     document = document.update(&group, |g| {
         if in_place {
@@ -179,7 +184,7 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
             g.with_attr("transform", &transform)
         }
     });
-    let moved = fix_after_moves(&serialize(&document), &[id.to_owned()], 5).ok()?;
+    let moved = fix_after_moves(&serialize(&document), &ids, 5).ok()?;
     let mut offsets = state.offsets.clone();
     let offset = offsets.entry(id.to_owned()).or_insert(point(0.0, 0.0));
     *offset = point(offset.x + step.dx, offset.y + step.dy);
@@ -357,13 +362,33 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
         .filter(|c| c.points.len() > 2)
         .flat_map(|c| [c.from.clone(), c.to.clone()])
         .map(|id| (id, Move { dx: 0.0, dy: 0.0 }));
+    // Connectors that cross or touch may each be stuck where the other
+    // runs: rerouting all their ends at once lets both find new ways.
+    let connectors = &diagram.connectors;
+    let together = connectors.iter().enumerate().flat_map(|(index, first)| {
+        connectors[index + 1..]
+            .iter()
+            .filter(move |second| crossings(&first.points, &second.points) + touches(&first.points, &second.points) > 0)
+            .map(move |second| {
+                let mut ends = vec![
+                    first.from.clone(),
+                    first.to.clone(),
+                    second.from.clone(),
+                    second.to.clone(),
+                ];
+                ends.sort();
+                ends.dedup();
+                (ends.join(TOGETHER), Move { dx: 0.0, dy: 0.0 })
+            })
+    });
     let mut seen: Vec<(String, Move)> = Vec::new();
-    for (id, step) in reroute.chain(straighten).chain(unblock).chain(nudges) {
+    for (id, step) in reroute.chain(together).chain(straighten).chain(unblock).chain(nudges) {
         let rounded = Move {
             dx: step.dx.round(),
             dy: step.dy.round(),
         };
-        if !seen.contains(&(id.clone(), rounded)) && context.allows(state, &id, rounded) {
+        let in_place = rounded.dx == 0.0 && rounded.dy == 0.0;
+        if !seen.contains(&(id.clone(), rounded)) && (in_place || context.allows(state, &id, rounded)) {
             seen.push((id, rounded));
         }
     }
@@ -602,6 +627,13 @@ impl Context {
                 .iter()
                 .map(|id| edge(id).is_none_or(|value| (value - alignment.value).abs() <= 0.5))
                 .collect();
+            // Each node off the line counts too, so peeling a row off one
+            // node at a time is not free after the first break.
+            for (id, on) in members.iter().zip(&on_line) {
+                if !on {
+                    charge((id.clone(), "off".to_owned(), column), OFF_LINE_COST);
+                }
+            }
             let mut index = 1;
             while index + 1 < members.len() {
                 if on_line[index] {
@@ -1110,5 +1142,32 @@ mod tests {
 
         assert!(context.alignment_cost(&moved(&["b", "c"])) >= 2.0 * LOOSE_ALIGNMENT_COST + LOOSE_DENT_COST);
         assert!(context.alignment_cost(&moved(&["b", "c"])) > context.alignment_cost(&moved(&["d"])) + LOOSE_DENT_COST);
+    }
+
+    /// Given a row of five nodes sharing their centre line
+    /// When the last three drop out of line together, or the last alone
+    /// Then peeling three off the end costs more than one, as the row
+    ///   visibly splits in two
+    #[test]
+    fn peeling_more_nodes_off_a_row_costs_more() {
+        let row: Vec<DiagramNode> = (0..5)
+            .map(|index| node(&format!("n{index}"), 150.0 * index as f64, 0.0))
+            .collect();
+        let context = Context::new(diagram(row.clone()));
+        let moved = |ids: &[&str]| {
+            diagram(
+                row.iter()
+                    .map(|n| {
+                        if ids.contains(&n.id.as_str()) {
+                            node(&n.id, n.bounds.x, 24.0)
+                        } else {
+                            n.clone()
+                        }
+                    })
+                    .collect(),
+            )
+        };
+
+        assert!(context.alignment_cost(&moved(&["n2", "n3", "n4"])) > context.alignment_cost(&moved(&["n4"])));
     }
 }

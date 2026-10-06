@@ -11,11 +11,11 @@ use crate::diagram::{
     Diagram, DiagramConnector, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, holds_end, is_node_shape,
     node_group, number_attribute, rect_bounds, translation,
 };
-use crate::geometry::{Bounds, Point, enclosing, format_number};
+use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
-    PortRequest, Sides, choose_sides, connector_ports, end_on_shapes, is_on_outline, place_label, route_connector,
-    side_of, spread_ports,
+    LABEL_CLEAR_OF_OTHERS, PortRequest, Sides, choose_sides, connector_ports, end_on_shapes, is_on_outline,
+    place_label, place_label_clear, route_connector, side_of, spread_ports,
 };
 use crate::text::{label_texts, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
@@ -100,7 +100,7 @@ fn fix_once(svg: &str, moved: &[String]) -> Result<FixResult, SvgInputError> {
         changes: Vec::new(),
         moved_node_ids: moved.to_vec(),
     };
-    let draft = expand_view_box(reroute_connectors(separate_nodes(expand_nodes(draft))));
+    let draft = expand_view_box(clarify_labels(reroute_connectors(separate_nodes(expand_nodes(draft)))));
     let written = serialize(&draft.document);
     Ok(FixResult {
         report: analyze(&written)?,
@@ -653,6 +653,78 @@ fn reroute_connectors(draft: Draft) -> Draft {
             (draft, [obstacles, vec![placement.bounds]].concat())
         });
     placed
+}
+
+/// Moves connector labels that sit within a label clearance of another
+/// connector, where they could be taken for its label, to a spot beside
+/// their own connector clear of the others, when there is one.
+fn clarify_labels(draft: Draft) -> Draft {
+    let report = draft.report();
+    let diagram = &report.diagram;
+    let routes: Vec<Vec<Point>> = diagram.connectors.iter().map(|c| c.points.clone()).collect();
+    let unclear: Vec<_> = diagram
+        .labels
+        .iter()
+        .filter_map(|label| {
+            let connector = diagram.connector(label.connector.as_deref()?)?;
+            let nearest = diagram
+                .connectors
+                .iter()
+                .filter(|other| other.id != connector.id)
+                .map(|other| distance_to_route(&label.bounds, &other.points))
+                .fold(f64::INFINITY, f64::min);
+            (nearest < LABEL_CLEAR_OF_OTHERS).then_some((label, connector))
+        })
+        .collect();
+    let others: Vec<Bounds> = diagram.labels.iter().map(|label| label.bounds).collect();
+    let (clarified, _) = unclear
+        .into_iter()
+        .fold((draft, others), |(draft, obstacles), (label, connector)| {
+            let texts = label_texts(&draft.document, &label.id);
+            if texts.is_empty() {
+                return (draft, obstacles);
+            }
+            let blocked: Vec<Bounds> = obstacles
+                .iter()
+                .filter(|bounds| **bounds != label.bounds)
+                .copied()
+                .chain(label_blockers(diagram, &connector.id))
+                .collect();
+            let Some(placement) = place_label_clear(
+                label.bounds.width,
+                label.bounds.height,
+                &connector.points,
+                &routes,
+                &blocked,
+                &label_containers(diagram, &connector.id),
+            ) else {
+                return (draft, obstacles);
+            };
+            let updated = move_label(
+                draft.document.clone(),
+                &texts,
+                label.bounds,
+                placement.bounds,
+                placement.anchor,
+            );
+            let message = format!(
+                "Moved label \"{}\" clear of connectors other than \"{}\".",
+                label.id, connector.id
+            );
+            let draft = draft.changed(updated, "move-label", message, &[&label.id, &connector.id]);
+            let obstacles = obstacles
+                .into_iter()
+                .map(|bounds| {
+                    if bounds == label.bounds {
+                        placement.bounds
+                    } else {
+                        bounds
+                    }
+                })
+                .collect();
+            (draft, obstacles)
+        });
+    clarified
 }
 
 /// Node boxes a connector's label keeps clear of: every node except the

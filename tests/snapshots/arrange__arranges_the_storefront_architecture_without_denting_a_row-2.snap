@@ -135,7 +135,7 @@ expression: result.svg.as_str()
   <path id="f11" class="flow" data-from="gateway" data-to="order" fill="none" d="M 468 302 L 620 302"/>
   <path id="f12" class="flow" data-from="auth" data-to="idp" fill="none" d="M 644 130 L 644 106 L 1360 106 L 1360 130"/>
   <path id="f13" class="flow" data-from="catalog" data-to="search" fill="none" d="M 933.5 154 L 970 154 L 970 600"/>
-  <path id="f14" class="flow" data-from="catalog" data-to="postgres" fill="none" d="M 887 178 L 887 212 L 592 212 L 592 600"/>
+  <path id="f14" class="flow" data-from="catalog" data-to="postgres" fill="none" d="M 887 178 L 887 232 L 592 232 L 592 600"/>
   <path id="f15" class="flow" data-from="cart" data-to="redis" fill="none" d="M 1148 154 L 1200 154 L 1200 624 L 1180 624"/>
   <path id="f16" class="flow" data-from="order" data-to="postgres" fill="none" d="M 663 338 L 663 600"/>
   <path id="f17" class="flow" data-from="order" data-to="payment" fill="none" d="M 748 314 L 794.5 314"/>
@@ -149,16 +149,16 @@ expression: result.svg.as_str()
   <text data-label="f5-label" data-label-for="f5" class="flow-label" x="309" y="273" text-anchor="middle" font-size="11">HTTPS</text>
   <text data-label="f6-label" data-label-for="f6" class="flow-label" x="363" y="219" text-anchor="end" font-size="11">API calls</text>
   <text data-label="f7-label" data-label-for="f7" class="flow-label" x="341" y="389" text-anchor="middle" font-size="11">HTTPS</text>
-  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="511" y="192" text-anchor="end" font-size="11">token check</text>
+  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="511" y="179" text-anchor="end" font-size="11">token check</text>
   <text data-label="f9-label" data-label-for="f9" class="flow-label" x="557" y="191" text-anchor="middle" font-size="11">REST</text>
-  <text data-label="f10-label" data-label-for="f10" class="flow-label" x="792" y="242" text-anchor="middle" font-size="11">REST</text>
+  <text data-label="f10-label" data-label-for="f10" class="flow-label" x="922" y="211" text-anchor="middle" font-size="11">REST</text>
   <text data-label="f11-label" data-label-for="f11" class="flow-label" x="559" y="291" text-anchor="middle" font-size="11">REST</text>
   <text data-label="f12-label" data-label-for="f12" class="flow-label" x="1002" y="95" text-anchor="middle" font-size="11">OIDC</text>
-  <text data-label="f13-label" data-label-for="f13" class="flow-label" x="979" y="382" text-anchor="start" font-size="11">queries</text>
+  <text data-label="f13-label" data-label-for="f13" class="flow-label" x="979" y="360" text-anchor="start" font-size="11">queries</text>
   <text data-label="f15-label" data-label-for="f15" class="flow-label" x="1209" y="394" text-anchor="start" font-size="11">sessions</text>
-  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="672" y="474" text-anchor="start" font-size="11">SQL</text>
+  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="654" y="369" text-anchor="end" font-size="11">SQL</text>
   <text data-label="f17-label" data-label-for="f17" class="flow-label" x="771" y="303" text-anchor="middle" font-size="11">gRPC</text>
-  <text data-label="f18-label" data-label-for="f18" class="flow-label" x="846" y="246" text-anchor="middle" font-size="11">gRPC</text>
+  <text data-label="f18-label" data-label-for="f18" class="flow-label" x="846" y="277" text-anchor="middle" font-size="11">gRPC</text>
   <text data-label="f19-label" data-label-for="f19" class="flow-label" x="714" y="500" text-anchor="start" font-size="11">order events</text>
   <text data-label="f20-label" data-label-for="f20" class="flow-label" x="1128" y="303" text-anchor="middle" font-size="11">charges</text>
   <text data-label="f22-label" data-label-for="f22" class="flow-label" x="824" y="538" text-anchor="start" font-size="11">consume</text>

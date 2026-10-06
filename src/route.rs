@@ -993,6 +993,10 @@ fn bounds_at(x: f64, y: f64, width: f64, height: f64) -> Bounds {
 /// segments, trying the longest segment first and fanning out from its
 /// midpoint. The label keeps the connector clearance from every route and
 /// stays at least 4px away from other labels and nodes.
+/// How far a label keeps from other connectors when it can, so it reads as
+/// belonging to its own.
+pub const LABEL_CLEAR_OF_OTHERS: f64 = 20.0;
+
 /// `containers` are the boxes around the connector's ends: the label may
 /// sit inside or outside each, but not across its border.
 pub fn place_label(
@@ -1002,6 +1006,31 @@ pub fn place_label(
     routes: &[Vec<Point>],
     blocked: &[Bounds],
     containers: &[Bounds],
+) -> Option<Placement> {
+    find_label_spot(width, height, route, routes, blocked, containers, false)
+}
+
+/// A spot for a label at least a label clearance from every connector but
+/// its own, if there is one.
+pub fn place_label_clear(
+    width: f64,
+    height: f64,
+    route: &[Point],
+    routes: &[Vec<Point>],
+    blocked: &[Bounds],
+    containers: &[Bounds],
+) -> Option<Placement> {
+    find_label_spot(width, height, route, routes, blocked, containers, true)
+}
+
+fn find_label_spot(
+    width: f64,
+    height: f64,
+    route: &[Point],
+    routes: &[Vec<Point>],
+    blocked: &[Bounds],
+    containers: &[Bounds],
+    clear_only: bool,
 ) -> Option<Placement> {
     let gap = CLEARANCE + 1.0;
     let mut ordered: Vec<(usize, (Point, Point))> = segments(route).into_iter().enumerate().collect();
@@ -1030,40 +1059,62 @@ pub fn place_label(
                 inside || intersection(bounds, &container.inflate(4.0)).is_none()
             })
     };
-    ordered.iter().find_map(|(_, (from, to))| {
-        let horizontal = from.y == to.y;
-        (0..=20).find_map(|step| {
-            let fraction = 0.5 + if step % 2 == 0 { 1.0 } else { -1.0 } * ((step as f64) / 2.0).ceil() * 0.05;
-            if !(0.0..=1.0).contains(&fraction) {
-                return None;
-            }
-            let along = point(
-                round(from.x + (to.x - from.x) * fraction),
-                round(from.y + (to.y - from.y) * fraction),
-            );
-            let beside = round(along.y - height / 2.0);
-            let candidates: [(Bounds, &'static str); 2] = if horizontal {
-                [
-                    (
-                        bounds_at(along.x - width / 2.0, along.y - gap - height, width, height),
-                        "middle",
-                    ),
-                    (bounds_at(along.x - width / 2.0, along.y + gap, width, height), "middle"),
-                ]
-            } else {
-                [
-                    (bounds_at(along.x + gap, beside, width, height), "start"),
-                    (bounds_at(along.x - gap - width, beside, width, height), "end"),
-                ]
-            };
-            candidates.into_iter().find_map(|(bounds, anchor)| {
-                let within = if horizontal {
-                    bounds.x >= from.x.min(to.x) && bounds.right() <= from.x.max(to.x)
+    // Other connectors passing close make it unclear which one a label
+    // belongs to: a spot well clear of them is preferred when there is one.
+    let own = segments(route);
+    let others: Vec<(Point, Point)> = route_segments
+        .iter()
+        .filter(|segment| !own.contains(segment))
+        .copied()
+        .collect();
+    let clear_of_others = |bounds: &Bounds| {
+        let inflated = bounds.inflate(LABEL_CLEAR_OF_OTHERS);
+        others
+            .iter()
+            .all(|(from, to)| !segment_intersects_interior(*from, *to, &inflated))
+    };
+    let find = |fits: &dyn Fn(&Bounds) -> bool| {
+        ordered.iter().find_map(|(_, (from, to))| {
+            let horizontal = from.y == to.y;
+            (0..=20).find_map(|step| {
+                let fraction = 0.5 + if step % 2 == 0 { 1.0 } else { -1.0 } * ((step as f64) / 2.0).ceil() * 0.05;
+                if !(0.0..=1.0).contains(&fraction) {
+                    return None;
+                }
+                let along = point(
+                    round(from.x + (to.x - from.x) * fraction),
+                    round(from.y + (to.y - from.y) * fraction),
+                );
+                let beside = round(along.y - height / 2.0);
+                let candidates: [(Bounds, &'static str); 2] = if horizontal {
+                    [
+                        (
+                            bounds_at(along.x - width / 2.0, along.y - gap - height, width, height),
+                            "middle",
+                        ),
+                        (bounds_at(along.x - width / 2.0, along.y + gap, width, height), "middle"),
+                    ]
                 } else {
-                    bounds.y >= from.y.min(to.y) && bounds.bottom() <= from.y.max(to.y)
+                    [
+                        (bounds_at(along.x + gap, beside, width, height), "start"),
+                        (bounds_at(along.x - gap - width, beside, width, height), "end"),
+                    ]
                 };
-                (within && fits(&bounds)).then_some(Placement { anchor, bounds })
+                candidates.into_iter().find_map(|(bounds, anchor)| {
+                    let within = if horizontal {
+                        bounds.x >= from.x.min(to.x) && bounds.right() <= from.x.max(to.x)
+                    } else {
+                        bounds.y >= from.y.min(to.y) && bounds.bottom() <= from.y.max(to.y)
+                    };
+                    (within && fits(&bounds)).then_some(Placement { anchor, bounds })
+                })
             })
         })
-    })
+    };
+    let clear = find(&|bounds| fits(bounds) && clear_of_others(bounds));
+    if clear_only {
+        clear
+    } else {
+        clear.or_else(|| find(&fits))
+    }
 }

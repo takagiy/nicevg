@@ -1278,6 +1278,80 @@ fn moves_every_text_of_a_labelled_group() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a straight connector whose detached label would naturally go just
+///   above it, where another connector runs 14px above that spot
+/// When the diagram is fixed
+/// Then the label goes below its connector instead, at least 20px from the
+///   other one, so it is clear which connector it belongs to
+#[test]
+fn keeps_a_moved_label_clear_of_connectors_it_does_not_belong_to() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -100 640 440">
+        <g data-node="a1"><rect x="20" y="76" width="100" height="48"/><text x="70" y="105" text-anchor="middle" font-size="14">A1</text></g>
+        <g data-node="a2"><rect x="500" y="76" width="100" height="48"/><text x="550" y="105" text-anchor="middle" font-size="14">A2</text></g>
+        <g data-node="b1"><rect x="150" y="-60" width="100" height="48"/><text x="200" y="-31" text-anchor="middle" font-size="14">B1</text></g>
+        <g data-node="b2"><rect x="400" y="-60" width="100" height="48"/><text x="450" y="-31" text-anchor="middle" font-size="14">B2</text></g>
+        <line id="flow" data-from="a1" data-to="a2" x1="120" y1="100" x2="500" y2="100"/>
+        <path id="other" data-from="b1" data-to="b2" d="M 200 -12 L 200 60 L 450 60 L 450 -12"/>
+        <text data-label="retry" data-label-for="flow" x="310" y="300" text-anchor="middle" font-size="14">Retry</text>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let label = label_bounds(&result.report, "retry");
+
+    assert_eq!(change_codes(&result), ["move-label"]);
+    assert!(distance_to_route(&label, &connector_points(&result.report, "flow")) <= 16.0);
+    assert!(
+        distance_to_route(&label, &connector_points(&result.report, "other")) >= 20.0,
+        "{label:?}"
+    );
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given two parallel vertical connectors 44px apart, where the left one's
+///   label sits between them, 9px from its own line but only 14px from the
+///   other, with free space on the far side of its own line
+/// When the diagram is fixed
+/// Then the label moves to where it is at least 20px from the other
+///   connector, still beside its own
+#[test]
+fn moves_a_label_away_from_a_connector_it_does_not_belong_to() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 440">
+        <g data-node="order"><rect x="160" y="20" width="160" height="48"/><text x="240" y="49" text-anchor="middle" font-size="14">Order</text></g>
+        <g data-node="postgres"><rect x="100" y="360" width="120" height="48"/><text x="160" y="389" text-anchor="middle" font-size="14">PostgreSQL</text></g>
+        <g data-node="kafka"><rect x="240" y="360" width="100" height="48"/><text x="290" y="389" text-anchor="middle" font-size="14">Kafka</text></g>
+        <line id="sql" data-from="order" data-to="postgres" x1="200" y1="68" x2="200" y2="360"/>
+        <line id="events" data-from="order" data-to="kafka" x1="244" y1="68" x2="244" y2="360"/>
+        <text data-label="sql-label" data-label-for="sql" x="209" y="220" font-size="12">SQL</text>
+      </svg>
+    "#;
+
+    let before = analyze(svg);
+    let result = fix(svg);
+    let label = label_bounds(&result.report, "sql-label");
+
+    assert!(before.issues.is_empty(), "{:?}", before.issues);
+    assert!(
+        distance_to_route(
+            &label_bounds(&before, "sql-label"),
+            &connector_points(&before, "events")
+        ) < 20.0
+    );
+    assert_eq!(change_codes(&result), ["move-label"]);
+    assert!(distance_to_route(&label, &connector_points(&result.report, "sql")) <= 16.0);
+    assert!(
+        distance_to_route(&label, &connector_points(&result.report, "events")) >= 20.0,
+        "{label:?}"
+    );
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a connector drawn as a staircase of segments all shorter than its
 ///   tied label, which floats far away
 /// When the diagram is fixed
