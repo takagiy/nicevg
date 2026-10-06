@@ -518,8 +518,9 @@ fn arranges_a_c4_container_diagram_without_issues_or_dents() {
 ///   stores beside the processes, and flows skipping several processes
 /// When the diagram is arranged
 /// Then nothing is reported, the layout is kept, no connector steps aside
-///   just before reaching a node, and the two shortcuts leaving "take
-///   application" side by side do not cross
+///   just before reaching a node, the two shortcuts leaving "take
+///   application" side by side do not cross, and neither do the two
+///   connectors entering "make offer" side by side from above
 #[test]
 fn arranges_a_tall_loan_dfd_without_steps_at_the_ends() {
     let svg = include_str!("fixtures/loan-origination-dfd.svg");
@@ -533,6 +534,12 @@ fn arranges_a_tall_loan_dfd_without_steps_at_the_ends() {
     assert!(!crosses_route(
         &connector_points(&result.report, "f26"),
         &connector_points(&result.report, "f27")
+    ));
+    // f20 comes straight down from "assess risk"; f26 joins it at the top
+    // of "make offer" from the left.
+    assert!(!crosses_route(
+        &connector_points(&result.report, "f20"),
+        &connector_points(&result.report, "f26")
     ));
     assert_layout_kept(svg, &result);
 

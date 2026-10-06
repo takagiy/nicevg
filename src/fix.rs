@@ -258,7 +258,6 @@ fn settled_ports(
     nodes_by_id: &HashMap<&str, &DiagramNode>,
     rerouted_ids: &HashSet<&str>,
 ) -> HashMap<String, Vec<f64>> {
-    use crate::route::Side;
     diagram
         .connectors
         .iter()
@@ -272,19 +271,11 @@ fn settled_ports(
         })
         .filter_map(|(node_id, end, inner)| {
             let bounds = nodes_by_id.get(node_id.as_str())?.bounds;
-            let side = if is_on_outline(end, &bounds) {
-                side_of(end, &bounds)
-            } else if (end.x - inner.x).abs() >= (end.y - inner.y).abs() {
-                if inner.x > end.x { Side::Right } else { Side::Left }
-            } else if inner.y > end.y {
-                Side::Bottom
-            } else {
-                Side::Top
-            };
+            let (side, port) = end_port(end, inner, &bounds);
             let along = if matches!(side, Side::Top | Side::Bottom) {
-                end.x
+                port.x
             } else {
-                end.y
+                port.y
             };
             Some((side_key(&bounds, side), along))
         })
@@ -292,6 +283,36 @@ fn settled_ports(
             ports.entry(key).or_default().push(along);
             ports
         })
+}
+
+/// The node side a connector meets at its `end`, coming from `inner`, and
+/// the port there on the node's box: on a box, the side the end lies on;
+/// on a circle, the side the connector arrives at along its last segment.
+fn end_port(end: Point, inner: Point, bounds: &Bounds) -> (Side, Point) {
+    let side = if is_on_outline(end, bounds) {
+        side_of(end, bounds)
+    } else if (end.x - inner.x).abs() >= (end.y - inner.y).abs() {
+        if inner.x > end.x { Side::Right } else { Side::Left }
+    } else if inner.y > end.y {
+        Side::Bottom
+    } else {
+        Side::Top
+    };
+    let port = match side {
+        Side::Top => point(end.x, bounds.y),
+        Side::Bottom => point(end.x, bounds.bottom()),
+        Side::Left => point(bounds.x, end.y),
+        Side::Right => point(bounds.right(), end.y),
+    };
+    (side, port)
+}
+
+/// The node and side each end of a connector meets with these ports.
+fn meets<'a>(reroute: &Reroute<'a>, ports: &Ports) -> [(&'a str, Side); 2] {
+    [
+        (reroute.source.id.as_str(), side_of(ports.start, &reroute.source.bounds)),
+        (reroute.target.id.as_str(), side_of(ports.end, &reroute.target.bounds)),
+    ]
 }
 
 struct Reroute<'a> {
@@ -554,7 +575,83 @@ fn reroute_connectors(draft: Draft) -> Draft {
             ([occupied, vec![route.clone()]].concat(), [routes, vec![route]].concat())
         },
     );
-    let final_routes = improve_ports(&reroutes, &settled, &fixed, first_ports, first_routes, &route_with);
+    // A connector that stays but crosses a rerouted one where both meet the
+    // same node side may trade ports with it, and is rerouted too if so.
+    let partners: Vec<(Reroute, Ports)> = diagram
+        .connectors
+        .iter()
+        .filter(|connector| !rerouted_ids.contains(connector.id.as_str()) && connector.points.len() >= 2)
+        .filter_map(|connector| {
+            let source = nodes_by_id.get(connector.from.as_str())?;
+            let target = nodes_by_id.get(connector.to.as_str())?;
+            let points = &connector.points;
+            let (_, start) = end_port(points[0], points[1], &source.bounds);
+            let (_, end) = end_port(points[points.len() - 1], points[points.len() - 2], &target.bounds);
+            Some((
+                Reroute {
+                    connector,
+                    source,
+                    target,
+                },
+                Ports { start, end },
+            ))
+        })
+        .filter(|(partner, partner_ports)| {
+            let own = meets(partner, partner_ports);
+            reroutes
+                .iter()
+                .zip(&first_ports)
+                .zip(&first_routes)
+                .any(|((reroute, ports), route)| {
+                    meets(reroute, ports).iter().any(|end| own.contains(end))
+                        && route_crossings(route, std::slice::from_ref(&partner.connector.points)) > 0
+                })
+        })
+        .collect();
+    let partner_ids: HashSet<&str> = partners
+        .iter()
+        .map(|(partner, _)| partner.connector.id.as_str())
+        .collect();
+    let staying: Vec<Vec<Point>> = diagram
+        .connectors
+        .iter()
+        .filter(|connector| {
+            !rerouted_ids.contains(connector.id.as_str()) && !partner_ids.contains(connector.id.as_str())
+        })
+        .map(|connector| connector.points.clone())
+        .collect();
+    let staying_ports = settled_ports(
+        diagram,
+        &nodes_by_id,
+        &rerouted_ids.union(&partner_ids).copied().collect(),
+    );
+    let reroutes: Vec<Reroute> = reroutes
+        .into_iter()
+        .chain(partners.iter().map(|(partner, _)| Reroute { ..*partner }))
+        .collect();
+    let improved = improve_ports(
+        &reroutes,
+        &staying,
+        &staying_ports,
+        [first_ports, partners.iter().map(|(_, ports)| *ports).collect()].concat(),
+        [
+            first_routes,
+            partners
+                .iter()
+                .map(|(partner, _)| partner.connector.points.clone())
+                .collect(),
+        ]
+        .concat(),
+        &route_with,
+    );
+    // Partners whose ports stayed keep their route as drawn.
+    let (reroutes, final_routes): (Vec<Reroute>, Vec<Vec<Point>>) = reroutes
+        .into_iter()
+        .zip(improved)
+        .filter(|(reroute, route)| {
+            !partner_ids.contains(reroute.connector.id.as_str()) || *route != reroute.connector.points
+        })
+        .unzip();
 
     struct Routing {
         draft: Draft,
@@ -817,8 +914,9 @@ type RouteWith<'a> = dyn Fn(&Reroute, Ports, &[Vec<Point>]) -> Vec<Point> + 'a;
 
 /// Port changes that spreading ports evenly cannot see, tried once routes
 /// are drawn: two connectors on the same node side whose routes cross
-/// trade their ports there, and an end that steps aside just before its
-/// node slides along the side to the line it arrives on. A change stays
+/// trade their ports there (a connector running straight takes its other
+/// end along), and an end that steps aside just before its node slides
+/// along the side to the line it arrives on. A change stays
 /// when the connectors it reroutes cross less without turning more, or
 /// turn less without crossing more.
 fn improve_ports(
@@ -890,6 +988,79 @@ fn improve_ports(
             Ports { end: p, ..ports }
         }
     };
+    // Whether an end can take the coordinate `value` along its side: away
+    // from the side's corners and a lane from every other port there.
+    let free = |ports: &[Ports], index: usize, end: usize, value: f64| {
+        let node = node_at(index, end);
+        let side = side_of(port_at(&ports[index], end), &node.bounds);
+        let along_y = matches!(side, Side::Left | Side::Right);
+        let (low, length) = if along_y {
+            (node.bounds.y, node.bounds.height)
+        } else {
+            (node.bounds.x, node.bounds.width)
+        };
+        // A port near a circle's tangent would meet it at a glancing angle.
+        let margin = if node.shape.is_some() { length / 4.0 } else { 8.0 };
+        let mut taken = fixed
+            .get(&side_key(&node.bounds, side))
+            .into_iter()
+            .flatten()
+            .copied()
+            .chain((0..reroutes.len()).flat_map(|other| {
+                (0..2).filter_map(move |other_end| {
+                    if (other, other_end) == (index, end) {
+                        return None;
+                    }
+                    let owner = node_at(other, other_end);
+                    let p = port_at(&ports[other], other_end);
+                    (owner.id == node.id && side_of(p, &owner.bounds) == side).then_some(if along_y {
+                        p.y
+                    } else {
+                        p.x
+                    })
+                })
+            }));
+        value >= low + margin
+            && value <= low + length - margin
+            && taken.all(|other| (other - value).abs() >= LANE_SPACING)
+    };
+    let moved_to = |port: Point, side: Side, value: f64| {
+        if matches!(side, Side::Left | Side::Right) {
+            point(port.x, value)
+        } else {
+            point(value, port.y)
+        }
+    };
+    // A connector running straight between facing sides takes its other
+    // end along when one end moves, so it stays straight, if that end is
+    // free to move.
+    let carried = |ports: &[Ports], index: usize, end: usize, new: Point| {
+        let moved = with_port(ports[index], end, new);
+        let old = port_at(&ports[index], end);
+        let side = side_of(old, &node_at(index, end).bounds);
+        let opposite = 1 - end;
+        let far = port_at(&ports[index], opposite);
+        let far_side = side_of(far, &node_at(index, opposite).bounds);
+        let facing = matches!(
+            (side, far_side),
+            (Side::Top, Side::Bottom)
+                | (Side::Bottom, Side::Top)
+                | (Side::Left, Side::Right)
+                | (Side::Right, Side::Left)
+        );
+        let along = |p: Point| {
+            if matches!(side, Side::Left | Side::Right) {
+                p.y
+            } else {
+                p.x
+            }
+        };
+        if facing && along(far) == along(old) && free(ports, index, opposite, along(new)) {
+            with_port(moved, opposite, moved_to(far, far_side, along(new)))
+        } else {
+            moved
+        }
+    };
     let pairs: Vec<(usize, usize, usize, usize)> = (0..reroutes.len())
         .flat_map(|first| ((first + 1)..reroutes.len()).map(move |second| (first, second)))
         .flat_map(|(first, second)| (0..2).flat_map(move |a| (0..2).map(move |b| (first, second, a, b))))
@@ -904,16 +1075,15 @@ fn improve_ports(
                 return (ports, routes);
             }
             let changed = [
-                (first, with_port(ports[first], a, q)),
-                (second, with_port(ports[second], b, p)),
+                (first, carried(&ports, first, a, q)),
+                (second, carried(&ports, second, b, p)),
             ];
             attempt((ports, routes), &changed)
         });
     let ends: Vec<(usize, usize)> = (0..reroutes.len()).flat_map(|index| [(index, 0), (index, 1)]).collect();
     let (_, slid) = ends.into_iter().fold(traded, |(ports, routes), (index, end)| {
-        let node = node_at(index, end);
         let port = port_at(&ports[index], end);
-        let side = side_of(port, &node.bounds);
+        let side = side_of(port, &node_at(index, end).bounds);
         let route: Vec<Point> = if end == 0 {
             routes[index].iter().rev().copied().collect()
         } else {
@@ -922,47 +1092,10 @@ fn improve_ports(
         let Some(line) = stepped_end(&route) else {
             return (ports, routes);
         };
-        let along_y = matches!(side, Side::Left | Side::Right);
-        let (low, length) = if along_y {
-            (node.bounds.y, node.bounds.height)
-        } else {
-            (node.bounds.x, node.bounds.width)
-        };
-        // A port near a circle's tangent would meet it at a glancing angle.
-        let margin = if node.shape.is_some() { length / 4.0 } else { 8.0 };
-        let current = &ports;
-        let taken: Vec<f64> = fixed
-            .get(&side_key(&node.bounds, side))
-            .into_iter()
-            .flatten()
-            .copied()
-            .chain((0..reroutes.len()).flat_map(|other| {
-                (0..2).filter_map(move |other_end| {
-                    if (other, other_end) == (index, end) {
-                        return None;
-                    }
-                    let owner = node_at(other, other_end);
-                    let p = port_at(&current[other], other_end);
-                    (owner.id == node.id && side_of(p, &owner.bounds) == side).then_some(if along_y {
-                        p.y
-                    } else {
-                        p.x
-                    })
-                })
-            }))
-            .collect();
-        if line < low + margin
-            || line > low + length - margin
-            || taken.iter().any(|other| (other - line).abs() < LANE_SPACING)
-        {
+        if !free(&ports, index, end, line) {
             return (ports, routes);
         }
-        let moved = if along_y {
-            point(port.x, line)
-        } else {
-            point(line, port.y)
-        };
-        let changed = [(index, with_port(ports[index], end, moved))];
+        let changed = [(index, with_port(ports[index], end, moved_to(port, side, line)))];
         attempt((ports, routes), &changed)
     });
     slid
