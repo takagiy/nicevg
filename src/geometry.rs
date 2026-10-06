@@ -2,6 +2,7 @@
 //! ECMAScript reference implementation the snapshots were recorded with.
 
 use serde::{Serialize, Serializer};
+use unicode_width::UnicodeWidthChar;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 pub struct Point {
@@ -326,8 +327,23 @@ pub fn without_redundant_points(points: &[Point]) -> Vec<Point> {
 
 /// Estimates the box of a text run from its anchor point; glyph metrics are
 /// approximated by an average advance of 0.59em.
-pub fn measure_text(length: usize, font_size: f64, anchor_point: Point, anchor: &str) -> Bounds {
-    let width = round(length as f64 * font_size * 0.59);
+/// Estimated advance of a text: full-width characters (East Asian Wide and
+/// Fullwidth) take one font size, everything else 0.59 of it per UTF-16
+/// code unit.
+pub fn text_width(text: &str, font_size: f64) -> f64 {
+    let (wide, narrow) = text.chars().fold((0usize, 0usize), |(wide, narrow), character| {
+        if UnicodeWidthChar::width(character) == Some(2) {
+            (wide + 1, narrow)
+        } else {
+            (wide, narrow + character.len_utf16())
+        }
+    });
+    round(narrow as f64 * font_size * 0.59 + wide as f64 * font_size)
+}
+
+/// Box of a line of text whose `anchor_point` lies `ascent` below the top
+/// of its box, as the dominant baseline puts it.
+pub fn measure_text(width: f64, font_size: f64, ascent: f64, anchor_point: Point, anchor: &str) -> Bounds {
     let x = match anchor {
         "middle" => anchor_point.x - width / 2.0,
         "end" => anchor_point.x - width,
@@ -335,7 +351,7 @@ pub fn measure_text(length: usize, font_size: f64, anchor_point: Point, anchor: 
     };
     Bounds {
         x,
-        y: anchor_point.y - font_size,
+        y: anchor_point.y - ascent,
         width,
         height: round(font_size * 1.2),
     }

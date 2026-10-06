@@ -3,12 +3,14 @@
 //! [`analyze`] reads a diagram and reports mechanical layout errors;
 //! [`fix`] repairs the ones it can. Both are pure functions of the SVG text.
 
+mod arrow;
 mod diagram;
 mod fix;
 mod geometry;
 mod inspect;
 mod pathdata;
 mod route;
+mod text;
 mod xml;
 
 use serde::Serialize;

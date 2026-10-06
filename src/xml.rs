@@ -77,11 +77,6 @@ impl Element {
             })
             .collect()
     }
-
-    /// Length of the text content in UTF-16 code units.
-    pub fn text_length(&self) -> usize {
-        self.text_content().encode_utf16().count()
-    }
 }
 
 impl Document {

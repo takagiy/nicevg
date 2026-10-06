@@ -133,6 +133,103 @@ fn recognizes_an_annotated_connector_between_nodes() {
     );
 }
 
+/// Two nodes in a row joined by `arrow`, an arrow drawn with a polygon head.
+fn row_with_arrow(arrow: &str) -> String {
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">
+          <g data-node="submit">
+            <rect x="20" y="20" width="100" height="56" />
+            <text x="70" y="53" text-anchor="middle">Submit</text>
+          </g>
+          <g data-node="review">
+            <rect x="260" y="20" width="100" height="56" />
+            <text x="310" y="53" text-anchor="middle">Review</text>
+          </g>
+          {arrow}
+        </svg>"#
+    )
+}
+
+/// Given an arrow drawn as a group carrying data-from and data-to around a
+///   path that stops at the tail of a polygon arrowhead
+/// When the SVG is analyzed
+/// Then it is one connector running to the arrowhead's tip on the target
+#[test]
+fn recognizes_an_annotated_group_of_a_line_and_a_polygon_head_as_a_connector() {
+    let svg = row_with_arrow(
+        r#"<g id="submit-review" data-from="submit" data-to="review">
+            <path d="M 120 48 L 250 48" />
+            <polygon points="250,43 260,48 250,53" />
+          </g>"#,
+    );
+
+    let report = analyze(&svg);
+
+    assert_eq!(
+        report.diagram.connectors,
+        [DiagramConnector {
+            id: "submit-review".to_owned(),
+            from: "submit".to_owned(),
+            to: "review".to_owned(),
+            points: vec![point(120.0, 48.0), point(260.0, 48.0)],
+        }]
+    );
+    assert!(report.issues.is_empty(), "{:?}", report.issues);
+}
+
+/// Given an annotated line grouped with a polygon arrowhead at its end, and
+///   another polygon in the group away from either end
+/// When the SVG is analyzed
+/// Then the connector runs to the arrowhead's tip, ignoring the other polygon
+#[test]
+fn extends_an_annotated_line_to_the_tip_of_a_polygon_head_beside_it() {
+    let svg = row_with_arrow(
+        r#"<g>
+            <line id="submit-review" data-from="submit" data-to="review" x1="120" y1="48" x2="250" y2="48" />
+            <polygon points="250,43 260,48 250,53" />
+            <polygon points="180,90 190,95 180,100" />
+          </g>"#,
+    );
+
+    let report = analyze(&svg);
+
+    assert_eq!(
+        connector_points(&report, "submit-review"),
+        [point(120.0, 48.0), point(260.0, 48.0)]
+    );
+}
+
+/// Given a path annotated with data-a and data-b at the top level, and an
+///   arrow group annotated the same way
+/// When the SVG is analyzed
+/// Then both are connectors between the named nodes, as data-from and
+///   data-to would make them, and neither is reported as unsupported
+#[test]
+fn recognizes_data_a_and_data_b_like_data_from_and_data_to() {
+    let svg = row_with_arrow(
+        r#"<path id="plain" data-a="submit" data-b="review" d="M 120 40 L 260 40" />
+          <g id="grouped" data-a="submit" data-b="review">
+            <path d="M 120 56 L 250 56" />
+            <polygon points="250,51 260,56 250,61" />
+          </g>"#,
+    );
+
+    let report = analyze(&svg);
+    let ends: Vec<(&str, &str, &str)> = report
+        .diagram
+        .connectors
+        .iter()
+        .map(|connector| (connector.id.as_str(), connector.from.as_str(), connector.to.as_str()))
+        .collect();
+
+    assert_eq!(ends, [("plain", "submit", "review"), ("grouped", "submit", "review")]);
+    assert_eq!(
+        connector_points(&report, "grouped"),
+        [point(120.0, 56.0), point(260.0, 56.0)]
+    );
+    assert!(report.diagram.unsupported_elements.is_empty());
+}
+
 /// Given a child node nested inside a parent node group
 /// When the SVG is analyzed
 /// Then the child references its parent and their geometric overlap is allowed

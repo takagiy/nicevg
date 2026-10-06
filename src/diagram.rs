@@ -6,8 +6,10 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 
-use crate::geometry::{Bounds, Point, enclosing, measure_text, number_list, parse_number, point, points_bounds};
+use crate::arrow::{drawn_connectors, names_an_end};
+use crate::geometry::{Bounds, Point, enclosing, number_list, parse_number, point, points_bounds};
 use crate::pathdata;
+use crate::text::{label_bounds, label_texts, text_bounds};
 use crate::xml::{Document, Element, Path};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -126,13 +128,6 @@ pub fn number_attribute(element: &Element, name: &str) -> f64 {
     parse_number(element.attr(name))
 }
 
-pub fn font_size(element: &Element) -> f64 {
-    match number_attribute(element, "font-size") {
-        0.0 => 16.0,
-        size => size,
-    }
-}
-
 /// Sum of the `translate(...)` transforms on an element and its ancestors.
 pub fn translation(document: &Document, path: &[usize]) -> Point {
     document
@@ -185,21 +180,7 @@ fn shape_bounds(document: &Document, path: &[usize]) -> Bounds {
     }
 }
 
-pub fn text_bounds(document: &Document, path: &[usize]) -> Bounds {
-    let element = document.element(path);
-    let offset = translation(document, path);
-    measure_text(
-        element.text_length(),
-        font_size(element),
-        point(
-            number_attribute(element, "x") + offset.x,
-            number_attribute(element, "y") + offset.y,
-        ),
-        element.attr("text-anchor"),
-    )
-}
-
-fn connector_points(document: &Document, path: &[usize]) -> Vec<Point> {
+pub(crate) fn connector_points(document: &Document, path: &[usize]) -> Vec<Point> {
     let element = document.element(path);
     let offset = translation(document, path);
     let shifted = |p: Point| point(p.x + offset.x, p.y + offset.y);
@@ -243,15 +224,6 @@ pub fn node_group(document: &Document, id: &str) -> Option<Path> {
         .map(|(path, _)| path)
 }
 
-/// The `text` element a label id refers to, by `data-label` or `id`.
-pub fn label_text(document: &Document, id: &str) -> Option<Path> {
-    document
-        .elements_named("text")
-        .into_iter()
-        .find(|(_, text)| non_empty(text.attr("data-label")).or_else(|| non_empty(text.attr("id"))) == Some(id))
-        .map(|(path, _)| path)
-}
-
 pub fn connector_elements(document: &Document) -> Vec<(Path, &Element)> {
     ["line", "polyline", "path"]
         .iter()
@@ -259,7 +231,7 @@ pub fn connector_elements(document: &Document) -> Vec<(Path, &Element)> {
         .collect()
 }
 
-fn non_empty(value: &str) -> Option<&str> {
+pub(crate) fn non_empty(value: &str) -> Option<&str> {
     (!value.is_empty()).then_some(value)
 }
 
@@ -336,32 +308,53 @@ pub fn read(document: &Document) -> Diagram {
         })
         .collect();
 
-    let connectors = connector_elements(document)
+    let connectors = drawn_connectors(document)
         .into_iter()
-        .enumerate()
-        .filter_map(|(index, (path, element))| {
-            let (from, to) = (element.attr("data-from"), element.attr("data-to"));
-            (!from.is_empty() && !to.is_empty()).then(|| DiagramConnector {
-                id: non_empty(element.attr("id")).map_or_else(|| format!("connector-{}", index + 1), str::to_owned),
-                from: from.to_owned(),
-                to: to.to_owned(),
-                points: connector_points(document, &path),
-            })
+        .map(|drawn| DiagramConnector {
+            id: drawn.id,
+            from: drawn.from,
+            to: drawn.to,
+            points: drawn.points,
         })
         .collect();
 
-    let labels = document
-        .elements_named("text")
+    // Labels in document order: a group carrying `data-label` is one label
+    // with the texts inside it; texts sharing a `data-label` are one label.
+    let labelled: Vec<(Path, &Element)> = document
+        .elements()
         .into_iter()
-        .filter_map(|(path, text)| {
-            let annotation = text.attr("data-label");
-            (!annotation.is_empty()).then(|| DiagramLabel {
-                id: annotation.to_owned(),
-                bounds: text_bounds(document, &path),
-                connector: non_empty(text.attr("data-label-for")).map(str::to_owned),
-            })
+        .filter(|(_, element)| {
+            (element.name == "g" || element.name == "text") && !element.attr("data-label").is_empty()
         })
         .collect();
+    let labels = labelled
+        .iter()
+        .filter(|(path, _)| {
+            !labelled
+                .iter()
+                .any(|(group, element)| element.name == "g" && path.len() > group.len() && path.starts_with(group))
+        })
+        .fold(Vec::<DiagramLabel>::new(), |mut labels, (_, element)| {
+            let id = element.attr("data-label");
+            match labels.iter_mut().find(|label| label.id == id) {
+                Some(label) => {
+                    label.connector = label
+                        .connector
+                        .take()
+                        .or_else(|| non_empty(element.attr("data-label-for")).map(str::to_owned));
+                }
+                None => {
+                    if let Some(bounds) = label_bounds(document, &label_texts(document, id)) {
+                        labels.push(DiagramLabel {
+                            id: id.to_owned(),
+                            bounds,
+                            connector: non_empty(element.attr("data-label-for")).map(str::to_owned),
+                        });
+                    }
+                }
+            }
+            labels
+        });
 
     let unsupported_elements = document
         .root()
@@ -371,7 +364,7 @@ pub fn read(document: &Document) -> Diagram {
         .filter_map(|(index, child)| match child {
             crate::xml::Node::Element(element)
                 if ["rect", "circle", "ellipse", "polygon", "path"].contains(&element.name.as_str())
-                    && element.attr("data-from").is_empty() =>
+                    && !names_an_end(element) =>
             {
                 Some(UnsupportedElement {
                     id: non_empty(element.attr("id"))

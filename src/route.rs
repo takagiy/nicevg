@@ -6,8 +6,8 @@ use std::collections::{BinaryHeap, HashMap};
 
 use crate::diagram::DiagramNode;
 use crate::geometry::{
-    Bounds, Point, intersection, measure_text, point, round, route_is_clear, routes_overlap,
-    segment_intersects_interior, segment_length, segments, without_redundant_points,
+    Bounds, Point, intersection, point, round, route_is_clear, routes_overlap, segment_intersects_interior,
+    segment_length, segments, without_redundant_points,
 };
 
 pub const BEND_PENALTY: f64 = 40.0;
@@ -562,9 +562,9 @@ pub fn spread_ports(requests: &[PortRequest]) -> HashMap<String, Ports> {
 
 /// Connectors joining the same two node sides tie when ordered by the node
 /// at their other end, so both sides get the same order: right for facing
-/// sides, but around a corner the routes cross. Wherever the straight
-/// chords between two such connectors' ports cross, their ports on one
-/// node trade places so the routes nest instead.
+/// sides, but around a corner or in a U shape the routes cross. Wherever
+/// two such connectors would cross, their ports on one node trade places so
+/// the routes nest instead.
 fn untangle_pairs(requests: &[PortRequest], ports: HashMap<String, Ports>) -> HashMap<String, Ports> {
     requests
         .iter()
@@ -595,7 +595,7 @@ fn untangle_pairs(requests: &[PortRequest], ports: HashMap<String, Ports>) -> Ha
             } else {
                 (other.start, other.end)
             };
-            if !chords_cross(one.start, one.end, other_start, other_end) {
+            if !would_cross(first.sides, (one.start, one.end), (other_start, other_end)) {
                 return ports;
             }
             let traded = if reversed {
@@ -610,6 +610,21 @@ fn untangle_pairs(requests: &[PortRequest], ports: HashMap<String, Ports>) -> Ha
             ports.insert(second.id.clone(), traded);
             ports
         })
+}
+
+/// Whether routes between two pairs of ports on the same node sides would
+/// cross. Between sides facing the same way the routes run out and back in
+/// a U, crossing when their spans along the sides interleave; otherwise
+/// they cross when the straight chords between their ports do.
+fn would_cross(sides: Sides, (a, b): (Point, Point), (c, d): (Point, Point)) -> bool {
+    if sides.start != sides.end {
+        return chords_cross(a, b, c, d);
+    }
+    let along = |p: Point| if sides.start.is_horizontal_edge() { p.x } else { p.y };
+    let span = |p: Point, q: Point| (along(p).min(along(q)), along(p).max(along(q)));
+    let ((low, high), (other_low, other_high)) = (span(a, b), span(c, d));
+    (low < other_low && other_low < high && high < other_high)
+        || (other_low < low && low < other_high && other_high < high)
 }
 
 /// Whether two straight segments pass through each other.
@@ -820,9 +835,14 @@ pub fn end_on_shapes(route: Vec<Point>, source: &DiagramNode, target: &DiagramNo
 }
 
 pub struct Placement {
-    pub anchor_point: Point,
+    /// The `text-anchor` that keeps the label's lines against the side
+    /// facing its connector.
     pub anchor: &'static str,
     pub bounds: Bounds,
+}
+
+fn bounds_at(x: f64, y: f64, width: f64, height: f64) -> Bounds {
+    Bounds { x, y, width, height }
 }
 
 /// Finds a spot for a connector label beside one of the connector's
@@ -830,14 +850,13 @@ pub struct Placement {
 /// midpoint. The label keeps the connector clearance from every route and
 /// stays at least 4px away from other labels and nodes.
 pub fn place_label(
-    length: usize,
-    font_size: f64,
+    width: f64,
+    height: f64,
     route: &[Point],
     routes: &[Vec<Point>],
     blocked: &[Bounds],
 ) -> Option<Placement> {
     let gap = CLEARANCE + 1.0;
-    let height = round(font_size * 1.2);
     let mut ordered: Vec<(usize, (Point, Point))> = segments(route).into_iter().enumerate().collect();
     ordered.sort_by(|(first_index, first), (second_index, second)| {
         let difference = segment_length(second) - segment_length(first);
@@ -868,30 +887,28 @@ pub fn place_label(
                 round(from.x + (to.x - from.x) * fraction),
                 round(from.y + (to.y - from.y) * fraction),
             );
-            let beside = round(along.y + font_size / 2.0);
-            let candidates: [(Point, &'static str); 2] = if horizontal {
+            let beside = round(along.y - height / 2.0);
+            let candidates: [(Bounds, &'static str); 2] = if horizontal {
                 [
-                    (point(along.x, along.y - gap - height + font_size), "middle"),
-                    (point(along.x, along.y + gap + font_size), "middle"),
+                    (
+                        bounds_at(along.x - width / 2.0, along.y - gap - height, width, height),
+                        "middle",
+                    ),
+                    (bounds_at(along.x - width / 2.0, along.y + gap, width, height), "middle"),
                 ]
             } else {
                 [
-                    (point(along.x + gap, beside), "start"),
-                    (point(along.x - gap, beside), "end"),
+                    (bounds_at(along.x + gap, beside, width, height), "start"),
+                    (bounds_at(along.x - gap - width, beside, width, height), "end"),
                 ]
             };
-            candidates.into_iter().find_map(|(anchor_point, anchor)| {
-                let bounds = measure_text(length, font_size, anchor_point, anchor);
+            candidates.into_iter().find_map(|(bounds, anchor)| {
                 let within = if horizontal {
                     bounds.x >= from.x.min(to.x) && bounds.right() <= from.x.max(to.x)
                 } else {
                     bounds.y >= from.y.min(to.y) && bounds.bottom() <= from.y.max(to.y)
                 };
-                (within && fits(&bounds)).then_some(Placement {
-                    anchor_point,
-                    anchor,
-                    bounds,
-                })
+                (within && fits(&bounds)).then_some(Placement { anchor, bounds })
             })
         })
     })

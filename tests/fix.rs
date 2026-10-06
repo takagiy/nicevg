@@ -4,6 +4,7 @@
 
 mod support;
 
+use nicevg::FixResult;
 use support::*;
 
 const RETRY_LABEL: &str = r#"<text data-label="retry" data-label-for="flow"
@@ -265,6 +266,180 @@ fn keeps_the_last_bend_clear_of_the_arrowhead() {
         &inflate(&node_bounds(&result.report, "obstacle"), 8.0)
     ));
     assert!(result.report.issues.is_empty());
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given an arrow drawn as a group carrying data-from and data-to around a
+///   path that stops at the tail of a 10px polygon head, straight through
+///   an unrelated node
+/// When the diagram is fixed
+/// Then the connector detours, the head moves to the new end on the target
+///   and points along the last segment, and the path stops 10px before it
+#[test]
+fn moves_a_polygon_arrowhead_with_its_rerouted_connector() {
+    let svg = &blocked_row("").replace(
+        r#"<line id="flow" data-from="source" data-to="target"
+      x1="120" y1="48" x2="260" y2="48" />"#,
+        r#"<g id="flow" data-from="source" data-to="target">
+      <path d="M 120 48 L 250 48" />
+      <polygon points="250,43 260,48 250,53" />
+    </g>"#,
+    );
+
+    let result = fix(svg);
+    let points = connector_points(&result.report, "flow");
+    let (end, before) = (points[points.len() - 1], points[points.len() - 2]);
+    let written = Written::parse(&result.svg);
+    let head: Vec<f64> = attr(written.nth("polygon", 0), "points")
+        .split([' ', ','])
+        .map(|value| value.parse().expect("a number"))
+        .collect();
+    let tip = point(head[2], head[3]);
+    let base = point((head[0] + head[4]) / 2.0, (head[1] + head[5]) / 2.0);
+    let shaft = attr(written.nth("path", 0), "d");
+
+    assert!(bend_count(&points) > 0);
+    assert_eq!(tip, end);
+    assert!(side_of(end, &node_bounds(&result.report, "target")).is_some());
+    assert_eq!((tip.x - base.x, tip.y - base.y), {
+        let length = ((end.x - before.x).powi(2) + (end.y - before.y).powi(2)).sqrt();
+        ((end.x - before.x) / length * 10.0, (end.y - before.y) / length * 10.0)
+    });
+    assert!(shaft.ends_with(&format!("{} {}", base.x, base.y)), "{shaft}");
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given a connector drawn inside a group translated by (-10, 5), crossing
+///   an unrelated node
+/// When the diagram is fixed
+/// Then the detour, read back through the translation, clears the node and
+///   ends on the target's outline
+#[test]
+fn writes_a_rerouted_connector_in_its_translated_group_s_coordinates() {
+    let svg = &blocked_row("").replace(
+        r#"<line id="flow" data-from="source" data-to="target"
+      x1="120" y1="48" x2="260" y2="48" />"#,
+        r#"<g transform="translate(-10 5)">
+      <line id="flow" data-from="source" data-to="target" x1="130" y1="43" x2="270" y2="43" />
+    </g>"#,
+    );
+
+    let result = fix(svg);
+    let points = connector_points(&result.report, "flow");
+
+    assert_eq!(
+        connector_points(&analyze(svg), "flow"),
+        [point(120.0, 48.0), point(260.0, 48.0)]
+    );
+    assert!(!enters_box(
+        &points,
+        &inflate(&node_bounds(&result.report, "obstacle"), 8.0)
+    ));
+    assert!(side_of(points[points.len() - 1], &node_bounds(&result.report, "target")).is_some());
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Asserts the written arrowhead (a triangle listed base corner, tip, base
+///   corner) sits with its tip on the connector's end and points along the
+///   segment arriving there, with the shaft ending at its base 10px back.
+fn assert_head_points_along_its_end(result: &FixResult, at_start: bool) {
+    let points = connector_points(&result.report, "flow");
+    let (end, inner) = if at_start {
+        (points[0], points[1])
+    } else {
+        (points[points.len() - 1], points[points.len() - 2])
+    };
+    let length = ((end.x - inner.x).powi(2) + (end.y - inner.y).powi(2)).sqrt();
+    let direction = ((end.x - inner.x) / length, (end.y - inner.y) / length);
+    let written = Written::parse(&result.svg);
+    let head: Vec<f64> = attr(written.nth("polygon", 0), "points")
+        .split([' ', ','])
+        .map(|value| value.parse().expect("a number"))
+        .collect();
+    let tip = point(head[2], head[3]);
+    let base = point((head[0] + head[4]) / 2.0, (head[1] + head[5]) / 2.0);
+    let shaft = attr(written.nth("path", 0), "d");
+    let base_text = format!("{} {}", base.x, base.y);
+
+    assert_eq!(tip, end);
+    assert_eq!(
+        (tip.x - base.x, tip.y - base.y),
+        (direction.0 * 10.0, direction.1 * 10.0)
+    );
+    assert!(
+        if at_start {
+            shaft.starts_with(&format!("M {base_text}"))
+        } else {
+            shaft.ends_with(&base_text)
+        },
+        "{shaft}"
+    );
+}
+
+/// Given an arrow whose head enters the target's right side heading left,
+///   drawn around the top through an unrelated node
+/// When the diagram is fixed
+/// Then the connector enters the facing left side instead, and the head
+///   turns round to point right along it
+#[test]
+fn turns_a_polygon_arrowhead_round_when_it_enters_from_the_other_side() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 700 300">
+        <g data-node="source">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+        </g>
+        <g data-node="obstacle">
+          <rect x="200" y="-30" width="60" height="40" />
+          <text x="230" y="-5" text-anchor="middle" font-size="14">Block</text>
+        </g>
+        <g data-node="target">
+          <rect x="300" y="20" width="100" height="56" />
+          <text x="350" y="53" text-anchor="middle" font-size="14">Target</text>
+        </g>
+        <g id="flow" data-from="source" data-to="target">
+          <path d="M 120 48 L 140 48 L 140 0 L 420 0 L 420 48 L 410 48" />
+          <polygon points="410,53 400,48 410,43" />
+        </g>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let points = connector_points(&result.report, "flow");
+
+    assert!(points[points.len() - 1].x > points[points.len() - 2].x, "{points:?}");
+    assert_head_points_along_its_end(&result, false);
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given an arrow whose head is at the start of its path, pointing back
+///   into the source, with the path running straight through a node
+/// When the diagram is fixed
+/// Then the head moves to the new start and points into the source along
+///   the first segment
+#[test]
+fn turns_a_polygon_arrowhead_at_the_start_of_its_connector() {
+    let svg = &blocked_row("").replace(
+        r#"<line id="flow" data-from="source" data-to="target"
+      x1="120" y1="48" x2="260" y2="48" />"#,
+        r#"<g id="flow" data-from="source" data-to="target">
+      <polygon points="130,53 120,48 130,43" />
+      <path d="M 130 48 L 260 48" />
+    </g>"#,
+    );
+
+    let result = fix(svg);
+
+    assert!(bend_count(&connector_points(&result.report, "flow")) > 0);
+    assert_head_points_along_its_end(&result, true);
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
     assert_fix_snapshots!(result);
 }
@@ -922,6 +1097,161 @@ fn moves_a_label_off_a_node_to_a_free_spot_beside_its_connector() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a sound connector whose detached label sets its anchor in the
+///   style attribute
+/// When the diagram is fixed
+/// Then the label sits beside its connector with the anchor it was placed
+///   with, so nothing is reported
+#[test]
+fn moves_a_label_whose_anchor_is_set_in_its_style() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
+        <g data-node="source">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+        </g>
+        <g data-node="target">
+          <rect x="260" y="160" width="100" height="56" />
+          <text x="310" y="193" text-anchor="middle" font-size="14">Target</text>
+        </g>
+        <path id="flow" data-from="source" data-to="target"
+          d="M 120 48 L 190 48 L 190 188 L 260 188" />
+        <text data-label="retry" data-label-for="flow"
+          x="310" y="0" style="text-anchor: middle; font-size: 14px">Retry after</text>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let points = connector_points(&result.report, "flow");
+
+    assert_eq!(points, connector_points(&analyze(svg), "flow"));
+    assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given a straight connector whose detached label has a central baseline
+/// When the diagram is fixed
+/// Then the label moves beside the connector, keeping its clearance, and
+///   nothing is reported
+#[test]
+fn moves_a_label_with_a_central_baseline_beside_its_connector() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
+        <g data-node="source">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+        </g>
+        <g data-node="target">
+          <rect x="300" y="20" width="100" height="56" />
+          <text x="350" y="53" text-anchor="middle" font-size="14">Target</text>
+        </g>
+        <line id="flow" data-from="source" data-to="target" x1="120" y1="48" x2="300" y2="48" />
+        <text data-label="retry" data-label-for="flow"
+          x="210" y="150" text-anchor="middle" font-size="14" dominant-baseline="central">Retry</text>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let points = connector_points(&result.report, "flow");
+
+    assert_eq!(change_codes(&result), ["move-label"]);
+    assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
+/// A sound two-bend connector with a three-line label written by `label`.
+fn connector_with_label(label: &str) -> String {
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
+          <g data-node="source">
+            <rect x="20" y="20" width="100" height="56" />
+            <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+          </g>
+          <g data-node="target">
+            <rect x="260" y="160" width="100" height="56" />
+            <text x="310" y="193" text-anchor="middle" font-size="14">Target</text>
+          </g>
+          <path id="flow" data-from="source" data-to="target"
+            d="M 120 48 L 190 48 L 190 188 L 260 188" />
+          {label}
+        </svg>"#
+    )
+}
+
+/// Moving a label as a whole keeps the size of the box around its lines.
+fn assert_moved_as_one_block(svg: &str, result: &FixResult) {
+    let before = label_bounds(&analyze(svg), "retry");
+    let after = label_bounds(&result.report, "retry");
+    let points = connector_points(&result.report, "flow");
+
+    assert_eq!(change_codes(result), ["move-label"]);
+    assert_eq!((after.width, after.height), (before.width, before.height));
+    assert!(distance_to_route(&after, &points) <= 16.0);
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+}
+
+/// Given a detached label written as three texts sharing one data-label
+/// When the diagram is fixed
+/// Then all three lines move together beside the connector
+#[test]
+fn moves_every_text_of_a_label_split_across_texts() {
+    let svg = connector_with_label(
+        r#"<text data-label="retry" data-label-for="flow" x="310" y="-40" font-size="14">Retry</text>
+          <text data-label="retry" data-label-for="flow" x="310" y="-23" font-size="14">with backoff</text>
+          <text data-label="retry" data-label-for="flow" x="310" y="-6" font-size="14">3 times</text>"#,
+    );
+
+    let result = fix(&svg);
+
+    assert_moved_as_one_block(&svg, &result);
+    assert_fix_snapshots!(result);
+}
+
+/// Given a label written as one text with a tspan per line, whose lower
+///   lines lie on the target node
+/// When the diagram is fixed
+/// Then all three lines move together beside the connector, off the node
+#[test]
+fn moves_every_tspan_line_of_a_label() {
+    let svg = connector_with_label(
+        r#"<text data-label="retry" data-label-for="flow" x="200" y="140" font-size="14">
+            <tspan x="200">Retry</tspan>
+            <tspan x="200" dy="17">with backoff</tspan>
+            <tspan x="200" dy="17">3 times</tspan>
+          </text>"#,
+    );
+
+    let result = fix(&svg);
+
+    assert_eq!(issue_codes(&analyze(&svg)), ["label-node-overlap"]);
+    assert_moved_as_one_block(&svg, &result);
+    assert_fix_snapshots!(result);
+}
+
+/// Given a detached label written as a group carrying data-label around
+///   three plain texts
+/// When the diagram is fixed
+/// Then all three lines move together beside the connector
+#[test]
+fn moves_every_text_of_a_labelled_group() {
+    let svg = connector_with_label(
+        r#"<g data-label="retry" data-label-for="flow">
+            <text x="310" y="-40" font-size="14">Retry</text>
+            <text x="310" y="-23" font-size="14">with backoff</text>
+            <text x="310" y="-6" font-size="14">3 times</text>
+          </g>"#,
+    );
+
+    let result = fix(&svg);
+
+    assert_moved_as_one_block(&svg, &result);
+    assert_fix_snapshots!(result);
+}
+
 /// Given a connector drawn as a staircase of segments all shorter than its
 ///   tied label, which floats far away
 /// When the diagram is fixed
@@ -1152,6 +1482,45 @@ fn nests_a_request_and_reply_that_turn_the_same_corner() {
     assert!(bend_count(&shipment) > 0 && bend_count(&tracking) > 0);
     assert!(is_orthogonal(&shipment) && is_orthogonal(&tracking));
     assert!(!crosses_route(&shipment, &tracking), "{shipment:?} {tracking:?}");
+    assert!(result.report.issues.is_empty());
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given a request and a reply between two nodes stacked with a third node
+///   between them, so both must leave and enter on the same-facing sides
+///   in a U shape
+/// When the diagram is fixed
+/// Then the two U-shaped routes nest instead of crossing, and nothing is
+///   reported
+#[test]
+fn nests_a_request_and_reply_that_both_detour_in_a_u_shape() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 420">
+        <g data-node="browse">
+          <circle cx="200" cy="80" r="50" />
+          <text x="200" y="85" text-anchor="middle" font-size="14">Browse</text>
+        </g>
+        <g data-node="cart">
+          <circle cx="200" cy="220" r="50" />
+          <text x="200" y="225" text-anchor="middle" font-size="14">Cart</text>
+        </g>
+        <g data-node="products">
+          <rect x="130" y="340" width="130" height="40" />
+          <text x="195" y="365" text-anchor="middle" font-size="14">Products</text>
+        </g>
+        <line id="query" data-from="browse" data-to="products" x1="200" y1="80" x2="195" y2="360" />
+        <line id="details" data-from="products" data-to="browse" x1="195" y1="360" x2="200" y2="80" />
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let query = connector_points(&result.report, "query");
+    let details = connector_points(&result.report, "details");
+
+    assert!(bend_count(&query) > 1 && bend_count(&details) > 1);
+    assert!(is_orthogonal(&query) && is_orthogonal(&details));
+    assert!(!crosses_route(&query, &details), "{query:?} {details:?}");
     assert!(result.report.issues.is_empty());
 
     assert_fix_snapshots!(result);

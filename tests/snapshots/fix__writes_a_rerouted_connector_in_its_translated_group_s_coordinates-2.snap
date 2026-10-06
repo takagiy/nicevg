@@ -1,0 +1,23 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
+    <g data-node="source">
+      <rect x="20" y="20" width="100" height="56"/>
+      <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+    </g>
+    <g data-node="obstacle">
+      <rect x="150" y="20" width="80" height="56"/>
+      <text x="190" y="53" text-anchor="middle" font-size="14">Block</text>
+    </g>
+    <g data-node="target">
+      <rect x="260" y="20" width="100" height="56"/>
+      <text x="310" y="53" text-anchor="middle" font-size="14">Target</text>
+    </g>
+    
+    <g transform="translate(-10 5)">
+      <path id="flow" data-from="source" data-to="target" fill="none" d="M 80 15 L 80 -9 L 320 -9 L 320 15"/>
+    </g>
+  </svg>

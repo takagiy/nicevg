@@ -6,10 +6,10 @@ use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
+use crate::arrow::{drawn_connectors, moved_head, shaft_route};
 use crate::diagram::{
-    Diagram, DiagramConnector, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, connector_elements,
-    font_size, holds_end, is_node_shape, label_text, node_group, number_attribute, rect_bounds, text_bounds,
-    translation,
+    Diagram, DiagramConnector, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, holds_end, is_node_shape,
+    node_group, number_attribute, rect_bounds, translation,
 };
 use crate::geometry::{Bounds, Point, enclosing, format_number};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
@@ -17,6 +17,7 @@ use crate::route::{
     PortRequest, Sides, choose_sides, connector_ports, end_on_shapes, is_on_outline, place_label, route_connector,
     side_of, spread_ports,
 };
+use crate::text::{label_texts, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
 use crate::{AnalysisReport, SvgInputError, analyze, parse, report_of};
 
@@ -249,7 +250,6 @@ struct Reroute<'a> {
 /// connectors and of labels that drifted from their connector.
 fn reroute_connectors(draft: Draft) -> Draft {
     let report = draft.report();
-    let document = &draft.document;
     let diagram = &report.diagram;
 
     // A tied label that drifted from its connector or covers a node moves
@@ -275,10 +275,12 @@ fn reroute_connectors(draft: Draft) -> Draft {
     let stuck_connectors: Vec<&str> = detached
         .iter()
         .filter(|(label_id, connector_id)| {
-            let (Some(route), Some(text)) = (diagram.connector(connector_id), label_text(document, label_id)) else {
+            let (Some(route), Some(label)) = (
+                diagram.connector(connector_id),
+                diagram.labels.iter().find(|label| label.id == *label_id),
+            ) else {
                 return false;
             };
-            let element = document.element(&text);
             let blocked: Vec<Bounds> = diagram
                 .labels
                 .iter()
@@ -287,8 +289,8 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 .chain(label_blockers(diagram, connector_id))
                 .collect();
             place_label(
-                element.text_length(),
-                font_size(element),
+                label.bounds.width,
+                label.bounds.height,
                 &route.points,
                 &all_routes,
                 &blocked,
@@ -472,18 +474,42 @@ fn reroute_connectors(draft: Draft) -> Draft {
         let settled = [state.settled, vec![route.clone()]].concat();
         let routes = with_route(state.routes, &connector.id, route.clone());
         let document = &state.draft.document;
-        let Some((path, element)) = connector_elements(document).into_iter().find(|(_, element)| {
-            element.attr("id") == connector.id
-                || (element.attr("data-from") == connector.from && element.attr("data-to") == connector.to)
-        }) else {
+        let Some(drawn) = drawn_connectors(document)
+            .into_iter()
+            .find(|drawn| drawn.id == connector.id || (drawn.from == connector.from && drawn.to == connector.to))
+        else {
             return Routing {
                 settled,
                 routes,
                 ..state
             };
         };
-        let replacement = rerouted_element(element, &route, document.needs_svg_namespace(&path[..path.len() - 1]));
-        let updated = document.replace(&path, replacement);
+        let shaft = &drawn.shaft;
+        // Routes are in diagram coordinates; the shaft's own are inside its
+        // ancestors' translations.
+        let offset = translation(document, shaft);
+        let local: Vec<Point> = shaft_route(&drawn, &route)
+            .into_iter()
+            .map(|p| Point {
+                x: p.x - offset.x,
+                y: p.y - offset.y,
+            })
+            .collect();
+        let replacement = rerouted_element(
+            document.element(shaft),
+            &local,
+            document.needs_svg_namespace(&shaft[..shaft.len() - 1]),
+        );
+        let updated = drawn
+            .heads
+            .iter()
+            .fold(
+                document.replace(shaft, replacement),
+                |document, head| match moved_head(&document, head, &route) {
+                    Some(polygon) => document.replace(&head.path, polygon),
+                    None => document,
+                },
+            );
         let message = format!("Rerouted connector \"{}\" around diagram obstacles.", connector.id);
         Routing {
             draft: state
@@ -521,22 +547,22 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 .iter()
                 .find(|(id, _)| *id == connector_id)
                 .map(|(_, route)| route);
-            let text = label_text(&draft.document, &label.id);
-            let (Some(route), Some(text)) = (route, text) else {
+            let texts = label_texts(&draft.document, &label.id);
+            let (Some(route), false) = (route, texts.is_empty()) else {
                 return (draft, obstacles);
             };
-            let element = draft.document.element(&text);
             let blocked = [obstacles.clone(), label_blockers(diagram, &connector_id)].concat();
-            let Some(placement) = place_label(element.text_length(), font_size(element), route, &all_final, &blocked)
+            let Some(placement) = place_label(label.bounds.width, label.bounds.height, route, &all_final, &blocked)
             else {
                 return (draft, obstacles);
             };
-            let offset = translation(&draft.document, &text);
-            let updated = draft.document.update(&text, |text| {
-                text.with_attr("x", &format_number(placement.anchor_point.x - offset.x))
-                    .with_attr("y", &format_number(placement.anchor_point.y - offset.y))
-                    .with_attr("text-anchor", placement.anchor)
-            });
+            let updated = move_label(
+                draft.document.clone(),
+                &texts,
+                label.bounds,
+                placement.bounds,
+                placement.anchor,
+            );
             let message = format!("Moved label \"{}\" beside connector \"{connector_id}\".", label.id);
             let draft = draft.changed(updated, "move-label", message, &[&label.id, &connector_id]);
             (draft, [obstacles, vec![placement.bounds]].concat())
