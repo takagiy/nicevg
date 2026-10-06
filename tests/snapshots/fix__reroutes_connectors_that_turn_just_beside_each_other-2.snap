@@ -1,0 +1,12 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="200 560 440 500">
+        <g data-node="credit"><rect x="330" y="600" width="100" height="48"/><text x="380" y="629" text-anchor="middle" font-size="14">Credit</text></g>
+        <g data-node="models"><rect x="230" y="939" width="130" height="41"/><text x="295" y="965" text-anchor="middle" font-size="14">Models</text></g>
+        <g data-node="assess"><rect x="481" y="930" width="120" height="100"/><text x="541" y="985" text-anchor="middle" font-size="14">Assess</text></g>
+        <path id="score" data-from="credit" data-to="assess" d="M 430 624 L 541 624 L 541 930"/>
+        <path id="model" data-from="models" data-to="assess" d="M 360 960 L 481 960"/>
+      </svg>

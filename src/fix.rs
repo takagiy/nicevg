@@ -383,6 +383,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
         "connector-endpoint-inside",
         "connector-end-along-side",
         "connector-overlap",
+        "connector-near-miss",
     ];
     let with_issues: HashSet<&str> = stuck_connectors
         .into_iter()
@@ -392,7 +393,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 .iter()
                 .filter(|issue| reroute_codes.contains(&issue.code.as_str()))
                 .flat_map(|issue| {
-                    let take = if issue.code == "connector-overlap" {
+                    let take = if issue.code == "connector-overlap" || issue.code == "connector-near-miss" {
                         issue.elements.len()
                     } else {
                         1
@@ -458,9 +459,13 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 diagram
                     .labels
                     .iter()
+                    // A connector's own label moves beside its new route.
                     .filter(|label| {
                         !detached_ids.contains(label.id.as_str())
-                            && label.connector.as_deref().is_none_or(|id| !rerouted_ids.contains(id))
+                            && label
+                                .connector
+                                .as_deref()
+                                .is_none_or(|id| !rerouted_ids.contains(id) && id != connector.id)
                     })
                     .map(|label| label.bounds),
             )
@@ -575,9 +580,10 @@ fn reroute_connectors(draft: Draft) -> Draft {
             ([occupied, vec![route.clone()]].concat(), [routes, vec![route]].concat())
         },
     );
-    // A connector that stays but crosses a rerouted one where both meet the
-    // same node side may trade ports with it, and is rerouted too if so.
-    let partners: Vec<(Reroute, Ports)> = diagram
+    // A connector that stays but crosses another, rerouted or not, where
+    // both meet the same node side may trade ports with it, and is rerouted
+    // too if so.
+    let staying_ends: Vec<(Reroute, Ports)> = diagram
         .connectors
         .iter()
         .filter(|connector| !rerouted_ids.contains(connector.id.as_str()) && connector.points.len() >= 2)
@@ -596,21 +602,33 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 Ports { start, end },
             ))
         })
+        .collect();
+    let all_ends: Vec<(&Reroute, &Ports, &Vec<Point>)> = reroutes
+        .iter()
+        .zip(&first_ports)
+        .zip(&first_routes)
+        .map(|((reroute, ports), route)| (reroute, ports, route))
+        .chain(
+            staying_ends
+                .iter()
+                .map(|(staying, ports)| (staying, ports, &staying.connector.points)),
+        )
+        .collect();
+    let partner_ids: HashSet<&str> = staying_ends
+        .iter()
         .filter(|(partner, partner_ports)| {
             let own = meets(partner, partner_ports);
-            reroutes
-                .iter()
-                .zip(&first_ports)
-                .zip(&first_routes)
-                .any(|((reroute, ports), route)| {
-                    meets(reroute, ports).iter().any(|end| own.contains(end))
-                        && route_crossings(route, std::slice::from_ref(&partner.connector.points)) > 0
-                })
+            all_ends.iter().any(|(other, ports, route)| {
+                other.connector.id != partner.connector.id
+                    && meets(other, ports).iter().any(|end| own.contains(end))
+                    && route_crossings(route, std::slice::from_ref(&partner.connector.points)) > 0
+            })
         })
-        .collect();
-    let partner_ids: HashSet<&str> = partners
-        .iter()
         .map(|(partner, _)| partner.connector.id.as_str())
+        .collect();
+    let partners: Vec<(Reroute, Ports)> = staying_ends
+        .into_iter()
+        .filter(|(partner, _)| partner_ids.contains(partner.connector.id.as_str()))
         .collect();
     let staying: Vec<Vec<Point>> = diagram
         .connectors
@@ -927,8 +945,9 @@ fn improve_ports(
     routes: Vec<Vec<Point>>,
     route_with: &RouteWith,
 ) -> Vec<Vec<Point>> {
-    // Reroutes the connectors at `changed`, in order, with their new ports,
-    // keeping the change when it is better.
+    // Reroutes the connectors at `changed` with their new ports, keeping the
+    // change when it is better. The first one rerouted takes the lane it
+    // likes and the next goes around it, so each order is tried.
     let attempt = |(ports, routes): (Vec<Ports>, Vec<Vec<Point>>), changed: &[(usize, Ports)]| {
         let others: Vec<Vec<Point>> = settled
             .iter()
@@ -941,14 +960,6 @@ fn improve_ports(
                     .map(|(_, route)| route.clone()),
             )
             .collect();
-        let rerouted = changed
-            .iter()
-            .fold(Vec::new(), |rerouted: Vec<Vec<Point>>, (index, new)| {
-                let occupied = [others.clone(), rerouted.clone()].concat();
-                let route = route_with(&reroutes[*index], *new, &occupied);
-                [rerouted, vec![route]].concat()
-            });
-        let current: Vec<Vec<Point>> = changed.iter().map(|(index, _)| routes[*index].clone()).collect();
         let cost = |set: &[Vec<Point>]| {
             let crossed: usize = set
                 .iter()
@@ -957,6 +968,33 @@ fn improve_ports(
                 .sum();
             (crossed, set.iter().map(|route| turns(route)).sum::<usize>())
         };
+        // Routes in the order of `changed`, rerouting them in `order`.
+        let reroute_in = |order: &[usize]| {
+            let mut rerouted: Vec<Option<Vec<Point>>> = vec![None; changed.len()];
+            for position in order {
+                let (index, new) = changed[*position];
+                let occupied: Vec<Vec<Point>> = others
+                    .iter()
+                    .cloned()
+                    .chain(rerouted.iter().flatten().cloned())
+                    .collect();
+                rerouted[*position] = Some(route_with(&reroutes[index], new, &occupied));
+            }
+            rerouted.into_iter().flatten().collect::<Vec<_>>()
+        };
+        let forward: Vec<usize> = (0..changed.len()).collect();
+        let backward: Vec<usize> = forward.iter().rev().copied().collect();
+        let orders = if changed.len() > 1 {
+            vec![forward, backward]
+        } else {
+            vec![forward]
+        };
+        let rerouted = orders
+            .iter()
+            .map(|order| reroute_in(order))
+            .min_by_key(|set| cost(set))
+            .expect("at least one order");
+        let current: Vec<Vec<Point>> = changed.iter().map(|(index, _)| routes[*index].clone()).collect();
         let (old, new) = (cost(&current), cost(&rerouted));
         if new.0 <= old.0 && new.1 <= old.1 && new != old {
             changed

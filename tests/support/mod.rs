@@ -342,6 +342,31 @@ pub fn nearest_crossing_at_end(report: &AnalysisReport, node: &str) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
+/// Pairs of connectors with segments that come within 5px of each other
+/// without meeting: they read as touching or as one line.
+pub fn near_misses(report: &AnalysisReport) -> Vec<(String, String)> {
+    let connectors = &report.diagram.connectors;
+    let span = |a: f64, b: f64| (a.min(b), a.max(b));
+    connectors
+        .iter()
+        .enumerate()
+        .flat_map(|(index, first)| connectors[index + 1..].iter().map(move |second| (first, second)))
+        .filter(|(first, second)| {
+            segments(&first.points).iter().any(|(a, b)| {
+                segments(&second.points).iter().any(|(c, d)| {
+                    let ((left, right), (top, bottom)) = (span(a.x, b.x), span(a.y, b.y));
+                    let ((other_left, other_right), (other_top, other_bottom)) = (span(c.x, d.x), span(c.y, d.y));
+                    let dx = (other_left - right).max(left - other_right).max(0.0);
+                    let dy = (other_top - bottom).max(top - other_bottom).max(0.0);
+                    let gap = dx.hypot(dy);
+                    gap > 0.0 && gap < 5.0
+                })
+            })
+        })
+        .map(|(first, second)| (first.id.clone(), second.id.clone()))
+        .collect()
+}
+
 pub fn inflate(box_: &Bounds, amount: f64) -> Bounds {
     bounds(
         box_.x - amount,

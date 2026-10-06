@@ -52,6 +52,7 @@ pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue>
         connector_endpoints(&diagram.nodes, &diagram.connectors),
         connector_ends_along_sides(&diagram.nodes, &diagram.connectors),
         connector_overlaps(&diagram.connectors),
+        connector_near_misses(&diagram.connectors),
         detached_labels(&diagram.labels, &diagram.connectors),
     ]
     .concat()
@@ -432,6 +433,47 @@ fn connector_overlaps(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
                         format!(
                             "Connectors \"{}\" and \"{}\" overlap along a segment.",
                             first.id, second.id
+                        ),
+                        &[&first.id, &second.id],
+                        None,
+                    )
+                })
+        })
+        .collect()
+}
+
+/// How close a connector may turn to another before the two read as one
+/// line turning.
+pub const NEAR_MISS_DISTANCE: f64 = 5.0;
+
+fn connector_near_misses(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
+    // Whether a turn of `route` lies within the near-miss distance of `other`.
+    let turns_beside = |route: &[Point], other: &[Point]| {
+        let segments = segments(other);
+        route.len() > 2
+            && route[1..route.len() - 1].iter().any(|corner| {
+                segments
+                    .iter()
+                    .any(|(a, b)| distance_to_segment(*corner, *a, *b) < NEAR_MISS_DISTANCE)
+            })
+    };
+    connectors
+        .iter()
+        .enumerate()
+        .flat_map(|(index, first)| {
+            connectors[index + 1..]
+                .iter()
+                .filter(move |second| {
+                    turns_beside(&first.points, &second.points) || turns_beside(&second.points, &first.points)
+                })
+                .map(move |second| {
+                    issue(
+                        "connector-near-miss",
+                        format!(
+                            "Connectors \"{}\" and \"{}\" come within {}px of each other where one turns.",
+                            first.id,
+                            second.id,
+                            format_number(NEAR_MISS_DISTANCE)
                         ),
                         &[&first.id, &second.id],
                         None,

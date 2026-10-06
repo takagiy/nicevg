@@ -519,8 +519,9 @@ fn arranges_a_c4_container_diagram_without_issues_or_dents() {
 /// When the diagram is arranged
 /// Then nothing is reported, the layout is kept, no connector steps aside
 ///   just before reaching a node, the two shortcuts leaving "take
-///   application" side by side do not cross, and neither do the two
-///   connectors entering "make offer" side by side from above
+///   application" side by side do not cross, neither do the two
+///   connectors entering "make offer" side by side from above, and no two
+///   connectors come so close that they read as touching
 #[test]
 fn arranges_a_tall_loan_dfd_without_steps_at_the_ends() {
     let svg = include_str!("fixtures/loan-origination-dfd.svg");
@@ -529,6 +530,7 @@ fn arranges_a_tall_loan_dfd_without_steps_at_the_ends() {
 
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
     assert_eq!(stepped_ends(&result.report), Vec::<String>::new());
+    assert_eq!(near_misses(&result.report), Vec::<(String, String)>::new());
     // f26 runs to "make offer" and f27 to "notify", both past every
     // process in between.
     assert!(!crosses_route(

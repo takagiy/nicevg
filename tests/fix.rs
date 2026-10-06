@@ -1479,6 +1479,34 @@ fn places_a_label_again_when_the_crossings_on_its_connector_change() {
     assert_fix_snapshots!(result);
 }
 
+/// Given two connectors entering the left of a node, one turning 1px beside
+///   where the other turns, so the two read as one line turning
+/// When the diagram is fixed
+/// Then they are rerouted to keep apart, and nothing is reported
+#[test]
+fn reroutes_connectors_that_turn_just_beside_each_other() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="200 560 440 500">
+        <g data-node="credit"><rect x="330" y="600" width="100" height="48"/><text x="380" y="629" text-anchor="middle" font-size="14">Credit</text></g>
+        <g data-node="models"><rect x="230" y="940" width="130" height="40"/><text x="295" y="965" text-anchor="middle" font-size="14">Models</text></g>
+        <g data-node="assess"><rect x="481" y="930" width="120" height="100"/><text x="541" y="985" text-anchor="middle" font-size="14">Assess</text></g>
+        <path id="score" data-from="credit" data-to="assess" d="M 380 648 L 380 959 L 481 959"/>
+        <path id="model" data-from="models" data-to="assess" d="M 360 960 L 379 960 L 379 1001 L 481 1001"/>
+      </svg>
+    "#;
+
+    let before = analyze(svg);
+    let result = fix(svg);
+
+    assert!(has_issue(&before, "connector-near-miss"));
+    assert!(is_orthogonal(&connector_points(&result.report, "score")));
+    assert!(is_orthogonal(&connector_points(&result.report, "model")));
+    assert_eq!(near_misses(&result.report), Vec::<(String, String)>::new());
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a box with two connectors leaving its left side for two nodes far
 ///   below it, past a column of nodes in between, so both run down the left
 /// When the diagram is fixed

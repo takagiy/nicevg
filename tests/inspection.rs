@@ -486,6 +486,52 @@ fn does_not_report_connectors_that_only_cross_each_other() {
     assert!(!has_issue(&analyze(svg), "connector-overlap"));
 }
 
+/// Given a connector that turns 1px beside where another turns, so the two
+///   read as one line turning
+/// When the diagram is analyzed
+/// Then the pair is reported as a near miss
+#[test]
+fn reports_a_connector_turning_just_beside_another() {
+    let svg = near_miss_svg(960.0, 379.0);
+
+    let report = analyze(&svg);
+
+    assert!(issues_json(&report).contains(&json!({
+        "code": "connector-near-miss",
+        "message": "Connectors \"score\" and \"model\" come within 5px of each other where one turns.",
+        "elements": ["score", "model"],
+    })));
+}
+
+/// Given the same two connectors turning a lane (10px) apart
+/// When the diagram is analyzed
+/// Then no near miss is reported
+#[test]
+fn does_not_report_connectors_turning_a_lane_apart() {
+    let svg = near_miss_svg(969.0, 370.0);
+
+    assert!(!has_issue(&analyze(&svg), "connector-near-miss"));
+}
+
+/// Two connectors entering the left of "assess": "score" comes down from
+/// above and turns at (380, 959); "model" leaves the store at `model_y`
+/// and turns down at `model_x`.
+fn near_miss_svg(model_y: f64, model_x: f64) -> String {
+    format!(
+        r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="200 560 440 500">
+        <g data-node="credit"><rect x="330" y="600" width="100" height="48"/><text x="380" y="629" text-anchor="middle" font-size="14">Credit</text></g>
+        <g data-node="models"><rect x="230" y="{store_y}" width="130" height="40"/><text x="295" y="{text_y}" text-anchor="middle" font-size="14">Models</text></g>
+        <g data-node="assess"><rect x="481" y="930" width="120" height="100"/><text x="541" y="985" text-anchor="middle" font-size="14">Assess</text></g>
+        <path id="score" data-from="credit" data-to="assess" d="M 380 648 L 380 959 L 481 959"/>
+        <path id="model" data-from="models" data-to="assess" d="M 360 {model_y} L {model_x} {model_y} L {model_x} 1001 L 481 1001"/>
+      </svg>
+    "#,
+        store_y = model_y - 20.0,
+        text_y = model_y + 5.0,
+    )
+}
+
 fn tied_label(label_y: u32) -> String {
     format!(
         r#"
