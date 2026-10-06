@@ -253,6 +253,7 @@ impl PartialOrd for Entry {
 /// `rails` are lines a route may cross but should not run along, such as
 /// the borders of containers around its ends: running on one is ruled
 /// out and running close beside one costs like running beside a connector.
+#[tracing::instrument(skip_all, fields(columns = tracing::field::Empty, rows = tracing::field::Empty, occupied = occupied.len(), obstacles = obstacles.len()))]
 pub fn search(
     starts: &[Terminal],
     ends: &[Terminal],
@@ -261,6 +262,7 @@ pub fn search(
     rails: &[(Point, Point)],
     bend_penalty: f64,
 ) -> Option<Found> {
+    let phase = tracing::info_span!("search_grid_lines").entered();
     let crossed_segments: Vec<(Point, Point)> = occupied.iter().flat_map(|route| segments(route)).collect();
     let occupied_segments: Vec<(Point, Point)> = crossed_segments.iter().chain(rails).copied().collect();
     let axis = |pick: fn(&Point) -> f64, low: fn(&Bounds) -> f64, high: fn(&Bounds) -> f64| {
@@ -292,10 +294,15 @@ pub fn search(
     };
     let xs = axis(|p| p.x, |b| b.x, Bounds::right);
     let ys = axis(|p| p.y, |b| b.y, Bounds::bottom);
+    drop(phase);
+    tracing::Span::current()
+        .record("columns", xs.len())
+        .record("rows", ys.len());
     let width = xs.len();
     let cells = width * ys.len();
     let key = |xi: usize, yi: usize| yi * width + xi;
 
+    let phase = tracing::info_span!("search_obstacles").entered();
     // Grid lines include every obstacle edge, so an edge between neighbouring
     // grid points enters an obstacle exactly when its midpoint is inside it.
     let mut blocked_cell = vec![false; cells];
@@ -328,6 +335,8 @@ pub fn search(
             }
         }
     }
+    drop(phase);
+    let phase = tracing::info_span!("search_taken").entered();
     // Grid edges that share any length with another connector's segment are
     // taken, including segments shorter than one grid step.
     for (from, to) in &occupied_segments {
@@ -346,6 +355,8 @@ pub fn search(
         }
     }
 
+    drop(phase);
+    let phase = tracing::info_span!("search_near_runs").entered();
     // Grid edges running parallel to another connector's segment, closer
     // than two lanes, cost extra: closely packed lines read as one band.
     let mut near_horizontal = vec![0.0f64; cells];
@@ -381,6 +392,8 @@ pub fn search(
         }
     }
 
+    drop(phase);
+    let phase = tracing::info_span!("search_crossings").entered();
     // Grid edges that cross another connector's segment, or reach a point
     // inside it, cost a crossing. An edge ending on the segment counts, the
     // one leaving it does not, so passing straight through counts once.
@@ -404,6 +417,8 @@ pub fn search(
         }
     }
 
+    drop(phase);
+    let phase = tracing::info_span!("search_astar", visited = tracing::field::Empty).entered();
     let cell_of = |target: &Point| Some(key(index_of(&xs, target.x)?, index_of(&ys, target.y)?));
     let end_cells: HashMap<usize, (usize, Terminal)> = ends
         .iter()
@@ -441,7 +456,9 @@ pub fn search(
         queue.push(Reverse(Entry(terminal.cost + estimate(cell), state)));
     }
     let mut reached = None;
+    let mut visited = 0usize;
     while let Some(Reverse(Entry(priority, state))) = queue.pop() {
+        visited += 1;
         let cell = cell_of_state(state);
         let cost = distance[state];
         if priority > cost + estimate(cell) {
@@ -528,6 +545,8 @@ pub fn search(
             queue.push(Reverse(Entry(next_cost + estimate(next_cell), next_state)));
         }
     }
+    phase.record("visited", visited);
+    drop(phase);
     let reached = reached?;
     let path: Vec<Point> = std::iter::successors(Some(reached), |state| previous[*state])
         .map(|state| point_of(cell_of_state(state)))
@@ -555,6 +574,7 @@ fn turn_cost(turned: usize, penalty: f64) -> f64 {
 /// A route between two ports: straight when the ports line up and nothing
 /// is in the way, otherwise the cheapest detour leaving and entering the
 /// node sides at right angles.
+#[tracing::instrument(skip_all)]
 pub fn route_connector(
     source: &Bounds,
     target: &Bounds,
@@ -611,6 +631,7 @@ pub fn route_connector(
 /// every side of both ends from its midpoint. Each connector already on a
 /// side makes that side cost more, so bends are not saved by bunching
 /// connectors together. The sides facing along the dominant axis win ties.
+#[tracing::instrument(skip_all)]
 pub fn choose_sides(
     source: &Bounds,
     target: &Bounds,
@@ -693,6 +714,7 @@ fn set(ports: Ports, end: End, value: Point) -> Ports {
 /// Spreads the ports of the requests evenly along each side they share,
 /// counting the ports already on that side (`fixed`, keyed like the sides
 /// and given along it) as taking the even slots nearest them.
+#[tracing::instrument(skip_all, fields(requests = requests.len()))]
 pub fn spread_ports(requests: &[PortRequest], fixed: &HashMap<String, Vec<f64>>) -> HashMap<String, Ports> {
     let midpoints: HashMap<String, Ports> = requests
         .iter()
@@ -1118,6 +1140,7 @@ pub fn place_label_clear(
     find_label_spot(width, height, route, routes, blocked, containers, true)
 }
 
+#[tracing::instrument(skip_all, fields(routes = routes.len(), blocked = blocked.len()))]
 fn find_label_spot(
     width: f64,
     height: f64,

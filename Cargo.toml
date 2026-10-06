@@ -13,8 +13,12 @@ quick-xml = "0.42.0"
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["float_roundtrip", "preserve_order"] }
+tracing = "0.1.44"
 unicode-width = "0.2.2"
 
 [dev-dependencies]
 insta = { version = "1.49.0", features = ["json"] }
 roxmltree = "0.21.1"
+tracing-chrome = "0.7.2"
+tracing-flame = "0.2.0"
+tracing-subscriber = "0.3.23"

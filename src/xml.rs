@@ -187,6 +187,7 @@ pub struct ParseError(pub String);
 /// normalized, literal whitespace in attribute values becomes spaces, text
 /// before the root is kept only when it is whitespace, and trailing
 /// whitespace at the end of the input is dropped.
+#[tracing::instrument(name = "xml_parse", skip_all, fields(bytes = source.len()))]
 pub fn parse(source: &str) -> Result<Document, ParseError> {
     if source.is_empty() {
         return Err(ParseError("invalid doc source".to_owned()));
@@ -424,6 +425,7 @@ fn serialize_element(element: &Element) -> String {
     }
 }
 
+#[tracing::instrument(name = "xml_serialize", skip_all)]
 pub fn serialize(document: &Document) -> String {
     document.children.iter().map(serialize_node).collect()
 }

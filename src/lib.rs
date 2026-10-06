@@ -49,8 +49,9 @@ pub(crate) fn parse(svg: &str) -> Result<xml::Document, SvgInputError> {
     xml::parse(svg).map_err(|error| SvgInputError(error.0))
 }
 
+#[tracing::instrument(skip_all)]
 pub(crate) fn report_of(document: &xml::Document) -> AnalysisReport {
-    let diagram = diagram::read(document);
+    let diagram = tracing::info_span!("read_diagram").in_scope(|| diagram::read(document));
     let view_box = inspect::parse_view_box(document.root().attr("viewBox"));
     let issues = inspect::inspect(view_box, &diagram);
     AnalysisReport {
@@ -62,6 +63,7 @@ pub(crate) fn report_of(document: &xml::Document) -> AnalysisReport {
 }
 
 /// Reads an SVG diagram and reports its mechanical layout errors.
+#[tracing::instrument(skip_all)]
 pub fn analyze(svg: &str) -> Result<AnalysisReport, SvgInputError> {
     parse(svg).map(|document| report_of(&document))
 }

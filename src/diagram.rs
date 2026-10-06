@@ -289,7 +289,10 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
 }
 
 pub fn read(document: &Document) -> Diagram {
+    let phase = tracing::info_span!("read_recognize_nodes").entered();
     let recognized = recognize_nodes(document);
+    drop(phase);
+    let phase = tracing::info_span!("read_nodes").entered();
     let nodes = recognized
         .iter()
         .map(|node| {
@@ -308,6 +311,8 @@ pub fn read(document: &Document) -> Diagram {
         })
         .collect();
 
+    drop(phase);
+    let phase = tracing::info_span!("read_connectors").entered();
     let connectors = drawn_connectors(document)
         .into_iter()
         .map(|drawn| DiagramConnector {
@@ -318,6 +323,8 @@ pub fn read(document: &Document) -> Diagram {
         })
         .collect();
 
+    drop(phase);
+    let phase = tracing::info_span!("read_labels").entered();
     // Labels in document order: a group carrying `data-label` is one label
     // with the texts inside it; texts sharing a `data-label` are one label.
     let labelled: Vec<(Path, &Element)> = document
@@ -356,6 +363,7 @@ pub fn read(document: &Document) -> Diagram {
             labels
         });
 
+    drop(phase);
     let unsupported_elements = document
         .root()
         .children

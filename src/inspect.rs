@@ -39,6 +39,7 @@ pub const CLEARANCE: f64 = 8.0;
 /// so a tied label further than this no longer reads as belonging to it.
 pub const DETACHED_LABEL_DISTANCE: f64 = 16.0;
 
+#[tracing::instrument(skip_all, fields(nodes = diagram.nodes.len(), connectors = diagram.connectors.len(), labels = diagram.labels.len()))]
 pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue> {
     [
         viewport(view_box, diagram.drawing_bounds()),

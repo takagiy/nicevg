@@ -138,12 +138,20 @@ cargo run --example fix-gallery
 
 単体テストは出力の座標を固定せず、Given/When/Then の Then が約束する性質（直交している、ノードを貫通しない、辺から垂直に出入りする など）を `tests/support/mod.rs` の述語で確かめる。
 
-修正のテストは、Then の性質に加えて、修正後の SVG そのものと、その品質（残る問題・折れ曲がり・斜めの線分・コネクタから離れたラベルの数）を [insta](https://insta.rs) のスナップショットとして `tests/snapshots/` に記録する。個々の期待値が固定していない形の変化も、スナップショットの差分として検出される。品質の差分を見れば、その変化が改善か後退かを判断できる。改善も差分として失敗するので、意図した変化は差分を確認してから記録し直す。
+修正のテストは、Then の性質に加えて、修正後の SVG そのものと、その品質（残る問題・折れ曲がり・斜めの線分・コネクタから離れたラベルの数・並走するコネクタの密度）を [insta](https://insta.rs) のスナップショットとして `tests/snapshots/` に記録する。個々の期待値が固定していない形の変化も、スナップショットの差分として検出される。品質の差分を見れば、その変化が改善か後退かを判断できる。改善も差分として失敗するので、意図した変化は差分を確認してから記録し直す。
 
 ```sh
 cargo insta review
 # または
 INSTA_UPDATE=always cargo test --test fix
+```
+
+処理時間は `examples/profile.rs` で測る。ライブラリの主な処理には [tracing](https://docs.rs/tracing) のスパンが付いており、スパンごとの呼び出し回数・合計時間・自分の時間（子のスパンを除いた時間）と、記録した数値（経路探索のグリッドの大きさ、探索した状態数など）を表にする。arrange の評価は並列なので、時間はスレッドの合計になる。
+
+```sh
+cargo run --release --example profile -- tests/fixtures/loan-origination-dfd.svg
+# 修正だけを測り、Perfetto で開くトレースとフレームグラフ用のスタックも書き出す
+cargo run --release --example profile -- input.svg --fix --chrome trace.json --folded stacks.folded
 ```
 
 Windows では GNU ツールチェーン（`x86_64-pc-windows-gnu`）でビルドしており、依存クレートのリンクに MinGW-w64 の `dlltool` を使う。

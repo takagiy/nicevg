@@ -87,6 +87,7 @@ const LABEL_CLEARANCE: f64 = 4.0;
 
 /// Fixes the diagram, then moves nodes a little where that leaves fewer
 /// bends, crossings and crowded lanes.
+#[tracing::instrument(skip_all)]
 pub fn arrange(svg: &str) -> Result<FixResult, SvgInputError> {
     let fixed = fix(svg)?;
     let baseline = fixed.report.diagram.clone();
@@ -122,11 +123,13 @@ struct Move {
     dy: f64,
 }
 
+#[tracing::instrument(name = "arrange_step", skip_all, fields(steps_left = steps, candidates = tracing::field::Empty))]
 fn improve(context: &Context, state: State, steps: usize) -> State {
     if steps == 0 {
         return state;
     }
     let candidates = candidates(context, &state);
+    tracing::Span::current().record("candidates", candidates.len());
     let best = evaluate_all(context, &state, &candidates)
         .into_iter()
         .flatten()
@@ -141,14 +144,19 @@ fn improve(context: &Context, state: State, steps: usize) -> State {
 
 /// Evaluates the candidates on as many threads as are available; the
 /// outcome does not depend on how they are split.
+#[tracing::instrument(skip_all)]
 fn evaluate_all(context: &Context, state: &State, candidates: &[(String, Move)]) -> Vec<Option<State>> {
     let threads = std::thread::available_parallelism().map_or(1, |count| count.get());
     let chunk = candidates.len().div_ceil(threads).max(1);
+    let parent = tracing::Span::current();
     std::thread::scope(|scope| {
         let handles: Vec<_> = candidates
             .chunks(chunk)
             .map(|part| {
+                let parent = parent.clone();
                 scope.spawn(move || {
+                    let _thread =
+                        tracing::info_span!(parent: &parent, "evaluate_thread", candidates = part.len()).entered();
                     part.iter()
                         .map(|(id, step)| evaluate(context, state, id, *step))
                         .collect::<Vec<_>>()
@@ -165,6 +173,7 @@ fn evaluate_all(context: &Context, state: &State, candidates: &[(String, Move)])
 /// Moves `id` by `step` and fixes the result, rerouting the node's
 /// connectors. A zero step reroutes them in place, as the nodes around
 /// them may have moved since they were last routed.
+#[tracing::instrument(skip_all)]
 fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<State> {
     let in_place = step.dx == 0.0 && step.dy == 0.0;
     let ids: Vec<String> = id.split(TOGETHER).map(str::to_owned).collect();
@@ -257,6 +266,7 @@ fn translated(existing: &str, step: Move) -> String {
 /// off the straight line between a bent connector's lined-up ends, and
 /// nudging the nodes at the ends of connectors that cross, crowd or have
 /// issues.
+#[tracing::instrument(skip_all)]
 fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
     let diagram = &state.result.report.diagram;
     let node = |id: &str| diagram.node(id);
@@ -556,6 +566,7 @@ impl Context {
             })
     }
 
+    #[tracing::instrument(skip_all)]
     fn score(&self, result: &FixResult, offsets: &HashMap<String, Point>) -> f64 {
         let report = &result.report;
         let connectors = &report.diagram.connectors;

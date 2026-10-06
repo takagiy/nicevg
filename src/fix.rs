@@ -46,6 +46,7 @@ struct Draft {
 
 impl Draft {
     /// The report of the document as it would be written out.
+    #[tracing::instrument(name = "draft_report", skip_all)]
     fn report(&self) -> AnalysisReport {
         let written = serialize(&self.document);
         report_of(&parse(&written).expect("a serialized draft parses again"))
@@ -67,6 +68,7 @@ impl Draft {
 
 /// Repairs what can be repaired, repeating passes while they leave fewer
 /// issues (at most five).
+#[tracing::instrument(skip_all)]
 pub fn fix(svg: &str) -> Result<FixResult, SvgInputError> {
     fix_with_passes(svg, 5)
 }
@@ -80,6 +82,7 @@ pub fn fix_with_passes(svg: &str, max_passes: usize) -> Result<FixResult, SvgInp
 
 /// Fixes a document whose nodes `moved` were just moved, so the connectors
 /// attached to them are rerouted to follow.
+#[tracing::instrument(skip_all, fields(moved = moved.len()))]
 pub(crate) fn fix_after_moves(svg: &str, moved: &[String], max_passes: usize) -> Result<FixResult, SvgInputError> {
     fn refine(best: FixResult, remaining: usize) -> Result<FixResult, SvgInputError> {
         if remaining == 0 || best.report.issues.is_empty() {
@@ -95,6 +98,7 @@ pub(crate) fn fix_after_moves(svg: &str, moved: &[String], max_passes: usize) ->
     refine(fix_once(svg, moved)?, max_passes.saturating_sub(1))
 }
 
+#[tracing::instrument(skip_all)]
 fn fix_once(svg: &str, moved: &[String]) -> Result<FixResult, SvgInputError> {
     let draft = Draft {
         document: parse(svg)?,
@@ -115,6 +119,7 @@ fn fix_once(svg: &str, moved: &[String]) -> Result<FixResult, SvgInputError> {
 }
 
 /// Grows node shapes whose labels do not fit, leaving the labels in place.
+#[tracing::instrument(skip_all)]
 fn expand_nodes(draft: Draft) -> Draft {
     let report = draft.report();
     report
@@ -194,6 +199,7 @@ fn expand_nodes(draft: Draft) -> Draft {
 
 /// Pushes the right node of each overlapping or too-close pair rightwards,
 /// one pair at a time, until the row keeps its 20px gaps.
+#[tracing::instrument(skip_all)]
 fn separate_nodes(draft: Draft) -> Draft {
     fn step(draft: Draft, attempt: usize) -> Draft {
         if attempt >= 100 {
@@ -324,6 +330,7 @@ struct Reroute<'a> {
 /// Reroutes connectors that cross nodes, overlap, end inside nodes, pass too
 /// close to labels or follow moved nodes; then places the labels of rerouted
 /// connectors and of labels that drifted from their connector.
+#[tracing::instrument(skip_all, fields(reroutes = tracing::field::Empty, partners = tracing::field::Empty))]
 fn reroute_connectors(draft: Draft) -> Draft {
     let report = draft.report();
     let diagram = &report.diagram;
@@ -630,6 +637,9 @@ fn reroute_connectors(draft: Draft) -> Draft {
         .into_iter()
         .filter(|(partner, _)| partner_ids.contains(partner.connector.id.as_str()))
         .collect();
+    tracing::Span::current()
+        .record("reroutes", reroutes.len())
+        .record("partners", partners.len());
     let staying: Vec<Vec<Point>> = diagram
         .connectors
         .iter()
@@ -801,6 +811,7 @@ fn connector_landmarks(diagram: &Diagram) -> HashMap<String, Vec<Point>> {
 /// since `before`, wherever the label came from, and within a label
 /// clearance of another connector, where it could be taken for that
 /// one's label, when a spot clear of the others exists.
+#[tracing::instrument(skip_all)]
 fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
     let report = draft.report();
     let diagram = &report.diagram;
@@ -937,6 +948,7 @@ type RouteWith<'a> = dyn Fn(&Reroute, Ports, &[Vec<Point>]) -> Vec<Point> + 'a;
 /// along the side to the line it arrives on. A change stays
 /// when the connectors it reroutes cross less without turning more, or
 /// turn less without crossing more.
+#[tracing::instrument(skip_all)]
 fn improve_ports(
     reroutes: &[Reroute],
     settled: &[Vec<Point>],
@@ -1248,6 +1260,7 @@ fn regex_fill(style: &str) -> bool {
 }
 
 /// Grows the viewBox to the drawing plus its safe padding when it clips.
+#[tracing::instrument(skip_all)]
 fn expand_view_box(draft: Draft) -> Draft {
     let report = draft.report();
     let root_path = vec![draft.document.root_index()];
