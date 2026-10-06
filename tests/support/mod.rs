@@ -424,6 +424,10 @@ pub struct Quality {
     pub bends: usize,
     pub detached_labels: usize,
     pub diagonal_segments: usize,
+    /// How crowded connectors running side by side are: 1000 / d² summed
+    /// over each pair of parallel segments, from different connectors, that
+    /// run alongside each other for a stretch d apart. Rounded to hundredths.
+    pub parallel_density: f64,
     pub remaining_issues: usize,
 }
 
@@ -453,8 +457,39 @@ pub fn quality_of(report: &AnalysisReport) -> Quality {
                     .count()
             })
             .sum(),
+        parallel_density: (parallel_density(report) * 100.0).round() / 100.0,
         remaining_issues: report.issues.len(),
     }
+}
+
+/// 1000 / d² summed over each pair of parallel segments from different
+/// connectors whose spans along their direction overlap for a stretch,
+/// d apart. Segments on one line (d = 0) are overlaps, reported as issues.
+pub fn parallel_density(report: &AnalysisReport) -> f64 {
+    let connectors = &report.diagram.connectors;
+    connectors
+        .iter()
+        .enumerate()
+        .flat_map(|(index, first)| connectors[index + 1..].iter().map(move |second| (first, second)))
+        .flat_map(|(first, second)| {
+            let others = segments(&second.points);
+            segments(&first.points)
+                .into_iter()
+                .flat_map(move |(a, b)| others.clone().into_iter().map(move |(c, d)| (a, b, c, d)))
+        })
+        .filter_map(|(a, b, c, d)| {
+            let span = |p: f64, q: f64| (p.min(q), p.max(q));
+            let (distance, (low, high), (other_low, other_high)) =
+                if a.y == b.y && c.y == d.y && a.x != b.x && c.x != d.x {
+                    ((a.y - c.y).abs(), span(a.x, b.x), span(c.x, d.x))
+                } else if a.x == b.x && c.x == d.x && a.y != b.y && c.y != d.y {
+                    ((a.x - c.x).abs(), span(a.y, b.y), span(c.y, d.y))
+                } else {
+                    return None;
+                };
+            (distance > 0.0 && high.min(other_high) > low.max(other_low)).then(|| 1000.0 / (distance * distance))
+        })
+        .sum()
 }
 
 /// Attributes of the elements of the written SVG, by element id or by tag
