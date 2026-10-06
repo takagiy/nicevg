@@ -993,12 +993,15 @@ fn bounds_at(x: f64, y: f64, width: f64, height: f64) -> Bounds {
 /// segments, trying the longest segment first and fanning out from its
 /// midpoint. The label keeps the connector clearance from every route and
 /// stays at least 4px away from other labels and nodes.
+/// `containers` are the boxes around the connector's ends: the label may
+/// sit inside or outside each, but not across its border.
 pub fn place_label(
     width: f64,
     height: f64,
     route: &[Point],
     routes: &[Vec<Point>],
     blocked: &[Bounds],
+    containers: &[Bounds],
 ) -> Option<Placement> {
     let gap = CLEARANCE + 1.0;
     let mut ordered: Vec<(usize, (Point, Point))> = segments(route).into_iter().enumerate().collect();
@@ -1019,6 +1022,13 @@ pub fn place_label(
             && blocked
                 .iter()
                 .all(|other| intersection(bounds, &other.inflate(4.0)).is_none())
+            && containers.iter().all(|container| {
+                let inside = bounds.x >= container.x + 4.0
+                    && bounds.y >= container.y + 4.0
+                    && bounds.right() <= container.right() - 4.0
+                    && bounds.bottom() <= container.bottom() - 4.0;
+                inside || intersection(bounds, &container.inflate(4.0)).is_none()
+            })
     };
     ordered.iter().find_map(|(_, (from, to))| {
         let horizontal = from.y == to.y;

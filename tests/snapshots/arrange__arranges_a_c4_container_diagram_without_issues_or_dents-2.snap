@@ -1,0 +1,184 @@
+---
+source: tests/arrange.rs
+expression: result.svg.as_str()
+---
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1830 1260" width="1830" height="1260">
+
+  <style>
+    text { font-family: system-ui, sans-serif; }
+    .title { font-size: 22px; font-weight: 700; fill: #111827; }
+    .caption { font-size: 12px; fill: #4b5563; }
+    .person rect { fill: #08427b; stroke: #052e56; }
+    .container rect { fill: #438dd5; stroke: #3c7fc0; }
+    .database rect { fill: #438dd5; stroke: #3c7fc0; stroke-width: 2; stroke-dasharray: 2 2; }
+    .external rect { fill: #999999; stroke: #8a8a8a; }
+    .person text, .container text, .database text, .external text { fill: #ffffff; }
+    .name { font-weight: 700; }
+    .boundary &gt; rect { fill: none; stroke: #444444; stroke-dasharray: 8 4; }
+    .boundary &gt; text { fill: #444444; font-size: 13px; }
+    .rel { stroke: #707070; stroke-width: 1.3; marker-end: url(#arrow); }
+    .rel-label { fill: #707070; font-size: 11px; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#707070"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
+  <text data-label="title" class="title" x="40" y="44" font-size="22">Food Delivery Platform — Container diagram</text>
+  <text data-label="caption" class="caption" x="40" y="68" font-size="12">C4 level 2: the apps, services and data stores inside the platform, and the people and systems around it</text>
+  <g data-node="customer" class="person">
+    <rect x="90" y="100" width="210" height="92" rx="28"/>
+    <text x="195" y="126" text-anchor="middle"><tspan x="195" dy="0" class="name" font-size="14">Customer</tspan><tspan x="195" dy="18" class="tag" font-size="11">[Person]</tspan><tspan x="195" dy="16" class="description" font-size="11">Orders food and tracks it</tspan></text>
+  </g>
+  <g data-node="staff" class="person">
+    <rect x="470" y="100" width="210" height="92" rx="28"/>
+    <text x="575" y="126" text-anchor="middle"><tspan x="575" dy="0" class="name" font-size="14">Restaurant staff</tspan><tspan x="575" dy="18" class="tag" font-size="11">[Person]</tspan><tspan x="575" dy="16" class="description" font-size="11">Prepares orders</tspan></text>
+  </g>
+  <g data-node="courier" class="person">
+    <rect x="850" y="100" width="210" height="92" rx="28"/>
+    <text x="955" y="126" text-anchor="middle"><tspan x="955" dy="0" class="name" font-size="14">Courier</tspan><tspan x="955" dy="18" class="tag" font-size="11">[Person]</tspan><tspan x="955" dy="16" class="description" font-size="11">Picks up and delivers</tspan></text>
+  </g>
+  <g data-node="agent" class="person">
+    <rect x="1230" y="100" width="210" height="92" rx="28"/>
+    <text x="1335" y="126" text-anchor="middle"><tspan x="1335" dy="0" class="name" font-size="14">Support agent</tspan><tspan x="1335" dy="18" class="tag" font-size="11">[Person]</tspan><tspan x="1335" dy="16" class="description" font-size="11">Resolves complaints</tspan></text>
+  </g>
+  <g data-node="platform" class="boundary">
+    <rect x="60" y="250" width="1410" height="841" rx="10"/>
+    <text x="76" y="1076">Food Delivery Platform [Software System]</text>
+    <g data-node="customer_app" class="container">
+      <rect x="90" y="280" width="210" height="92" rx="6"/>
+      <text x="195" y="306" text-anchor="middle"><tspan x="195" dy="0" class="name" font-size="14">Customer app</tspan><tspan x="195" dy="18" class="tag" font-size="11">[Container: React Native]</tspan><tspan x="195" dy="16" class="description" font-size="11">Browse, order, track</tspan></text>
+    </g>
+    <g data-node="portal" class="container" transform="translate(40 0)">
+      <rect x="470" y="280" width="210" height="92" rx="6"/>
+      <text x="575" y="306" text-anchor="middle"><tspan x="575" dy="0" class="name" font-size="14">Restaurant portal</tspan><tspan x="575" dy="18" class="tag" font-size="11">[Container: React SPA]</tspan><tspan x="575" dy="16" class="description" font-size="11">Menus and incoming orders</tspan></text>
+    </g>
+    <g data-node="courier_app" class="container">
+      <rect x="850" y="280" width="210" height="92" rx="6"/>
+      <text x="955" y="306" text-anchor="middle"><tspan x="955" dy="0" class="name" font-size="14">Courier app</tspan><tspan x="955" dy="18" class="tag" font-size="11">[Container: Kotlin, Swift]</tspan><tspan x="955" dy="16" class="description" font-size="11">Jobs and navigation</tspan></text>
+    </g>
+    <g data-node="console" class="container" transform="translate(0 20)">
+      <rect x="1230" y="280" width="210" height="92" rx="6"/>
+      <text x="1335" y="306" text-anchor="middle"><tspan x="1335" dy="0" class="name" font-size="14">Admin console</tspan><tspan x="1335" dy="18" class="tag" font-size="11">[Container: React SPA]</tspan><tspan x="1335" dy="16" class="description" font-size="11">Refunds and disputes</tspan></text>
+    </g>
+    <g data-node="gateway" class="container">
+      <rect x="560" y="440" width="300" height="92" rx="6"/>
+      <text x="710" y="466" text-anchor="middle"><tspan x="710" dy="0" class="name" font-size="14">API gateway</tspan><tspan x="710" dy="18" class="tag" font-size="11">[Container: Kong]</tspan><tspan x="710" dy="16" class="description" font-size="11">Auth, rate limits, routing</tspan></text>
+    </g>
+    <g data-node="identity" class="container">
+      <rect x="90" y="600" width="210" height="92" rx="6"/>
+      <text x="195" y="626" text-anchor="middle"><tspan x="195" dy="0" class="name" font-size="14">Identity service</tspan><tspan x="195" dy="18" class="tag" font-size="11">[Container: Go]</tspan><tspan x="195" dy="16" class="description" font-size="11">Accounts and tokens</tspan></text>
+    </g>
+    <g data-node="orders" class="container">
+      <rect x="380" y="600" width="210" height="92" rx="6"/>
+      <text x="485" y="626" text-anchor="middle"><tspan x="485" dy="0" class="name" font-size="14">Order service</tspan><tspan x="485" dy="18" class="tag" font-size="11">[Container: Java, Spring]</tspan><tspan x="485" dy="16" class="description" font-size="11">Order lifecycle</tspan></text>
+    </g>
+    <g data-node="menu" class="container">
+      <rect x="670" y="600" width="210" height="92" rx="6"/>
+      <text x="775" y="626" text-anchor="middle"><tspan x="775" dy="0" class="name" font-size="14">Menu service</tspan><tspan x="775" dy="18" class="tag" font-size="11">[Container: Node.js]</tspan><tspan x="775" dy="16" class="description" font-size="11">Restaurants and menus</tspan></text>
+    </g>
+    <g data-node="dispatch" class="container" transform="translate(40 0)">
+      <rect x="960" y="600" width="210" height="92" rx="6"/>
+      <text x="1065" y="626" text-anchor="middle"><tspan x="1065" dy="0" class="name" font-size="14">Dispatch service</tspan><tspan x="1065" dy="18" class="tag" font-size="11">[Container: Go]</tspan><tspan x="1065" dy="16" class="description" font-size="11">Assigns couriers</tspan></text>
+    </g>
+    <g data-node="payments" class="container">
+      <rect x="1230" y="600" width="210" height="92" rx="6"/>
+      <text x="1335" y="626" text-anchor="middle"><tspan x="1335" dy="0" class="name" font-size="14">Payment service</tspan><tspan x="1335" dy="18" class="tag" font-size="11">[Container: Java]</tspan><tspan x="1335" dy="16" class="description" font-size="11">Charges and refunds</tspan></text>
+    </g>
+    <g data-node="identity_db" class="database">
+      <rect x="90" y="800" width="210" height="92" rx="6"/>
+      <text x="195" y="826" text-anchor="middle"><tspan x="195" dy="0" class="name" font-size="14">Identity DB</tspan><tspan x="195" dy="18" class="tag" font-size="11">[Container: PostgreSQL]</tspan><tspan x="195" dy="16" class="description" font-size="11">Users, credentials</tspan></text>
+    </g>
+    <g data-node="order_db" class="database">
+      <rect x="380" y="800" width="210" height="92" rx="6"/>
+      <text x="485" y="826" text-anchor="middle"><tspan x="485" dy="0" class="name" font-size="14">Order DB</tspan><tspan x="485" dy="18" class="tag" font-size="11">[Container: PostgreSQL]</tspan><tspan x="485" dy="16" class="description" font-size="11">Orders, line items</tspan></text>
+    </g>
+    <g data-node="search" class="database">
+      <rect x="670" y="800" width="210" height="92" rx="6"/>
+      <text x="775" y="826" text-anchor="middle"><tspan x="775" dy="0" class="name" font-size="14">Search index</tspan><tspan x="775" dy="18" class="tag" font-size="11">[Container: Elasticsearch]</tspan><tspan x="775" dy="16" class="description" font-size="11">Menu search</tspan></text>
+    </g>
+    <g data-node="events" class="container" transform="translate(40 0)">
+      <rect x="960" y="800" width="210" height="92" rx="6"/>
+      <text x="1065" y="826" text-anchor="middle"><tspan x="1065" dy="0" class="name" font-size="14">Event bus</tspan><tspan x="1065" dy="18" class="tag" font-size="11">[Container: Kafka]</tspan><tspan x="1065" dy="16" class="description" font-size="11">Order and courier events</tspan></text>
+    </g>
+    <g data-node="locations" class="database">
+      <rect x="1230" y="800" width="210" height="92" rx="6"/>
+      <text x="1335" y="826" text-anchor="middle"><tspan x="1335" dy="0" class="name" font-size="14">Location cache</tspan><tspan x="1335" dy="18" class="tag" font-size="11">[Container: Redis]</tspan><tspan x="1335" dy="16" class="description" font-size="11">Live courier positions</tspan></text>
+    </g>
+    <g data-node="notify" class="container">
+      <rect x="670" y="960" width="210" height="92" rx="6"/>
+      <text x="775" y="986" text-anchor="middle"><tspan x="775" dy="0" class="name" font-size="14">Notification service</tspan><tspan x="775" dy="18" class="tag" font-size="11">[Container: Python]</tspan><tspan x="775" dy="16" class="description" font-size="11">Push, SMS and email</tspan></text>
+    </g>
+  </g>
+  <g data-node="psp" class="external" transform="translate(40 0)">
+    <rect x="1560" y="600" width="210" height="92" rx="6"/>
+    <text x="1665" y="626" text-anchor="middle"><tspan x="1665" dy="0" class="name" font-size="14">Payment provider</tspan><tspan x="1665" dy="18" class="tag" font-size="11">[Software System]</tspan><tspan x="1665" dy="16" class="description" font-size="11">Cards and wallets</tspan></text>
+  </g>
+  <g data-node="maps" class="external" transform="translate(40 -60)">
+    <rect x="1560" y="280" width="210" height="92" rx="6"/>
+    <text x="1665" y="306" text-anchor="middle"><tspan x="1665" dy="0" class="name" font-size="14">Maps API</tspan><tspan x="1665" dy="18" class="tag" font-size="11">[Software System]</tspan><tspan x="1665" dy="16" class="description" font-size="11">Routing and ETAs</tspan></text>
+  </g>
+  <g data-node="messaging" class="external">
+    <rect x="1560" y="960" width="210" height="92" rx="6"/>
+    <text x="1665" y="986" text-anchor="middle"><tspan x="1665" dy="0" class="name" font-size="14">Messaging provider</tspan><tspan x="1665" dy="18" class="tag" font-size="11">[Software System]</tspan><tspan x="1665" dy="16" class="description" font-size="11">Push and SMS</tspan></text>
+  </g>
+  <g data-node="email" class="external">
+    <rect x="1230" y="1120" width="210" height="92" rx="6"/>
+    <text x="1335" y="1146" text-anchor="middle"><tspan x="1335" dy="0" class="name" font-size="14">Email provider</tspan><tspan x="1335" dy="18" class="tag" font-size="11">[Software System]</tspan><tspan x="1335" dy="16" class="description" font-size="11">Transactional email</tspan></text>
+  </g>
+  <path id="r1" class="rel" data-from="customer" data-to="customer_app" fill="none" d="M 195 192 L 195 280"/>
+  <path id="r2" class="rel" data-from="staff" data-to="portal" fill="none" d="M 575 192 L 575 280"/>
+  <path id="r3" class="rel" data-from="courier" data-to="courier_app" fill="none" d="M 955 192 L 955 280"/>
+  <path id="r4" class="rel" data-from="agent" data-to="console" fill="none" d="M 1335 192 L 1335 300"/>
+  <path id="r5" class="rel" data-from="customer_app" data-to="gateway" fill="none" d="M 195 372 L 195 463 L 560 463"/>
+  <path id="r6" class="rel" data-from="portal" data-to="gateway" fill="none" d="M 615 372 L 615 440"/>
+  <path id="r7" class="rel" data-from="courier_app" data-to="gateway" fill="none" d="M 850 326 L 760 326 L 760 440"/>
+  <path id="r8" class="rel" data-from="console" data-to="gateway" fill="none" d="M 1335 392 L 1335 463 L 860 463"/>
+  <path id="r9" class="rel" data-from="courier_app" data-to="maps" fill="none" d="M 1060 326 L 1221 326 L 1221 266 L 1600 266"/>
+  <path id="r10" class="rel" data-from="gateway" data-to="identity" fill="none" d="M 560 486 L 195 486 L 195 600"/>
+  <path id="r11" class="rel" data-from="gateway" data-to="orders" fill="none" d="M 560 509 L 485 509 L 485 600"/>
+  <path id="r12" class="rel" data-from="gateway" data-to="menu" fill="none" d="M 710 532 L 710 600"/>
+  <path id="r13" class="rel" data-from="gateway" data-to="dispatch" fill="none" d="M 860 486 L 975 486 L 975 646 L 1000 646"/>
+  <path id="r14" class="rel" data-from="gateway" data-to="payments" fill="none" d="M 860 509 L 1335 509 L 1335 600"/>
+  <path id="r15" class="rel" data-from="identity" data-to="identity_db" fill="none" d="M 195 692 L 195 800"/>
+  <path id="r16" class="rel" data-from="orders" data-to="order_db" fill="none" d="M 485 692 L 485 800"/>
+  <path id="r17" class="rel" data-from="orders" data-to="payments" fill="none" d="M 590 631 L 639 631 L 639 708 L 1335 708 L 1335 692"/>
+  <path id="r18" class="rel" data-from="orders" data-to="events" fill="none" d="M 590 661 L 619 661 L 619 791 L 975 791 L 975 846 L 1000 846"/>
+  <path id="r19" class="rel" data-from="menu" data-to="search" fill="none" d="M 775 692 L 775 800"/>
+  <path id="r20" class="rel" data-from="dispatch" data-to="events" fill="none" d="M 1105 692 L 1105 800"/>
+  <path id="r21" class="rel" data-from="dispatch" data-to="locations" fill="none" d="M 1210 646 L 1220 646 L 1220 846 L 1230 846"/>
+  <path id="r22" class="rel" data-from="dispatch" data-to="maps" fill="none" d="M 1105 600 L 1105 483 L 1705 483 L 1705 312"/>
+  <path id="r23" class="rel" data-from="payments" data-to="psp" fill="none" d="M 1440 646 L 1600 646"/>
+  <path id="r24" class="rel" data-from="notify" data-to="events" fill="none" d="M 880 991 L 1105 991 L 1105 892"/>
+  <path id="r25" class="rel" data-from="notify" data-to="messaging" fill="none" d="M 880 1021 L 1560 1021"/>
+  <path id="r26" class="rel" data-from="notify" data-to="email" fill="none" d="M 775 1052 L 775 1166 L 1230 1166"/>
+  <path id="r27" class="rel" data-from="identity" data-to="notify" fill="none" d="M 300 646 L 352 646 L 352 1006 L 670 1006"/>
+  <text data-label="r1-label" data-label-for="r1" class="rel-label" x="204" y="241" text-anchor="start" font-size="11"><tspan x="204">Orders and tracks</tspan></text>
+  <text data-label="r2-label" data-label-for="r2" class="rel-label" x="584" y="241" text-anchor="start" font-size="11"><tspan x="584">Manages menus</tspan></text>
+  <text data-label="r3-label" data-label-for="r3" class="rel-label" x="964" y="241" text-anchor="start" font-size="11"><tspan x="964">Accepts jobs</tspan></text>
+  <text data-label="r4-label" data-label-for="r4" class="rel-label" x="1344" y="240" text-anchor="start" font-size="11"><tspan x="1344">Handles disputes</tspan></text>
+  <text data-label="r5-label" data-label-for="r5" class="rel-label" x="378" y="438" text-anchor="middle" font-size="11"><tspan x="378">Calls API</tspan><tspan x="378" dy="14">[HTTPS/JSON]</tspan></text>
+  <text data-label="r6-label" data-label-for="r6" class="rel-label" x="624" y="404" text-anchor="start" font-size="11"><tspan x="624">Calls API</tspan><tspan x="624" dy="14">[HTTPS/JSON]</tspan></text>
+  <text data-label="r7-label" data-label-for="r7" class="rel-label" x="769" y="387" text-anchor="start" font-size="11"><tspan x="769">Calls API</tspan><tspan x="769" dy="14">[HTTPS/JSON]</tspan></text>
+  <text data-label="r8-label" data-label-for="r8" class="rel-label" x="1098" y="438" text-anchor="middle" font-size="11"><tspan x="1098">Calls API</tspan><tspan x="1098" dy="14">[HTTPS/JSON]</tspan></text>
+  <text data-label="r9-label" data-label-for="r9" class="rel-label" x="1524" y="241" text-anchor="middle" font-size="11"><tspan x="1524">Navigates with</tspan><tspan x="1524" dy="14">[SDK]</tspan></text>
+  <text data-label="r10-label" data-label-for="r10" class="rel-label" x="378" y="506" text-anchor="middle" font-size="11"><tspan x="378">Verifies tokens</tspan><tspan x="378" dy="14">[gRPC]</tspan></text>
+  <text data-label="r11-label" data-label-for="r11" class="rel-label" x="494" y="553" text-anchor="start" font-size="11"><tspan x="494">Routes orders</tspan><tspan x="494" dy="14">[gRPC]</tspan></text>
+  <text data-label="r12-label" data-label-for="r12" class="rel-label" x="719" y="564" text-anchor="start" font-size="11"><tspan x="719">Routes menu calls</tspan><tspan x="719" dy="14">[gRPC]</tspan></text>
+  <text data-label="r13-label" data-label-for="r13" class="rel-label" x="966" y="564" text-anchor="end" font-size="11"><tspan x="966">Routes courier calls</tspan><tspan x="966" dy="14">[gRPC]</tspan></text>
+  <text data-label="r14-label" data-label-for="r14" class="rel-label" x="1050" y="484" text-anchor="middle" font-size="11"><tspan x="1050">Routes refunds</tspan><tspan x="1050" dy="14">[gRPC]</tspan></text>
+  <text data-label="r15-label" data-label-for="r15" class="rel-label" x="204" y="744" text-anchor="start" font-size="11"><tspan x="204">Reads and writes</tspan><tspan x="204" dy="14">[SQL]</tspan></text>
+  <text data-label="r16-label" data-label-for="r16" class="rel-label" x="494" y="744" text-anchor="start" font-size="11"><tspan x="494">Reads and writes</tspan><tspan x="494" dy="14">[JDBC]</tspan></text>
+  <text data-label="r17-label" data-label-for="r17" class="rel-label" x="987" y="728" text-anchor="middle" font-size="11"><tspan x="987">Charges orders</tspan><tspan x="987" dy="14">[gRPC]</tspan></text>
+  <text data-label="r18-label" data-label-for="r18" class="rel-label" x="868" y="766" text-anchor="middle" font-size="11"><tspan x="868">Publishes order events</tspan><tspan x="868" dy="14">[Kafka]</tspan></text>
+  <text data-label="r19-label" data-label-for="r19" class="rel-label" x="766" y="766" text-anchor="end" font-size="11"><tspan x="766">Indexes menus</tspan><tspan x="766" dy="14">[HTTPS]</tspan></text>
+  <text data-label="r20-label" data-label-for="r20" class="rel-label" x="1096" y="760" text-anchor="end" font-size="11"><tspan x="1096">Subscribes to orders</tspan><tspan x="1096" dy="14">[Kafka]</tspan></text>
+  <text data-label="r21-label" data-label-for="r21" class="rel-label" x="1229" y="744" text-anchor="start" font-size="11"><tspan x="1229">Tracks couriers</tspan><tspan x="1229" dy="14">[RESP]</tspan></text>
+  <text data-label="r22-label" data-label-for="r22" class="rel-label" x="1555" y="458" text-anchor="middle" font-size="11"><tspan x="1555">Gets routes and ETAs</tspan><tspan x="1555" dy="14">[HTTPS]</tspan></text>
+  <text data-label="r23-label" data-label-for="r23" class="rel-label" x="1536" y="621" text-anchor="middle" font-size="11"><tspan x="1536">Captures payments</tspan><tspan x="1536" dy="14">[HTTPS]</tspan></text>
+  <text data-label="r24-label" data-label-for="r24" class="rel-label" x="993" y="966" text-anchor="middle" font-size="11"><tspan x="993">Subscribes to events</tspan><tspan x="993" dy="14">[Kafka]</tspan></text>
+  <text data-label="r25-label" data-label-for="r25" class="rel-label" x="1220" y="996" text-anchor="middle" font-size="11"><tspan x="1220">Sends push and SMS</tspan><tspan x="1220" dy="14">[HTTPS]</tspan></text>
+  <text data-label="r26-label" data-label-for="r26" class="rel-label" x="1003" y="1141" text-anchor="middle" font-size="11"><tspan x="1003">Sends receipts</tspan><tspan x="1003" dy="14">[SMTP]</tspan></text>
+  <text data-label="r27-label" data-label-for="r27" class="rel-label" x="361" y="914" text-anchor="start" font-size="11"><tspan x="361">Requests verification codes</tspan><tspan x="361" dy="14">[gRPC]</tspan></text>
+</svg>

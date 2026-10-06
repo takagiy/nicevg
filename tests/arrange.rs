@@ -418,6 +418,103 @@ fn arranges_the_order_checkout_dfd_so_the_pick_list_turns_less() {
     assert_fix_snapshots!(result);
 }
 
+/// Rows and columns of three or more sibling nodes sharing a centre line
+///   after fixing, each listed along the line, with the line's position.
+fn lines_of_three(report: &AnalysisReport) -> Vec<(bool, f64, Vec<String>)> {
+    let nodes = &report.diagram.nodes;
+    let containers: Vec<&str> = nodes.iter().filter_map(|node| node.parent_id.as_deref()).collect();
+    let movable: Vec<_> = nodes
+        .iter()
+        .filter(|node| !containers.contains(&node.id.as_str()))
+        .collect();
+    [false, true]
+        .into_iter()
+        .flat_map(|column| {
+            let centre = move |b: &nicevg::Bounds| {
+                if column {
+                    b.x + b.width / 2.0
+                } else {
+                    b.y + b.height / 2.0
+                }
+            };
+            let along = move |b: &nicevg::Bounds| if column { b.y } else { b.x };
+            let mut lines: Vec<(bool, f64, Option<String>, Vec<&nicevg::DiagramNode>)> = Vec::new();
+            for node in &movable {
+                let value = centre(&node.bounds);
+                match lines
+                    .iter_mut()
+                    .find(|(_, at, parent, _)| (at - value).abs() <= 0.5 && *parent == node.parent_id)
+                {
+                    Some((_, _, _, members)) => members.push(node),
+                    None => lines.push((column, value, node.parent_id.clone(), vec![node])),
+                }
+            }
+            lines.into_iter().filter(|(_, _, _, members)| members.len() >= 3).map(
+                move |(column, at, _, mut members)| {
+                    members.sort_by(|a, b| along(&a.bounds).total_cmp(&along(&b.bounds)));
+                    (column, at, members.into_iter().map(|node| node.id.clone()).collect())
+                },
+            )
+        })
+        .collect()
+}
+
+/// Inner runs of a line's nodes that left it while the nodes either side
+///   stayed: dents, however many nodes wide.
+fn dents(fixed: &AnalysisReport, arranged: &AnalysisReport) -> Vec<Vec<String>> {
+    lines_of_three(fixed)
+        .into_iter()
+        .flat_map(|(column, at, members)| {
+            let in_line = |id: &String| {
+                let b = node_bounds(arranged, id);
+                let centre = if column {
+                    b.x + b.width / 2.0
+                } else {
+                    b.y + b.height / 2.0
+                };
+                (centre - at).abs() <= 0.5
+            };
+            let kept: Vec<bool> = members.iter().map(in_line).collect();
+            let mut found = Vec::new();
+            let mut start = None;
+            for (index, keep) in kept.iter().enumerate() {
+                match (keep, start) {
+                    (false, None) => start = Some(index),
+                    (true, Some(first)) => {
+                        if first > 0 {
+                            found.push(members[first..index].to_vec());
+                        }
+                        start = None;
+                    }
+                    _ => {}
+                }
+            }
+            found
+        })
+        .collect()
+}
+
+/// Given a C4 container diagram of a food delivery platform drafted with
+///   straight lines between centres: people, apps, services and data
+///   stores in rows inside the platform boundary, external systems beside
+///   it, and multi-line labels on every element and relationship
+/// When the diagram is arranged
+/// Then nothing is reported, no row or column is dented, and the layout
+///   is kept
+#[test]
+fn arranges_a_c4_container_diagram_without_issues_or_dents() {
+    let svg = include_str!("fixtures/c4-food-delivery-containers.svg");
+
+    let fixed = fix(svg);
+    let result = arrange(svg);
+
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+    assert_eq!(dents(&fixed.report, &result.report), Vec::<Vec<String>>::new());
+    assert_layout_kept(svg, &result);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a diagram whose connectors already run straight without crossing
 /// When the diagram is arranged
 /// Then nothing moves and the SVG is what fixing alone writes

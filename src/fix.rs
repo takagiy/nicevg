@@ -344,6 +344,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 &route.points,
                 &all_routes,
                 &blocked,
+                &label_containers(diagram, connector_id),
             )
             .is_none()
         })
@@ -630,8 +631,14 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 return (draft, obstacles);
             };
             let blocked = [obstacles.clone(), label_blockers(diagram, &connector_id)].concat();
-            let Some(placement) = place_label(label.bounds.width, label.bounds.height, route, &all_final, &blocked)
-            else {
+            let Some(placement) = place_label(
+                label.bounds.width,
+                label.bounds.height,
+                route,
+                &all_final,
+                &blocked,
+                &label_containers(diagram, &connector_id),
+            ) else {
                 return (draft, obstacles);
             };
             let updated = move_label(
@@ -651,7 +658,29 @@ fn reroute_connectors(draft: Draft) -> Draft {
 /// Node boxes a connector's label keeps clear of: every node except the
 /// containers around the connector's ends, inside which the label may sit.
 fn label_blockers(diagram: &Diagram, connector_id: &str) -> Vec<Bounds> {
-    let containers: Vec<&str> = diagram
+    let containers = end_container_ids(diagram, connector_id);
+    diagram
+        .nodes
+        .iter()
+        .filter(|node| !containers.contains(&node.id.as_str()))
+        .map(|node| node.bounds)
+        .collect()
+}
+
+/// The containers around a connector's ends, which its label may sit in
+/// but not across.
+fn label_containers(diagram: &Diagram, connector_id: &str) -> Vec<Bounds> {
+    let containers = end_container_ids(diagram, connector_id);
+    diagram
+        .nodes
+        .iter()
+        .filter(|node| containers.contains(&node.id.as_str()))
+        .map(|node| node.bounds)
+        .collect()
+}
+
+fn end_container_ids<'a>(diagram: &'a Diagram, connector_id: &str) -> Vec<&'a str> {
+    diagram
         .connector(connector_id)
         .map(|connector| {
             [
@@ -660,13 +689,7 @@ fn label_blockers(diagram: &Diagram, connector_id: &str) -> Vec<Bounds> {
             ]
             .concat()
         })
-        .unwrap_or_default();
-    diagram
-        .nodes
-        .iter()
-        .filter(|node| !containers.contains(&node.id.as_str()))
-        .map(|node| node.bounds)
-        .collect()
+        .unwrap_or_default()
 }
 
 /// Replaces or appends a connector's route, keeping the original order.

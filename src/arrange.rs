@@ -596,12 +596,27 @@ impl Context {
                     charge((pair[0].clone(), pair[1].clone(), column), LOOSE_ALIGNMENT_COST);
                 }
             }
-            for trio in members.windows(3) {
-                let (before, node, after) = (&trio[0], &trio[1], &trio[2]);
-                if in_line(before, after) && !in_line(before, node) && !in_line(node, after) {
-                    let tied = members.iter().any(|other| joined(node, other));
+            // A dent: an inner run of nodes, one or more wide, off the line
+            // while the nodes either side of it stay on it.
+            let on_line: Vec<bool> = members
+                .iter()
+                .map(|id| edge(id).is_none_or(|value| (value - alignment.value).abs() <= 0.5))
+                .collect();
+            let mut index = 1;
+            while index + 1 < members.len() {
+                if on_line[index] {
+                    index += 1;
+                    continue;
+                }
+                let start = index;
+                while index + 1 < members.len() && !on_line[index] {
+                    index += 1;
+                }
+                if on_line[start - 1] && on_line[index] {
+                    let run = &members[start..index];
+                    let tied = run.iter().any(|node| members.iter().any(|other| joined(node, other)));
                     let cost = if tied { JOINED_DENT_COST } else { LOOSE_DENT_COST };
-                    charge((node.clone(), String::new(), column), cost);
+                    charge((run[0].clone(), run[run.len() - 1].clone(), column), cost);
                 }
             }
         }
@@ -886,6 +901,8 @@ impl Edge {
 /// Nodes sharing an edge or centre line, listed along the line.
 struct Alignment {
     edge: Edge,
+    /// Where the line ran after fixing.
+    value: f64,
     members: Vec<String>,
 }
 
@@ -916,7 +933,7 @@ fn alignments(nodes: &[DiagramNode]) -> Vec<Alignment> {
             groups
                 .into_iter()
                 .filter(|(_, _, members)| members.len() > 1)
-                .map(move |(_, _, mut members)| {
+                .map(move |(value, _, mut members)| {
                     let along = |node: &DiagramNode| {
                         if edge.is_column() {
                             node.bounds.centre().y
@@ -927,6 +944,7 @@ fn alignments(nodes: &[DiagramNode]) -> Vec<Alignment> {
                     members.sort_by(|a, b| along(a).total_cmp(&along(b)));
                     Alignment {
                         edge: *edge,
+                        value,
                         members: members.into_iter().map(|node| node.id.clone()).collect(),
                     }
                 })
@@ -1061,5 +1079,36 @@ mod tests {
 
         assert!(port_unevenness(&side(116.0, 132.0)) < 1e-9);
         assert!(port_unevenness(&side(124.0, 132.0)) > 0.5);
+    }
+
+    /// Given a row of four nodes sharing their centre line
+    /// When the two inner nodes drop out of line together, or the last
+    ///   node alone
+    /// Then the two inner ones cost a dent, more than an end leaving
+    #[test]
+    fn counts_a_dent_two_nodes_wide() {
+        let row = vec![
+            node("a", 0.0, 0.0),
+            node("b", 150.0, 0.0),
+            node("c", 300.0, 0.0),
+            node("d", 450.0, 0.0),
+        ];
+        let context = Context::new(diagram(row.clone()));
+        let moved = |ids: &[&str]| {
+            diagram(
+                row.iter()
+                    .map(|n| {
+                        if ids.contains(&n.id.as_str()) {
+                            node(&n.id, n.bounds.x, 24.0)
+                        } else {
+                            n.clone()
+                        }
+                    })
+                    .collect(),
+            )
+        };
+
+        assert!(context.alignment_cost(&moved(&["b", "c"])) >= 2.0 * LOOSE_ALIGNMENT_COST + LOOSE_DENT_COST);
+        assert!(context.alignment_cost(&moved(&["b", "c"])) > context.alignment_cost(&moved(&["d"])) + LOOSE_DENT_COST);
     }
 }
