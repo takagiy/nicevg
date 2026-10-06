@@ -1,0 +1,141 @@
+---
+source: tests/arrange.rs
+expression: result.svg.as_str()
+---
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 700" width="1360" height="700">
+
+  <style>
+    text { font-family: system-ui, sans-serif; fill: #1f2937; }
+    .title { font-size: 20px; font-weight: 700; }
+    .caption { font-size: 12px; fill: #6b7280; }
+    .container &gt; rect { fill: #f8fafc; stroke: #94a3b8; stroke-dasharray: 6 4; }
+    .container &gt; text { font-size: 13px; font-weight: 600; fill: #475569; }
+    .actor circle { fill: #fef3c7; stroke: #b45309; stroke-width: 1.5; }
+    .client rect { fill: #e0f2fe; stroke: #0369a1; }
+    .edge rect { fill: #ede9fe; stroke: #6d28d9; }
+    .service rect { fill: #dcfce7; stroke: #15803d; }
+    .store rect { fill: #ffedd5; stroke: #c2410c; }
+    .external rect { fill: #f1f5f9; stroke: #334155; stroke-width: 2; }
+    .process circle { fill: #dbeafe; stroke: #1d4ed8; stroke-width: 1.5; }
+    .entity rect { fill: #fef3c7; stroke: #92400e; stroke-width: 2; }
+    .datastore rect { fill: #f0fdf4; stroke: #166534; }
+    .flow { stroke: #475569; stroke-width: 1.4; marker-end: url(#arrow); }
+    .flow-label { font-size: 11px; fill: #334155; font-style: italic; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
+  <text data-label="title" class="title" x="24" y="40" font-size="20">Order checkout — data flow diagram (level 1)</text>
+  <text data-label="caption" class="caption" x="24" y="62" font-size="12">Processes (circles), external entities, data stores and the data flowing between them</text>
+  <g data-node="customer" class="entity">
+    <rect x="40" y="260" width="120" height="52" rx="6"/>
+    <text x="100" y="291" text-anchor="middle" font-size="13">Customer</text>
+  </g>
+  <g data-node="psp" class="entity">
+    <rect x="1180" y="120" width="150" height="52" rx="6"/>
+    <text x="1255" y="151" text-anchor="middle" font-size="13">Payment provider</text>
+  </g>
+  <g data-node="carrier" class="entity">
+    <rect x="1180" y="400" width="120" height="52" rx="6"/>
+    <text x="1240" y="431" text-anchor="middle" font-size="13">Carrier</text>
+  </g>
+  <g data-node="mail" class="entity" transform="translate(0 24)">
+    <rect x="1180" y="560" width="130" height="52" rx="6"/>
+    <text x="1245" y="591" text-anchor="middle" font-size="13">Email service</text>
+  </g>
+  <g data-node="browse" class="process" transform="translate(0 40)">
+    <circle cx="300" cy="150" r="56"/>
+    <text x="300" y="155" text-anchor="middle" font-size="13">1 Browse</text>
+  </g>
+  <g data-node="cart" class="process">
+    <circle cx="300" cy="420" r="63"/>
+    <text x="300" y="425" text-anchor="middle" font-size="13">2 Manage cart</text>
+  </g>
+  <g data-node="checkout" class="process">
+    <circle cx="560" cy="290" r="60"/>
+    <text x="560" y="295" text-anchor="middle" font-size="13">3 Check out</text>
+  </g>
+  <g data-node="authorize" class="process">
+    <circle cx="860" cy="150" r="58"/>
+    <text x="860" y="155" text-anchor="middle" font-size="13">4 Authorize</text>
+  </g>
+  <g data-node="allocate" class="process" transform="translate(0 40)">
+    <circle cx="860" cy="430" r="58"/>
+    <text x="860" y="435" text-anchor="middle" font-size="13">5 Allocate</text>
+  </g>
+  <g data-node="ship" class="process" transform="translate(0 20)">
+    <circle cx="1010" cy="300" r="50"/>
+    <text x="1010" y="305" text-anchor="middle" font-size="13">6 Ship</text>
+  </g>
+  <g data-node="notify" class="process">
+    <circle cx="860" cy="610" r="54"/>
+    <text x="860" y="615" text-anchor="middle" font-size="13">7 Notify</text>
+  </g>
+  <g data-node="products" class="datastore">
+    <rect x="220" y="600" width="130" height="40" rx="6"/>
+    <text x="285" y="625" text-anchor="middle" font-size="13">D1 Products</text>
+  </g>
+  <g data-node="carts" class="datastore">
+    <rect x="440" y="600" width="120" height="40" rx="6"/>
+    <text x="500" y="625" text-anchor="middle" font-size="13">D2 Carts</text>
+  </g>
+  <g data-node="orders" class="datastore" transform="translate(0 -50)">
+    <rect x="560" y="520" width="120" height="40" rx="6"/>
+    <text x="620" y="545" text-anchor="middle" font-size="13">D3 Orders</text>
+  </g>
+  <g data-node="payments" class="datastore" transform="translate(0 12)">
+    <rect x="640" y="60" width="130" height="40" rx="6"/>
+    <text x="705" y="85" text-anchor="middle" font-size="13">D4 Payments</text>
+  </g>
+  <g data-node="stock" class="datastore">
+    <rect x="1040" y="500" width="110" height="40" rx="6"/>
+    <text x="1095" y="525" text-anchor="middle" font-size="13">D5 Stock</text>
+  </g>
+  <path id="f1" class="flow" data-from="customer" data-to="browse" fill="none" d="M 80 260 L 80 156 L 256 156"/>
+  <path id="f2" class="flow" data-from="browse" data-to="products" fill="none" d="M 245 201 L 196 201 L 196 627 L 220 627"/>
+  <path id="f3" class="flow" data-from="products" data-to="browse" fill="none" d="M 220 613 L 212 613 L 212 224 L 256 224"/>
+  <path id="f4" class="flow" data-from="browse" data-to="customer" fill="none" d="M 245 179 L 120 179 L 120 260"/>
+  <path id="f5" class="flow" data-from="customer" data-to="cart" fill="none" d="M 100 312 L 100 420 L 237 420"/>
+  <path id="f6" class="flow" data-from="cart" data-to="carts" fill="none" d="M 363 420 L 480 420 L 480 600"/>
+  <path id="f7" class="flow" data-from="carts" data-to="checkout" fill="none" d="M 520 600 L 520 335"/>
+  <path id="f8" class="flow" data-from="customer" data-to="checkout" fill="none" d="M 160 277 L 501 277"/>
+  <path id="f9" class="flow" data-from="checkout" data-to="authorize" fill="none" d="M 617 270 L 841 270 L 841 205"/>
+  <path id="f10" class="flow" data-from="authorize" data-to="psp" fill="none" d="M 915 131 L 1180 131"/>
+  <path id="f11" class="flow" data-from="psp" data-to="authorize" fill="none" d="M 1180 155 L 918 155"/>
+  <path id="f12" class="flow" data-from="authorize" data-to="payments" fill="none" d="M 802 150 L 705 150 L 705 112"/>
+  <path id="f13" class="flow" data-from="authorize" data-to="checkout" fill="none" d="M 879 205 L 879 310 L 617 310"/>
+  <path id="f14" class="flow" data-from="checkout" data-to="orders" fill="none" d="M 580 347 L 580 470"/>
+  <path id="f15" class="flow" data-from="orders" data-to="allocate" fill="none" d="M 680 490 L 806 490"/>
+  <path id="f16" class="flow" data-from="allocate" data-to="stock" fill="none" d="M 889 520 L 1040 520"/>
+  <path id="f17" class="flow" data-from="allocate" data-to="ship" fill="none" d="M 860 412 L 860 320 L 960 320"/>
+  <path id="f18" class="flow" data-from="ship" data-to="carrier" fill="none" d="M 1057 303 L 1260 303 L 1260 400"/>
+  <path id="f19" class="flow" data-from="carrier" data-to="ship" fill="none" d="M 1220 400 L 1220 337 L 1057 337"/>
+  <path id="f20" class="flow" data-from="ship" data-to="notify" fill="none" d="M 1010 370 L 1010 592 L 911 592"/>
+  <path id="f21" class="flow" data-from="notify" data-to="mail" fill="none" d="M 911 628 L 1180 628"/>
+  <path id="f22" class="flow" data-from="checkout" data-to="customer" fill="none" d="M 500 295 L 160 295"/>
+  <text data-label="f1-label" data-label-for="f1" class="flow-label" x="168" y="145" text-anchor="middle" font-size="11">search terms</text>
+  <text data-label="f2-label" data-label-for="f2" class="flow-label" x="187" y="398" text-anchor="end" font-size="11">query</text>
+  <text data-label="f3-label" data-label-for="f3" class="flow-label" x="221" y="501" text-anchor="start" font-size="11">product details</text>
+  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="158" y="199" text-anchor="middle" font-size="11">listings</text>
+  <text data-label="f5-label" data-label-for="f5" class="flow-label" x="169" y="440" text-anchor="middle" font-size="11">items</text>
+  <text data-label="f6-label" data-label-for="f6" class="flow-label" x="471" y="515" text-anchor="end" font-size="11">cart lines</text>
+  <text data-label="f7-label" data-label-for="f7" class="flow-label" x="529" y="473" text-anchor="start" font-size="11">cart</text>
+  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="331" y="266" text-anchor="middle" font-size="11">address, card token</text>
+  <text data-label="f9-label" data-label-for="f9" class="flow-label" x="729" y="259" text-anchor="middle" font-size="11">payment request</text>
+  <text data-label="f10-label" data-label-for="f10" class="flow-label" x="1048" y="120" text-anchor="middle" font-size="11">charge</text>
+  <text data-label="f11-label" data-label-for="f11" class="flow-label" x="1049" y="175" text-anchor="middle" font-size="11">authorization</text>
+  <text data-label="f12-label" data-label-for="f12" class="flow-label" x="696" y="136" text-anchor="end" font-size="11">payment record</text>
+  <text data-label="f13-label" data-label-for="f13" class="flow-label" x="748" y="299" text-anchor="middle" font-size="11">approval</text>
+  <text data-label="f14-label" data-label-for="f14" class="flow-label" x="589" y="414" text-anchor="start" font-size="11">order</text>
+  <text data-label="f15-label" data-label-for="f15" class="flow-label" x="743" y="479" text-anchor="middle" font-size="11">confirmed order</text>
+  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="965" y="509" text-anchor="middle" font-size="11">reservation</text>
+  <text data-label="f17-label" data-label-for="f17" class="flow-label" x="910" y="340" text-anchor="middle" font-size="11">pick list</text>
+  <text data-label="f18-label" data-label-for="f18" class="flow-label" x="1159" y="292" text-anchor="middle" font-size="11">shipment</text>
+  <text data-label="f19-label" data-label-for="f19" class="flow-label" x="1139" y="326" text-anchor="middle" font-size="11">tracking number</text>
+  <text data-label="f20-label" data-label-for="f20" class="flow-label" x="1019" y="486" text-anchor="start" font-size="11">dispatch notice</text>
+  <text data-label="f21-label" data-label-for="f21" class="flow-label" x="1046" y="617" text-anchor="middle" font-size="11">email</text>
+  <text data-label="f22-label" data-label-for="f22" class="flow-label" x="330" y="315" text-anchor="middle" font-size="11">confirmation</text>
+</svg>

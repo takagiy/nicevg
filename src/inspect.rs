@@ -50,6 +50,7 @@ pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue>
         label_node_overlaps(&diagram.nodes, &diagram.labels),
         connector_label_clearance(&diagram.connectors, &diagram.labels),
         connector_endpoints(&diagram.nodes, &diagram.connectors),
+        connector_ends_along_sides(&diagram.nodes, &diagram.connectors),
         connector_overlaps(&diagram.connectors),
         detached_labels(&diagram.labels, &diagram.connectors),
     ]
@@ -363,6 +364,51 @@ fn connector_endpoints(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -
                     issue(
                         "connector-endpoint-inside",
                         format!("Connector \"{}\" {verb} inside node \"{}\".", connector.id, owner.id),
+                        &[&connector.id, &owner.id],
+                        Some(json!({ "endpoint": which })),
+                    )
+                })
+            })
+        })
+        .collect()
+}
+
+/// Ends whose last stretch lies on a side of the box they end on: the line
+/// runs along the outline instead of meeting it, and its arrowhead points
+/// along the side.
+fn connector_ends_along_sides(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
+    let node = |id: &str| nodes.iter().find(|node| node.id == id && !node.is_circle());
+    let along = |end: Point, inner: Point, b: &Bounds| {
+        let overlap = |low: f64, high: f64, a: f64, c: f64| high.min(a.max(c)) - low.max(a.min(c));
+        (end.x == inner.x && (end.x == b.x || end.x == b.right()) && overlap(b.y, b.bottom(), end.y, inner.y) > 0.5)
+            || (end.y == inner.y
+                && (end.y == b.y || end.y == b.bottom())
+                && overlap(b.x, b.right(), end.x, inner.x) > 0.5)
+    };
+    connectors
+        .iter()
+        .filter(|connector| connector.points.len() >= 2)
+        .flat_map(|connector| {
+            let points = &connector.points;
+            let ends = [
+                (points[0], points[1], node(&connector.from), "starts", "start"),
+                (
+                    points[points.len() - 1],
+                    points[points.len() - 2],
+                    node(&connector.to),
+                    "ends",
+                    "end",
+                ),
+            ];
+            ends.into_iter().filter_map(move |(end, inner, owner, verb, which)| {
+                let owner = owner?;
+                along(end, inner, &owner.bounds).then(|| {
+                    issue(
+                        "connector-end-along-side",
+                        format!(
+                            "Connector \"{}\" {verb} running along a side of node \"{}\".",
+                            connector.id, owner.id
+                        ),
                         &[&connector.id, &owner.id],
                         Some(json!({ "endpoint": which })),
                     )

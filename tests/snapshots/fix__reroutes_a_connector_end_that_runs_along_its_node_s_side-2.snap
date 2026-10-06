@@ -1,0 +1,10 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+        <g data-node="checkout"><circle cx="100" cy="70" r="50"/><text x="100" y="75" text-anchor="middle" font-size="13">Check out</text></g>
+        <g data-node="orders"><rect x="100" y="200" width="120" height="40"/><text x="160" y="225" text-anchor="middle" font-size="13">Orders</text></g>
+        <path id="order" data-from="checkout" data-to="orders" d="M 150 70 L 160 70 L 160 200"/>
+      </svg>

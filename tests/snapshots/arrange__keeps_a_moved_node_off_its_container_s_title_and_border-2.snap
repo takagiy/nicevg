@@ -7,7 +7,7 @@ expression: result.svg.as_str()
         <g data-node="cluster">
           <rect x="20" y="40" width="300" height="200"/>
           <text x="36" y="68" font-size="13">Kubernetes cluster (EKS)</text>
-          <g data-node="auth">
+          <g data-node="auth" transform="translate(0 40)">
             <rect x="60" y="90" width="128" height="48"/>
             <text x="124" y="119" text-anchor="middle" font-size="13">Auth service</text>
           </g>
@@ -24,5 +24,5 @@ expression: result.svg.as_str()
           <rect x="460" y="140" width="160" height="48"/>
           <text x="540" y="169" text-anchor="middle" font-size="13">Below</text>
         </g>
-        <path id="oidc" data-from="auth" data-to="idp" d="M 188 114 L 400 114 L 400 96 L 460 96"/>
+        <path id="oidc" data-from="auth" data-to="idp" d="M 124 130 L 124 96 L 460 96"/>
       </svg>

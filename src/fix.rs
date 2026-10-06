@@ -245,6 +245,50 @@ fn side_key(bounds: &Bounds, side: crate::route::Side) -> String {
     format!("{}:{}", bounds.format(), side.name())
 }
 
+/// Where the connectors that stay meet each node side, along the side: on
+/// a box, the side the end lies on; on a circle, the side the connector
+/// arrives at along its last segment.
+fn settled_ports(
+    diagram: &Diagram,
+    nodes_by_id: &HashMap<&str, &DiagramNode>,
+    rerouted_ids: &HashSet<&str>,
+) -> HashMap<String, Vec<f64>> {
+    use crate::route::Side;
+    diagram
+        .connectors
+        .iter()
+        .filter(|connector| !rerouted_ids.contains(connector.id.as_str()) && connector.points.len() >= 2)
+        .flat_map(|connector| {
+            let points = &connector.points;
+            [
+                (&connector.from, points[0], points[1]),
+                (&connector.to, points[points.len() - 1], points[points.len() - 2]),
+            ]
+        })
+        .filter_map(|(node_id, end, inner)| {
+            let bounds = nodes_by_id.get(node_id.as_str())?.bounds;
+            let side = if is_on_outline(end, &bounds) {
+                side_of(end, &bounds)
+            } else if (end.x - inner.x).abs() >= (end.y - inner.y).abs() {
+                if inner.x > end.x { Side::Right } else { Side::Left }
+            } else if inner.y > end.y {
+                Side::Bottom
+            } else {
+                Side::Top
+            };
+            let along = if matches!(side, Side::Top | Side::Bottom) {
+                end.x
+            } else {
+                end.y
+            };
+            Some((side_key(&bounds, side), along))
+        })
+        .fold(HashMap::new(), |mut ports: HashMap<String, Vec<f64>>, (key, along)| {
+            ports.entry(key).or_default().push(along);
+            ports
+        })
+}
+
 struct Reroute<'a> {
     connector: &'a DiagramConnector,
     source: &'a DiagramNode,
@@ -310,6 +354,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
         "connector-node-crossing",
         "connector-label-clearance",
         "connector-endpoint-inside",
+        "connector-end-along-side",
         "connector-overlap",
     ];
     let with_issues: HashSet<&str> = stuck_connectors
@@ -353,6 +398,29 @@ fn reroute_connectors(draft: Draft) -> Draft {
         .filter(|connector| !rerouted_ids.contains(connector.id.as_str()))
         .map(|connector| connector.points.clone())
         .collect();
+    // The borders of the containers around a connector's ends: it crosses
+    // them to reach its ends but should not run along them.
+    let rails_for = |connector: &DiagramConnector| -> Vec<(Point, Point)> {
+        diagram
+            .nodes
+            .iter()
+            .filter(|node| node.id != connector.from && node.id != connector.to)
+            .filter(|node| holds_end(&diagram.nodes, connector, node))
+            .flat_map(|node| {
+                let b = node.bounds;
+                let corners = [
+                    Point { x: b.x, y: b.y },
+                    Point { x: b.right(), y: b.y },
+                    Point {
+                        x: b.right(),
+                        y: b.bottom(),
+                    },
+                    Point { x: b.x, y: b.bottom() },
+                ];
+                (0..4).map(move |index| (corners[index], corners[(index + 1) % 4]))
+            })
+            .collect()
+    };
     let obstacles_for = |connector: &DiagramConnector| -> Vec<Bounds> {
         diagram
             .nodes
@@ -424,6 +492,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                     &reroute.target.bounds,
                     &obstacles_for(reroute.connector),
                     &settled,
+                    &rails_for(reroute.connector),
                     &load_of,
                 );
                 (reroute.connector.id.as_str(), sides)
@@ -431,6 +500,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
             .collect()
     };
     let chosen = choose_all(&choose_all(&HashMap::new()));
+    let fixed = settled_ports(diagram, &nodes_by_id, &rerouted_ids);
     let ports = spread_ports(
         &reroutes
             .iter()
@@ -445,6 +515,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 })
             })
             .collect::<Vec<_>>(),
+        &fixed,
     );
 
     struct Routing {
@@ -473,6 +544,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                     .copied()
                     .unwrap_or_else(|| connector_ports(&reroute.source.bounds, &reroute.target.bounds)),
                 &state.settled,
+                &rails_for(connector),
             ),
             reroute.source,
             reroute.target,

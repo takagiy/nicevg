@@ -619,3 +619,28 @@ fn accepts_endpoints_on_a_circle_and_reports_ones_inside_it() {
         [["inside", "hub"]]
     );
 }
+
+/// Given a connector that comes straight down onto the middle of a box's
+///   left side, its last stretch lying on that side
+/// When the diagram is analyzed
+/// Then the end is reported as running along the side, while an end that
+///   meets a side at a right angle is not
+#[test]
+fn reports_a_connector_end_running_along_the_side_it_ends_on() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+        <g data-node="checkout"><circle cx="100" cy="70" r="50"/><text x="100" y="75" text-anchor="middle" font-size="13">Check out</text></g>
+        <g data-node="orders"><rect x="100" y="200" width="120" height="40"/><text x="160" y="225" text-anchor="middle" font-size="13">Orders</text></g>
+        <g data-node="stock"><rect x="260" y="200" width="100" height="40"/><text x="310" y="225" text-anchor="middle" font-size="13">Stock</text></g>
+        <path id="order" data-from="checkout" data-to="orders" d="M 100 120 L 100 220"/>
+        <path id="reserve" data-from="orders" data-to="stock" d="M 220 220 L 260 220"/>
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    assert_eq!(
+        issues_with_code(&report, "connector-end-along-side"),
+        [["order", "orders"]]
+    );
+}

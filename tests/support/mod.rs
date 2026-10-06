@@ -284,6 +284,64 @@ pub fn crowded_pairs(report: &AnalysisReport, distance: f64) -> usize {
         .sum()
 }
 
+/// The shortest first or last segment among the connectors ending at a node.
+pub fn shortest_end_segment(report: &AnalysisReport, node: &str) -> f64 {
+    report
+        .diagram
+        .connectors
+        .iter()
+        .flat_map(|c| {
+            let p = &c.points;
+            let length = |a: Point, b: Point| (a.x - b.x).abs() + (a.y - b.y).abs();
+            [
+                (c.from == node).then(|| length(p[0], p[1])),
+                (c.to == node).then(|| length(p[p.len() - 1], p[p.len() - 2])),
+            ]
+        })
+        .flatten()
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// The nearest point to a node, along a connector's end segment there, where
+/// another connector crosses that segment.
+pub fn nearest_crossing_at_end(report: &AnalysisReport, node: &str) -> f64 {
+    let connectors = &report.diagram.connectors;
+    connectors
+        .iter()
+        .flat_map(|c| {
+            let p = &c.points;
+            [
+                (c.from == node).then(|| (p[0], p[1])),
+                (c.to == node).then(|| (p[p.len() - 1], p[p.len() - 2])),
+            ]
+            .into_iter()
+            .flatten()
+            .map(move |segment| (c.id.clone(), segment))
+        })
+        .flat_map(|(id, (end, inner))| {
+            connectors
+                .iter()
+                .filter(move |other| other.id != id)
+                .flat_map(move |other| {
+                    segments(&other.points).into_iter().filter_map(move |(a, b)| {
+                        // Only perpendicular crossings of axis-aligned segments.
+                        if end.y == inner.y && a.x == b.x {
+                            let (low, high) = (end.x.min(inner.x), end.x.max(inner.x));
+                            (low < a.x && a.x < high && a.y.min(b.y) < end.y && end.y < a.y.max(b.y))
+                                .then(|| (a.x - end.x).abs())
+                        } else if end.x == inner.x && a.y == b.y {
+                            let (low, high) = (end.y.min(inner.y), end.y.max(inner.y));
+                            (low < a.y && a.y < high && a.x.min(b.x) < end.x && end.x < a.x.max(b.x))
+                                .then(|| (a.y - end.y).abs())
+                        } else {
+                            None
+                        }
+                    })
+                })
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
 pub fn inflate(box_: &Bounds, amount: f64) -> Bounds {
     bounds(
         box_.x - amount,

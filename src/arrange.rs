@@ -13,10 +13,10 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::diagram::{Diagram, DiagramNode, ancestor_ids, holds_end, node_group};
+use crate::diagram::{Diagram, DiagramConnector, DiagramNode, ancestor_ids, holds_end, node_group};
 use crate::fix::{FixChange, FixResult, fix, fix_after_moves};
 use crate::geometry::{
-    Bounds, Point, format_number, intersection, parse_number, point, segment_intersects_interior, segments,
+    Bounds, Point, format_number, hypot, intersection, parse_number, point, segment_intersects_interior, segments,
 };
 use crate::route::chords_cross;
 use crate::xml::{Element, serialize};
@@ -52,6 +52,12 @@ const BENT_COST: f64 = 60.0;
 /// A step shorter than this in the middle of a route is a jog: the line
 /// staggers instead of turning.
 const JOG_LENGTH: f64 = 20.0;
+/// An end stub shorter than this, or a crossing nearer the node than this,
+/// makes it hard to see the connector arrive.
+const SHORT_END: f64 = 20.0;
+const SHORT_END_COST: f64 = 60.0;
+/// On top of the crossing itself.
+const CROSSING_AT_END_COST: f64 = 100.0;
 const JOG_COST: f64 = 60.0;
 /// Every pixel of route counts a little, so long detours are not free.
 const LENGTH_COST: f64 = 0.1;
@@ -364,8 +370,10 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
     seen
 }
 
-/// Nodes at the ends of connectors that cross or crowd another, or that an
-/// issue names (directly, or through its connector or label).
+/// Nodes at the ends of connectors that cross, crowd or touch another,
+/// that turn twice or more, that meet the node with a very short stub or
+/// are crossed right beside it, or that an issue names (directly, or
+/// through its connector or label).
 fn troubled_nodes(report: &AnalysisReport) -> Vec<String> {
     let diagram = &report.diagram;
     let ends = |id: &str| {
@@ -399,8 +407,27 @@ fn troubled_nodes(report: &AnalysisReport) -> Vec<String> {
                 .unwrap_or_default()
         }
     });
+    // A connector that turns twice or more might turn less with one of its
+    // ends a little further along.
+    let winding = connectors
+        .iter()
+        .filter(|connector| connector.points.len() > 3)
+        .flat_map(|connector| [connector.from.clone(), connector.to.clone()]);
+    // Where a connector meets its node with a stub too short to read, or
+    // is crossed right beside the node, the node is worth nudging so the
+    // connector arrives more clearly.
+    let unclear = connectors.iter().flat_map(|connector| {
+        end_segments(connector)
+            .into_iter()
+            .filter(|(_, end, inner)| {
+                let short = (end.x - inner.x).abs() + (end.y - inner.y).abs() < SHORT_END;
+                short || crossed_near(connectors, &connector.id, *end, *inner).is_some()
+            })
+            .map(|(node, _, _)| node.to_owned())
+            .collect::<Vec<_>>()
+    });
     let mut ids: Vec<String> = Vec::new();
-    for id in tangled.chain(named) {
+    for id in tangled.chain(named).chain(winding).chain(unclear) {
         if !ids.contains(&id) {
             ids.push(id);
         }
@@ -530,6 +557,7 @@ impl Context {
             + jogs as f64 * JOG_COST
             + length * LENGTH_COST
             + port_unevenness(&report.diagram) * PORT_SPACING_COST
+            + unclear_ends(connectors)
             + crowded
             + touched as f64 * TOUCH_COST
             + movement * MOVEMENT_COST
@@ -700,6 +728,62 @@ fn port_unevenness(diagram: &Diagram) -> f64 {
         .sum()
 }
 
+/// The cost of connector ends that are hard to see arrive: stubs shorter
+/// than a short end, and crossings nearer the node than one.
+fn unclear_ends(connectors: &[DiagramConnector]) -> f64 {
+    connectors
+        .iter()
+        .flat_map(|connector| {
+            end_segments(connector)
+                .into_iter()
+                .map(|(_, end, inner)| {
+                    let short = (end.x - inner.x).abs() + (end.y - inner.y).abs() < SHORT_END;
+                    let crossed = crossed_near(connectors, &connector.id, end, inner).is_some();
+                    f64::from(u8::from(short)) * SHORT_END_COST + f64::from(u8::from(crossed)) * CROSSING_AT_END_COST
+                })
+                .collect::<Vec<_>>()
+        })
+        .sum()
+}
+
+/// A connector's first and last segments, with the node each meets: the
+/// node, the point on it and the segment's other end.
+fn end_segments(connector: &DiagramConnector) -> Vec<(&str, Point, Point)> {
+    let points = &connector.points;
+    if points.len() < 2 {
+        return Vec::new();
+    }
+    vec![
+        (connector.from.as_str(), points[0], points[1]),
+        (
+            connector.to.as_str(),
+            points[points.len() - 1],
+            points[points.len() - 2],
+        ),
+    ]
+}
+
+/// How close to `end` another connector crosses the segment from `end` to
+/// `inner`, when that is nearer than a short stub.
+fn crossed_near(connectors: &[DiagramConnector], id: &str, end: Point, inner: Point) -> Option<f64> {
+    connectors
+        .iter()
+        .filter(|other| other.id != id)
+        .flat_map(|other| segments(&other.points))
+        .filter(|(a, b)| chords_cross(end, inner, *a, *b))
+        .map(|(a, b)| {
+            if a.x == b.x {
+                (a.x - end.x).abs()
+            } else if a.y == b.y {
+                (a.y - end.y).abs()
+            } else {
+                hypot(a.x - end.x, a.y - end.y)
+            }
+        })
+        .filter(|distance| *distance < SHORT_END)
+        .reduce(f64::min)
+}
+
 fn total_jogs(diagram: &Diagram) -> usize {
     diagram.connectors.iter().map(|c| jogs(&c.points)).sum()
 }
@@ -789,6 +873,10 @@ impl Edge {
         }
     }
 
+    fn is_centre(self) -> bool {
+        matches!(self, Edge::CentreX | Edge::CentreY)
+    }
+
     /// Whether nodes aligned on this edge line up in a column.
     fn is_column(self) -> bool {
         matches!(self, Edge::CentreX | Edge::Left | Edge::Right)
@@ -812,8 +900,9 @@ fn alignments(nodes: &[DiagramNode]) -> Vec<Alignment> {
         .flat_map(|edge| {
             // Lines form among siblings: nodes in different containers do
             // not read as one row even when they share a coordinate.
+            // A circle shows no straight edge, so only its centre lines up.
             let mut groups: Vec<(f64, Option<&str>, Vec<&DiagramNode>)> = Vec::new();
-            for node in &movable {
+            for node in movable.iter().filter(|node| !node.is_circle() || edge.is_centre()) {
                 let value = edge.of(&node.bounds);
                 let parent = node.parent_id.as_deref();
                 match groups

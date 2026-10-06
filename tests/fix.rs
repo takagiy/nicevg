@@ -444,6 +444,32 @@ fn turns_a_polygon_arrowhead_at_the_start_of_its_connector() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a connector from a circle that comes straight down onto the middle
+///   of a box's left side, its last stretch lying on that side
+/// When the diagram is fixed
+/// Then the connector is rerouted to meet the box at a right angle, and
+///   nothing is reported
+#[test]
+fn reroutes_a_connector_end_that_runs_along_its_node_s_side() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+        <g data-node="checkout"><circle cx="100" cy="70" r="50"/><text x="100" y="75" text-anchor="middle" font-size="13">Check out</text></g>
+        <g data-node="orders"><rect x="100" y="200" width="120" height="40"/><text x="160" y="225" text-anchor="middle" font-size="13">Orders</text></g>
+        <path id="order" data-from="checkout" data-to="orders" d="M 100 120 L 100 220"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let points = connector_points(&result.report, "order");
+    let orders = node_bounds(&result.report, "orders");
+
+    assert_eq!(issue_codes(&analyze(svg)), ["connector-end-along-side"]);
+    assert!(enters_perpendicularly(&points, &orders), "{points:?}");
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a line without a fill, which SVG never fills, that has to detour
 /// When the diagram is fixed
 /// Then the bent path that replaces it is not filled either, while

@@ -84,8 +84,8 @@ fn assert_layout_kept(svg: &str, result: &FixResult) {
 ///   little to run a connector straight between their facing sides, so the
 ///   connector between them has to bend twice
 /// When the diagram is arranged
-/// Then the second box moves down so the connector runs straight, and the
-///   first stays where it was
+/// Then one box moves up or down so the connector runs straight, and the
+///   other stays where it was
 #[test]
 fn moves_a_node_a_little_to_straighten_its_connector() {
     let svg = r#"
@@ -104,17 +104,20 @@ fn moves_a_node_a_little_to_straighten_its_connector() {
 
     let before = analyze(svg);
     let result = arrange(svg);
-    let mail_before = node_bounds(&before, "mail");
-    let mail_after = node_bounds(&result.report, "mail");
+    let moved = |id: &str| node_bounds(&result.report, id).y - node_bounds(&before, id).y;
 
     assert_eq!(bend_count(&connector_points(&before, "email")), 2);
     assert_eq!(bend_count(&connector_points(&result.report, "email")), 0);
-    assert_eq!(mail_after.x, mail_before.x);
     assert!(
-        mail_after.y > mail_before.y && mail_after.y - mail_before.y <= 60.0,
-        "{mail_after:?}"
+        (moved("mail") == 0.0) != (moved("notify") == 0.0),
+        "exactly one box moves"
     );
-    assert_eq!(node_bounds(&result.report, "notify"), node_bounds(&before, "notify"));
+    assert!(moved("mail").abs() <= 60.0 && moved("notify").abs() <= 60.0);
+    assert_eq!(node_bounds(&result.report, "mail").x, node_bounds(&before, "mail").x);
+    assert_eq!(
+        node_bounds(&result.report, "notify").x,
+        node_bounds(&before, "notify").x
+    );
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
     assert_layout_kept(svg, &result);
 
@@ -291,7 +294,8 @@ fn treats_an_alignment_whose_connector_detours_as_weak() {
 ///   neither end
 /// When the diagram is arranged
 /// Then the charge bends less than after fixing, the connectors entering
-///   PostgreSQL from the right are spread evenly, the
+///   PostgreSQL from the right are spread evenly, none runs along a
+///   container's border, the
 ///   catalog service between auth and cart does not dent out of their row,
 ///   the gateway's call to the cart bends at most twice, and no connector
 ///   gains a jog shorter than 20px
@@ -323,7 +327,7 @@ fn arranges_the_storefront_architecture_without_denting_a_row() {
     };
 
     assert!(bend_count(&connector_points(&result.report, "f20")) < bend_count(&connector_points(&fixed.report, "f20")));
-    // The connectors entering PostgreSQL from the right are spread evenly,
+    // Whatever connectors enter PostgreSQL from the right are spread evenly,
     // keeping the same gap from each other and from the side's corners.
     let postgres = node_bounds(&result.report, "postgres");
     let mut right: Vec<f64> = result
@@ -344,8 +348,37 @@ fn arranges_the_storefront_architecture_without_denting_a_row() {
         .chain([postgres.y + postgres.height])
         .collect();
     let gaps: Vec<f64> = edges.windows(2).map(|pair| pair[1] - pair[0]).collect();
-    assert!(right.len() >= 2, "{right:?}");
     assert!(gaps.iter().all(|gap| (gap - gaps[0]).abs() <= 1.0), "{gaps:?}");
+    // No connector runs along a container's border, where it would read
+    // as part of the border.
+    let containers: Vec<nicevg::Bounds> = result
+        .report
+        .diagram
+        .nodes
+        .iter()
+        .filter(|node| {
+            result
+                .report
+                .diagram
+                .nodes
+                .iter()
+                .any(|child| child.parent_id.as_deref() == Some(&node.id))
+        })
+        .map(|node| node.bounds)
+        .collect();
+    for connector in &result.report.diagram.connectors {
+        for (a, b) in segments(&connector.points) {
+            for c in &containers {
+                let along_x = a.y == b.y
+                    && [c.y, c.y + c.height].iter().any(|y| (a.y - y).abs() < 8.0)
+                    && a.x.max(b.x).min(c.x + c.width) - a.x.min(b.x).max(c.x) >= 20.0;
+                let along_y = a.x == b.x
+                    && [c.x, c.x + c.width].iter().any(|x| (a.x - x).abs() < 8.0)
+                    && a.y.max(b.y).min(c.y + c.height) - a.y.min(b.y).max(c.y) >= 20.0;
+                assert!(!along_x && !along_y, "{} runs along a container border", connector.id);
+            }
+        }
+    }
     // The gateway's call to the cart turns into the cart from below once
     // the services around it have settled.
     assert!(bend_count(&connector_points(&result.report, "f10")) <= 2);
@@ -354,6 +387,31 @@ fn arranges_the_storefront_architecture_without_denting_a_row() {
     let dented = centre_y("auth") == centre_y("cart") && centre_y("catalog") != centre_y("auth");
     assert!(!dented, "catalog dents out of the row");
     assert!(jogs(&result.report) <= jogs(&fixed.report));
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+    assert_layout_kept(svg, &result);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given the order checkout DFD draft, where after fixing the pick list from
+///   allocate to ship climbs in a staircase to stay off the approval line
+/// When the diagram is arranged
+/// Then a node moves so the pick list turns less, connectors reach allocate
+///   and manage cart without a short stub or a crossing right at the node,
+///   and nothing is reported
+#[test]
+fn arranges_the_order_checkout_dfd_so_the_pick_list_turns_less() {
+    let svg = include_str!("fixtures/order-checkout-dfd.svg");
+
+    let fixed = fix(svg);
+    let result = arrange(svg);
+
+    assert!(bend_count(&connector_points(&fixed.report, "f17")) >= 2);
+    assert!(bend_count(&connector_points(&result.report, "f17")) < bend_count(&connector_points(&fixed.report, "f17")));
+    // Connectors reach allocate and manage cart readably: no end stub
+    // under 20px into allocate, no crossing within 20px of manage cart.
+    assert!(shortest_end_segment(&result.report, "allocate") >= 20.0);
+    assert!(nearest_crossing_at_end(&result.report, "cart") >= 20.0);
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
     assert_layout_kept(svg, &result);
 

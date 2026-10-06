@@ -244,14 +244,19 @@ impl PartialOrd for Entry {
 /// between them, lanes beside drawn connectors and the terminals. Starts
 /// from whichever start terminal and stops at whichever end terminal is
 /// cheapest overall.
+/// `rails` are lines a route may cross but should not run along, such as
+/// the borders of containers around its ends: running on one is ruled
+/// out and running close beside one costs like running beside a connector.
 pub fn search(
     starts: &[Terminal],
     ends: &[Terminal],
     obstacles: &[Bounds],
     occupied: &[Vec<Point>],
+    rails: &[(Point, Point)],
     bend_penalty: f64,
 ) -> Option<Found> {
-    let occupied_segments: Vec<(Point, Point)> = occupied.iter().flat_map(|route| segments(route)).collect();
+    let crossed_segments: Vec<(Point, Point)> = occupied.iter().flat_map(|route| segments(route)).collect();
+    let occupied_segments: Vec<(Point, Point)> = crossed_segments.iter().chain(rails).copied().collect();
     let axis = |pick: fn(&Point) -> f64, low: fn(&Bounds) -> f64, high: fn(&Bounds) -> f64| {
         // Lanes one and two lanes beside connectors already drawn let new
         // routes run alongside them when every other line through a
@@ -375,7 +380,7 @@ pub fn search(
     // one leaving it does not, so passing straight through counts once.
     let mut crossing_horizontal = vec![false; cells];
     let mut crossing_vertical = vec![false; cells];
-    for (from, to) in &occupied_segments {
+    for (from, to) in &crossed_segments {
         if from.x == to.x {
             let (low, high) = (from.y.min(to.y), from.y.max(to.y));
             for (yi, _) in ys.iter().enumerate().filter(|(_, y)| low < **y && **y < high) {
@@ -524,10 +529,18 @@ pub fn route_connector(
     raw_obstacles: &[Bounds],
     ports: Ports,
     occupied: &[Vec<Point>],
+    rails: &[(Point, Point)],
 ) -> Vec<Point> {
     let obstacles: Vec<Bounds> = raw_obstacles.iter().map(|bounds| bounds.inflate(CLEARANCE)).collect();
     let direct = vec![ports.start, ports.end];
+    // A straight line has to meet both sides at a right angle: a vertical
+    // one leaves and enters through tops and bottoms, a horizontal one
+    // through left and right sides.
+    let meets =
+        |port: Point, bounds: &Bounds| side_of(port, bounds).is_horizontal_edge() == (ports.start.x == ports.end.x);
     if (ports.start.x == ports.end.x || ports.start.y == ports.end.y)
+        && meets(ports.start, source)
+        && meets(ports.end, target)
         && route_is_clear(&direct, &obstacles)
         && occupied.iter().all(|other| !routes_overlap(&direct, other))
     {
@@ -547,6 +560,7 @@ pub fn route_connector(
         ),
         &all_obstacles,
         occupied,
+        rails,
         BEND_PENALTY,
     ) {
         Some(found) => without_redundant_points(
@@ -568,6 +582,7 @@ pub fn choose_sides(
     target: &Bounds,
     raw_obstacles: &[Bounds],
     occupied: &[Vec<Point>],
+    rails: &[(Point, Point)],
     load: &dyn Fn(&Bounds, Side) -> f64,
 ) -> Sides {
     let preferred = connector_ports(source, target);
@@ -594,6 +609,7 @@ pub fn choose_sides(
         &terminals(target, fallback.end),
         &obstacles,
         occupied,
+        rails,
         SIDE_BEND_PENALTY,
     );
     match found.and_then(|found| Some((Side::ALL.get(found.start?)?, Side::ALL.get(found.end?)?))) {
@@ -640,7 +656,10 @@ fn set(ports: Ports, end: End, value: Point) -> Ports {
 /// ordered by the position of the node at the other end, so parallel
 /// connectors do not collapse onto one line; then straightens connectors
 /// between facing sides.
-pub fn spread_ports(requests: &[PortRequest]) -> HashMap<String, Ports> {
+/// Spreads the ports of the requests evenly along each side they share,
+/// counting the ports already on that side (`fixed`, keyed like the sides
+/// and given along it) as taking the even slots nearest them.
+pub fn spread_ports(requests: &[PortRequest], fixed: &HashMap<String, Vec<f64>>) -> HashMap<String, Ports> {
     let midpoints: HashMap<String, Ports> = requests
         .iter()
         .map(|request| {
@@ -651,7 +670,9 @@ pub fn spread_ports(requests: &[PortRequest]) -> HashMap<String, Ports> {
         .collect();
     let spread = sides_in_use(requests, &midpoints)
         .iter()
-        .fold(midpoints.clone(), |ports, (key, users)| spread_side(ports, key, users));
+        .fold(midpoints.clone(), |ports, (key, users)| {
+            spread_side(ports, key, users, fixed.get(key).map_or(&[], Vec::as_slice))
+        });
     align_facing_ports(requests, untangle_pairs(requests, spread))
 }
 
@@ -769,8 +790,9 @@ fn sides_in_use(requests: &[PortRequest], ports: &HashMap<String, Ports>) -> Vec
 }
 
 /// Places the endpoints on one side at even fractions along it, ordered by
-/// the position of the node at their other end.
-fn spread_side(ports: HashMap<String, Ports>, key: &str, users: &[SideUser]) -> HashMap<String, Ports> {
+/// the position of the node at their other end. Ports already there take
+/// the fractions nearest them; the endpoints get the rest.
+fn spread_side(ports: HashMap<String, Ports>, key: &str, users: &[SideUser], fixed: &[f64]) -> HashMap<String, Ports> {
     let along_x = key.ends_with(":top") || key.ends_with(":bottom");
     let centre = |bounds: &Bounds| {
         if along_x {
@@ -788,21 +810,48 @@ fn spread_side(ports: HashMap<String, Ports>, key: &str, users: &[SideUser]) -> 
             first_index.cmp(second_index)
         }
     });
-    let count = ordered.len() as f64;
-    ordered.iter().enumerate().fold(ports, |mut ports, (index, (_, user))| {
-        let Some(port) = ports.get(&user.id).copied() else {
-            return ports;
-        };
-        let fraction = (index as f64 + 1.0) / (count + 1.0);
-        let current = get(&port, user.end);
-        let moved = if along_x {
-            point(round(user.bounds.x + user.bounds.width * fraction), current.y)
-        } else {
-            point(current.x, round(user.bounds.y + user.bounds.height * fraction))
-        };
-        ports.insert(user.id.clone(), set(port, user.end, moved));
-        ports
-    })
+    let Some(first) = ordered.first().map(|(_, user)| user.bounds) else {
+        return ports;
+    };
+    let (low, length) = if along_x {
+        (first.x, first.width)
+    } else {
+        (first.y, first.height)
+    };
+    let count = (ordered.len() + fixed.len()) as f64;
+    let mut slots: Vec<f64> = (1..=ordered.len() + fixed.len())
+        .map(|index| index as f64 / (count + 1.0))
+        .collect();
+    for taken in fixed {
+        let nearest = slots
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| {
+                ((low + length * **a) - taken)
+                    .abs()
+                    .total_cmp(&((low + length * **b) - taken).abs())
+            })
+            .map(|(index, _)| index);
+        if let Some(index) = nearest {
+            slots.remove(index);
+        }
+    }
+    ordered
+        .iter()
+        .zip(slots)
+        .fold(ports, |mut ports, ((_, user), fraction)| {
+            let Some(port) = ports.get(&user.id).copied() else {
+                return ports;
+            };
+            let current = get(&port, user.end);
+            let moved = if along_x {
+                point(round(user.bounds.x + user.bounds.width * fraction), current.y)
+            } else {
+                point(current.x, round(user.bounds.y + user.bounds.height * fraction))
+            };
+            ports.insert(user.id.clone(), set(port, user.end, moved));
+            ports
+        })
 }
 
 /// Straightens connectors between facing sides: when one end's coordinate
