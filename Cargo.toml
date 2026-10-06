@@ -1,6 +1,6 @@
 [package]
 name = "nicevg"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 description = "Deterministic checks and repairs for SVG diagrams."
 license = "MIT"
