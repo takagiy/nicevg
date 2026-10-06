@@ -3,9 +3,9 @@ source: tests/arrange.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "bends": 16,
+  "bends": 18,
   "detachedLabels": 0,
   "diagonalSegments": 0,
-  "parallelDensity": 31.57,
+  "parallelDensity": 38.07,
   "remainingIssues": 0
 }

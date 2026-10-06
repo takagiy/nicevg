@@ -2,7 +2,7 @@
 source: tests/arrange.rs
 expression: result.svg.as_str()
 ---
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-27 0 1387 700" width="1387" height="700">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-114 0 1474 700" width="1474" height="700">
 
   <style>
     text { font-family: system-ui, sans-serif; fill: #1f2937; }
@@ -30,7 +30,7 @@ expression: result.svg.as_str()
   <rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
   <text data-label="title" class="title" x="24" y="40" font-size="20">Order checkout — data flow diagram (level 1)</text>
   <text data-label="caption" class="caption" x="24" y="62" font-size="12">Processes (circles), external entities, data stores and the data flowing between them</text>
-  <g data-node="customer" class="entity">
+  <g data-node="customer" class="entity" transform="translate(0 20)">
     <rect x="40" y="260" width="120" height="52" rx="6"/>
     <text x="100" y="291" text-anchor="middle" font-size="13">Customer</text>
   </g>
@@ -74,11 +74,11 @@ expression: result.svg.as_str()
     <circle cx="860" cy="610" r="54"/>
     <text x="860" y="615" text-anchor="middle" font-size="13">7 Notify</text>
   </g>
-  <g data-node="products" class="datastore" transform="translate(20 0)">
+  <g data-node="products" class="datastore">
     <rect x="220" y="600" width="130" height="40" rx="6"/>
     <text x="285" y="625" text-anchor="middle" font-size="13">D1 Products</text>
   </g>
-  <g data-node="carts" class="datastore" transform="translate(20 0)">
+  <g data-node="carts" class="datastore">
     <rect x="440" y="600" width="120" height="40" rx="6"/>
     <text x="500" y="625" text-anchor="middle" font-size="13">D2 Carts</text>
   </g>
@@ -94,14 +94,14 @@ expression: result.svg.as_str()
     <rect x="1040" y="500" width="110" height="40" rx="6"/>
     <text x="1095" y="525" text-anchor="middle" font-size="13">D5 Stock</text>
   </g>
-  <path id="f1" class="flow" data-from="customer" data-to="browse" fill="none" d="M 80 260 L 80 131 L 247 131"/>
-  <path id="f2" class="flow" data-from="browse" data-to="products" fill="none" d="M 353 169 L 386 169 L 386 613 L 370 613"/>
-  <path id="f3" class="flow" data-from="products" data-to="browse" fill="none" d="M 370 627 L 406 627 L 406 131 L 353 131"/>
-  <path id="f4" class="flow" data-from="browse" data-to="customer" fill="none" d="M 247 169 L 120 169 L 120 260"/>
-  <path id="f5" class="flow" data-from="customer" data-to="cart" fill="none" d="M 100 312 L 100 420 L 237 420"/>
-  <path id="f6" class="flow" data-from="cart" data-to="carts" fill="none" d="M 363 420 L 500 420 L 500 600"/>
-  <path id="f7" class="flow" data-from="carts" data-to="checkout" fill="none" d="M 540 600 L 540 347"/>
-  <path id="f8" class="flow" data-from="customer" data-to="checkout" fill="none" d="M 160 277 L 501 277"/>
+  <path id="f1" class="flow" data-from="customer" data-to="browse" fill="none" d="M 80 280 L 80 230 L 281 230 L 281 203"/>
+  <path id="f2" class="flow" data-from="browse" data-to="products" fill="none" d="M 247 169 L 32 169 L 32 613 L 220 613"/>
+  <path id="f3" class="flow" data-from="products" data-to="browse" fill="none" d="M 220 627 L 12 627 L 12 131 L 247 131"/>
+  <path id="f4" class="flow" data-from="browse" data-to="customer" fill="none" d="M 319 203 L 319 256 L 120 256 L 120 280"/>
+  <path id="f5" class="flow" data-from="customer" data-to="cart" fill="none" d="M 100 332 L 100 420 L 237 420"/>
+  <path id="f6" class="flow" data-from="cart" data-to="carts" fill="none" d="M 363 420 L 480 420 L 480 600"/>
+  <path id="f7" class="flow" data-from="carts" data-to="checkout" fill="none" d="M 520 600 L 520 335"/>
+  <path id="f8" class="flow" data-from="customer" data-to="checkout" fill="none" d="M 160 297 L 500 297"/>
   <path id="f9" class="flow" data-from="checkout" data-to="authorize" fill="none" d="M 617 270 L 841 270 L 841 205"/>
   <path id="f10" class="flow" data-from="authorize" data-to="psp" fill="none" d="M 915 131 L 1180 131"/>
   <path id="f11" class="flow" data-from="psp" data-to="authorize" fill="none" d="M 1180 155 L 918 155"/>
@@ -115,15 +115,15 @@ expression: result.svg.as_str()
   <path id="f19" class="flow" data-from="carrier" data-to="ship" fill="none" d="M 1220 400 L 1220 337 L 1057 337"/>
   <path id="f20" class="flow" data-from="ship" data-to="notify" fill="none" d="M 1010 370 L 1010 592 L 911 592"/>
   <path id="f21" class="flow" data-from="notify" data-to="mail" fill="none" d="M 911 628 L 1180 628"/>
-  <path id="f22" class="flow" data-from="checkout" data-to="customer" fill="none" d="M 500 295 L 160 295"/>
-  <text data-label="f1-label" data-label-for="f1" class="flow-label" x="71" y="201" text-anchor="end" font-size="11">search terms</text>
-  <text data-label="f2-label" data-label-for="f2" class="flow-label" x="377" y="529" text-anchor="end" font-size="11">query</text>
-  <text data-label="f3-label" data-label-for="f3" class="flow-label" x="415" y="210" text-anchor="start" font-size="11">product details</text>
-  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="129" y="220" text-anchor="start" font-size="11">listings</text>
+  <path id="f22" class="flow" data-from="checkout" data-to="customer" fill="none" d="M 503 310 L 160 310"/>
+  <text data-label="f1-label" data-label-for="f1" class="flow-label" x="181" y="219" text-anchor="middle" font-size="11">search terms</text>
+  <text data-label="f2-label" data-label-for="f2" class="flow-label" x="41" y="396" text-anchor="start" font-size="11">query</text>
+  <text data-label="f3-label" data-label-for="f3" class="flow-label" x="3" y="384" text-anchor="end" font-size="11">product details</text>
+  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="328" y="235" text-anchor="start" font-size="11">listings</text>
   <text data-label="f5-label" data-label-for="f5" class="flow-label" x="169" y="409" text-anchor="middle" font-size="11">items</text>
-  <text data-label="f6-label" data-label-for="f6" class="flow-label" x="491" y="515" text-anchor="end" font-size="11">cart lines</text>
-  <text data-label="f7-label" data-label-for="f7" class="flow-label" x="531" y="390" text-anchor="end" font-size="11">cart</text>
-  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="279" y="266" text-anchor="middle" font-size="11">address, card token</text>
+  <text data-label="f6-label" data-label-for="f6" class="flow-label" x="471" y="515" text-anchor="end" font-size="11">cart lines</text>
+  <text data-label="f7-label" data-label-for="f7" class="flow-label" x="529" y="473" text-anchor="start" font-size="11">cart</text>
+  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="415" y="286" text-anchor="middle" font-size="11">address, card token</text>
   <text data-label="f9-label" data-label-for="f9" class="flow-label" x="729" y="259" text-anchor="middle" font-size="11">payment request</text>
   <text data-label="f10-label" data-label-for="f10" class="flow-label" x="1048" y="120" text-anchor="middle" font-size="11">charge</text>
   <text data-label="f11-label" data-label-for="f11" class="flow-label" x="1049" y="175" text-anchor="middle" font-size="11">authorization</text>
@@ -137,5 +137,5 @@ expression: result.svg.as_str()
   <text data-label="f19-label" data-label-for="f19" class="flow-label" x="1139" y="357" text-anchor="middle" font-size="11">tracking number</text>
   <text data-label="f20-label" data-label-for="f20" class="flow-label" x="1019" y="542" text-anchor="start" font-size="11">dispatch notice</text>
   <text data-label="f21-label" data-label-for="f21" class="flow-label" x="1046" y="617" text-anchor="middle" font-size="11">email</text>
-  <text data-label="f22-label" data-label-for="f22" class="flow-label" x="279" y="315" text-anchor="middle" font-size="11">confirmation</text>
+  <text data-label="f22-label" data-label-for="f22" class="flow-label" x="332" y="330" text-anchor="middle" font-size="11">confirmation</text>
 </svg>

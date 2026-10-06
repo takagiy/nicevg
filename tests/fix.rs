@@ -1507,6 +1507,45 @@ fn reroutes_connectors_that_turn_just_beside_each_other() {
     assert_fix_snapshots!(result);
 }
 
+/// Given two boxes side by side with two vertical connectors standing
+///   between them, and a connector drawn between the boxes that needs
+///   rerouting
+/// When the diagram is fixed
+/// Then the connector goes around the vertical ones rather than crossing
+///   them: a detour of a few hundred pixels beats two crossings
+#[test]
+fn detours_around_connectors_rather_than_crossing_them() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420">
+        <g data-node="a"><rect x="20" y="176" width="100" height="48"/><text x="70" y="205" text-anchor="middle" font-size="14">A</text></g>
+        <g data-node="b"><rect x="520" y="176" width="100" height="48"/><text x="570" y="205" text-anchor="middle" font-size="14">B</text></g>
+        <g data-node="c1"><rect x="210" y="52" width="100" height="48"/><text x="260" y="81" text-anchor="middle" font-size="14">C1</text></g>
+        <g data-node="d1"><rect x="210" y="300" width="100" height="48"/><text x="260" y="329" text-anchor="middle" font-size="14">D1</text></g>
+        <g data-node="c2"><rect x="350" y="52" width="100" height="48"/><text x="400" y="81" text-anchor="middle" font-size="14">C2</text></g>
+        <g data-node="d2"><rect x="350" y="300" width="100" height="48"/><text x="400" y="329" text-anchor="middle" font-size="14">D2</text></g>
+        <path id="first" data-from="c1" data-to="d1" d="M 260 100 L 260 300"/>
+        <path id="second" data-from="c2" data-to="d2" d="M 400 100 L 400 300"/>
+        <line id="flow" data-from="a" data-to="b" x1="70" y1="200" x2="570" y2="200"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let flow = connector_points(&result.report, "flow");
+
+    assert!(is_orthogonal(&flow));
+    assert!(
+        !crosses_route(&flow, &connector_points(&result.report, "first")),
+        "{flow:?}"
+    );
+    assert!(
+        !crosses_route(&flow, &connector_points(&result.report, "second")),
+        "{flow:?}"
+    );
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a box with two connectors leaving its left side for two nodes far
 ///   below it, past a column of nodes in between, so both run down the left
 /// When the diagram is fixed

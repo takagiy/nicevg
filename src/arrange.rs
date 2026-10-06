@@ -32,6 +32,10 @@ const TOGETHER: &str = "\u{1f}";
 const ISSUE_COST: f64 = 1000.0;
 const CROSSING_COST: f64 = 150.0;
 const BEND_COST: f64 = 30.0;
+/// From a connector's third bend on, each bend costs this instead: two
+/// bends read as a route around something, more as a maze.
+const LATE_BEND_COST: f64 = 90.0;
+const EASY_BENDS: usize = 2;
 const CROWDING_COST: f64 = 60.0;
 /// Parallel lines within two lanes still read as one band, less so.
 const NEAR_CROWDING_COST: f64 = 20.0;
@@ -566,7 +570,10 @@ impl Context {
                 touched + touches(&first.points, &second.points),
             )
         });
-        let bends: usize = connectors.iter().map(|c| c.points.len().saturating_sub(2)).sum();
+        let bends: f64 = connectors
+            .iter()
+            .map(|c| bend_cost(c.points.len().saturating_sub(2)))
+            .sum();
         let bent = connectors.iter().filter(|c| c.points.len() > 2).count();
         let jogs = total_jogs(&report.diagram);
         let length: f64 = connectors
@@ -577,7 +584,7 @@ impl Context {
         let movement: f64 = offsets.values().map(|offset| offset.x.abs() + offset.y.abs()).sum();
         report.issues.len() as f64 * ISSUE_COST
             + crossed as f64 * CROSSING_COST
-            + bends as f64 * BEND_COST
+            + bends
             + bent as f64 * BENT_COST
             + jogs as f64 * JOG_COST
             + length * LENGTH_COST
@@ -698,6 +705,11 @@ fn keeps_sides(original: &Bounds, other_original: &Bounds, moved: &Bounds, other
         && (!stacked
             || ((!before(original.bottom(), other_original.y) || before(moved.bottom(), other.y))
                 && (!before(other_original.bottom(), original.y) || before(other.bottom(), moved.y))))
+}
+
+/// The cost of a connector's bends: more for each from the third on.
+fn bend_cost(bends: usize) -> f64 {
+    bends.min(EASY_BENDS) as f64 * BEND_COST + bends.saturating_sub(EASY_BENDS) as f64 * LATE_BEND_COST
 }
 
 /// Corners of one route that sit on the other, either way round: there the
@@ -1072,6 +1084,18 @@ mod tests {
 
         assert!(context.alignment_cost(&moved("a")) > context.alignment_cost(&moved("c")));
         assert!(context.alignment_cost(&moved("c")) > 0.0);
+    }
+
+    /// Given connectors with one to five bends
+    /// When their bends are costed
+    /// Then each bend from the third on adds more than the second did
+    #[test]
+    fn costs_a_connector_s_third_and_later_bends_more() {
+        let added = |bends: usize| bend_cost(bends) - bend_cost(bends - 1);
+
+        assert_eq!(added(2), added(1));
+        assert!(added(3) > added(2));
+        assert_eq!(added(4), added(3));
     }
 
     /// Given two routes, one turning at a point that lies on the other

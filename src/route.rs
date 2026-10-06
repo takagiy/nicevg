@@ -11,6 +11,11 @@ use crate::geometry::{
 };
 
 pub const BEND_PENALTY: f64 = 40.0;
+/// A route's first two turns cost the bend penalty; each later one costs
+/// this many times as much, so a route turns twice rather than four times
+/// when it can.
+const LATE_TURN_FACTOR: f64 = 3.0;
+const EASY_TURNS: usize = 2;
 /// Choosing sides weighs bends more than routing does: a side that saves a
 /// bend wins even when the route to it runs a little longer.
 const SIDE_BEND_PENALTY: f64 = 80.0;
@@ -25,8 +30,9 @@ pub const LANE_SPACING: f64 = 10.0;
 /// length: a lot within a lane of it, a little within two lanes.
 const CLOSE_RUN_COST: f64 = 2.0;
 const NEAR_RUN_COST: f64 = 0.2;
-/// Crossing another connector costs about as much as a bend.
-const CROSSING_PENALTY: f64 = 40.0;
+/// Crossing another connector costs as much as a detour of 300px: a route
+/// goes the long way round rather than cross when it can.
+const CROSSING_PENALTY: f64 = 300.0;
 pub const CLEARANCE: f64 = 8.0;
 /// How far a route runs straight into its target before the last bend,
 /// longest first. An arrowhead is about 10px long, so the clearance alone
@@ -414,13 +420,20 @@ pub fn search(
             .fold(f64::INFINITY, f64::min)
     };
 
-    // state = cell * 2 + (0: arrived horizontally, 1: arrived vertically)
-    let mut distance = vec![f64::INFINITY; cells * 2];
-    let mut previous: Vec<Option<usize>> = vec![None; cells * 2];
+    // A state is a cell, the axis the route arrived along (0: horizontally,
+    // 1: vertically) and how many times it has turned, counting up to the
+    // turns that cost the same.
+    let levels = EASY_TURNS + 1;
+    let state_of = |cell: usize, axis: usize, turned: usize| (cell * 2 + axis) * levels + turned.min(EASY_TURNS);
+    let cell_of_state = |state: usize| state / levels / 2;
+    let axis_of = |state: usize| state / levels % 2;
+    let turned_of = |state: usize| state % levels;
+    let mut distance = vec![f64::INFINITY; cells * 2 * levels];
+    let mut previous: Vec<Option<usize>> = vec![None; cells * 2 * levels];
     let mut queue = BinaryHeap::new();
     for terminal in starts {
         let Some(cell) = cell_of(&terminal.point) else { continue };
-        let state = cell * 2 + terminal.axis;
+        let state = state_of(cell, terminal.axis, 0);
         if blocked_cell[cell] || terminal.cost >= distance[state] {
             continue;
         }
@@ -429,7 +442,7 @@ pub fn search(
     }
     let mut reached = None;
     while let Some(Reverse(Entry(priority, state))) = queue.pop() {
-        let cell = state / 2;
+        let cell = cell_of_state(state);
         let cost = distance[state];
         if priority > cost + estimate(cell) {
             continue;
@@ -471,11 +484,21 @@ pub fn search(
             }
             // The path continues straight out of the start stub and straight
             // into the end stub, so turning onto or off them counts as a bend.
-            let bend = (if state % 2 != vertical { bend_penalty } else { 0.0 })
-                + end.map_or(0.0, |(_, terminal)| {
-                    terminal.cost + if vertical != terminal.axis { bend_penalty } else { 0.0 }
-                });
-            let next_state = next_cell * 2 + vertical;
+            let turned = turned_of(state);
+            let turns = usize::from(axis_of(state) != vertical);
+            let bend = if turns == 1 {
+                turn_cost(turned, bend_penalty)
+            } else {
+                0.0
+            } + end.map_or(0.0, |(_, terminal)| {
+                terminal.cost
+                    + if vertical != terminal.axis {
+                        turn_cost(turned + turns, bend_penalty)
+                    } else {
+                        0.0
+                    }
+            });
+            let next_state = state_of(next_cell, vertical, turned + turns);
             let next = point_of(next_cell);
             let length = (next.x - here.x).abs() + (next.y - here.y).abs();
             let outline = if vertical == 1 {
@@ -507,7 +530,7 @@ pub fn search(
     }
     let reached = reached?;
     let path: Vec<Point> = std::iter::successors(Some(reached), |state| previous[*state])
-        .map(|state| point_of(state / 2))
+        .map(|state| point_of(cell_of_state(state)))
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
@@ -515,9 +538,18 @@ pub fn search(
     let first = path.first().copied();
     Some(Found {
         start: starts.iter().position(|terminal| Some(terminal.point) == first),
-        end: end_cells.get(&(reached / 2)).map(|(index, _)| *index),
+        end: end_cells.get(&cell_of_state(reached)).map(|(index, _)| *index),
         path: without_redundant_points(&path),
     })
+}
+
+/// The cost of a route's next turn after it has turned `turned` times.
+fn turn_cost(turned: usize, penalty: f64) -> f64 {
+    if turned >= EASY_TURNS {
+        penalty * LATE_TURN_FACTOR
+    } else {
+        penalty
+    }
 }
 
 /// A route between two ports: straight when the ports line up and nothing
@@ -542,7 +574,9 @@ pub fn route_connector(
         && meets(ports.start, source)
         && meets(ports.end, target)
         && route_is_clear(&direct, &obstacles)
-        && occupied.iter().all(|other| !routes_overlap(&direct, other))
+        && occupied
+            .iter()
+            .all(|other| !routes_overlap(&direct, other) && !routes_cross(&direct, other))
     {
         return direct;
     }
@@ -741,6 +775,14 @@ fn would_cross(sides: Sides, (a, b): (Point, Point), (c, d): (Point, Point)) -> 
     let ((low, high), (other_low, other_high)) = (span(a, b), span(c, d));
     (low < other_low && other_low < high && high < other_high)
         || (other_low < low && low < other_high && other_high < high)
+}
+
+/// Whether any segments of two routes pass through each other.
+fn routes_cross(first: &[Point], second: &[Point]) -> bool {
+    let others = segments(second);
+    segments(first)
+        .iter()
+        .any(|(a, b)| others.iter().any(|(c, d)| chords_cross(*a, *b, *c, *d)))
 }
 
 /// Whether two straight segments pass through each other.
@@ -1191,5 +1233,20 @@ fn find_label_spot(
         clear
     } else {
         clear.or_else(|| find(&|bounds, _| fits(bounds)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Given a route that has turned zero to four times
+    /// When its next turn is costed
+    /// Then a third or later turn costs more than the first two
+    #[test]
+    fn costs_a_route_s_third_and_later_turns_more() {
+        assert_eq!(turn_cost(0, BEND_PENALTY), turn_cost(1, BEND_PENALTY));
+        assert!(turn_cost(2, BEND_PENALTY) > turn_cost(1, BEND_PENALTY));
+        assert_eq!(turn_cost(3, BEND_PENALTY), turn_cost(2, BEND_PENALTY));
     }
 }

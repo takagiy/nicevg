@@ -73,7 +73,7 @@ expression: result.svg.as_str()
       <rect x="1020" y="130" width="128" height="48" rx="6"/>
       <text x="1084" y="159" text-anchor="middle" font-size="13">Cart service</text>
     </g>
-    <g data-node="order" class="service">
+    <g data-node="order" class="service" transform="translate(52 0)">
       <rect x="580" y="290" width="128" height="48" rx="6"/>
       <text x="644" y="319" text-anchor="middle" font-size="13">Order service</text>
     </g>
@@ -81,7 +81,7 @@ expression: result.svg.as_str()
       <rect x="794.5" y="290" width="139" height="48" rx="6"/>
       <text x="864" y="319" text-anchor="middle" font-size="13">Payment service</text>
     </g>
-    <g data-node="inventory" class="service" transform="translate(-40 0)">
+    <g data-node="inventory" class="service">
       <rect x="1007" y="290" width="154" height="48" rx="6"/>
       <text x="1084" y="319" text-anchor="middle" font-size="13">Inventory service</text>
     </g>
@@ -93,11 +93,11 @@ expression: result.svg.as_str()
   <g data-node="data" class="container">
     <rect x="540" y="546" width="680" height="114" rx="10"/>
     <text x="556" y="574">Managed data stores</text>
-    <g data-node="postgres" class="store">
+    <g data-node="postgres" class="store" transform="translate(20 0)">
       <rect x="580" y="600" width="128" height="48" rx="6"/>
       <text x="644" y="629" text-anchor="middle" font-size="13">PostgreSQL</text>
     </g>
-    <g data-node="kafka" class="store" transform="translate(20 0)">
+    <g data-node="kafka" class="store">
       <rect x="760" y="600" width="110" height="48" rx="6"/>
       <text x="815" y="629" text-anchor="middle" font-size="13">Kafka</text>
     </g>
@@ -130,37 +130,37 @@ expression: result.svg.as_str()
   <path id="f6" class="flow" data-from="cdn" data-to="gateway" fill="none" d="M 372 158 L 372 270"/>
   <path id="f7" class="flow" data-from="admin" data-to="gateway" fill="none" d="M 278 400 L 404 400 L 404 318"/>
   <path id="f8" class="flow" data-from="gateway" data-to="auth" fill="none" d="M 468 286 L 520 286 L 520 154 L 580 154"/>
-  <path id="f9" class="flow" data-from="gateway" data-to="catalog" fill="none" d="M 404 270 L 404 202 L 864 202 L 864 178"/>
+  <path id="f9" class="flow" data-from="gateway" data-to="catalog" fill="none" d="M 404 270 L 404 202 L 841 202 L 841 178"/>
   <path id="f10" class="flow" data-from="gateway" data-to="cart" fill="none" d="M 436 270 L 436 222 L 1084 222 L 1084 178"/>
-  <path id="f11" class="flow" data-from="gateway" data-to="order" fill="none" d="M 468 302 L 580 302"/>
+  <path id="f11" class="flow" data-from="gateway" data-to="order" fill="none" d="M 468 302 L 632 302"/>
   <path id="f12" class="flow" data-from="auth" data-to="idp" fill="none" d="M 644 130 L 644 106 L 1360 106 L 1360 130"/>
-  <path id="f13" class="flow" data-from="catalog" data-to="search" fill="none" d="M 933.5 154 L 958 154 L 958 600"/>
-  <path id="f14" class="flow" data-from="catalog" data-to="postgres" fill="none" d="M 794.5 154 L 732 154 L 732 624 L 708 624"/>
+  <path id="f13" class="flow" data-from="catalog" data-to="search" fill="none" d="M 933.5 154 L 970 154 L 970 600"/>
+  <path id="f14" class="flow" data-from="catalog" data-to="postgres" fill="none" d="M 887 178 L 887 246 L 576 246 L 576 624 L 600 624"/>
   <path id="f15" class="flow" data-from="cart" data-to="redis" fill="none" d="M 1148 154 L 1200 154 L 1200 624 L 1180 624"/>
-  <path id="f16" class="flow" data-from="order" data-to="postgres" fill="none" d="M 644 338 L 644 600"/>
-  <path id="f17" class="flow" data-from="order" data-to="payment" fill="none" d="M 708 306 L 794.5 306"/>
-  <path id="f18" class="flow" data-from="order" data-to="inventory" fill="none" d="M 644 290 L 644 266 L 1044 266 L 1044 290"/>
-  <path id="f19" class="flow" data-from="order" data-to="kafka" fill="none" d="M 708 322 L 752 322 L 752 624 L 780 624"/>
-  <path id="f20" class="flow" data-from="payment" data-to="psp" fill="none" d="M 864 338 L 864 362 L 1360 362 L 1360 338"/>
-  <path id="f21" class="flow" data-from="inventory" data-to="postgres" fill="none" d="M 1044 338 L 1044 680 L 644 680 L 644 648"/>
-  <path id="f22" class="flow" data-from="kafka" data-to="notify" fill="none" d="M 835 600 L 835 478"/>
+  <path id="f16" class="flow" data-from="order" data-to="postgres" fill="none" d="M 675 338 L 675 600"/>
+  <path id="f17" class="flow" data-from="order" data-to="payment" fill="none" d="M 760 314 L 794.5 314"/>
+  <path id="f18" class="flow" data-from="order" data-to="inventory" fill="none" d="M 696 290 L 696 266 L 1084 266 L 1084 290"/>
+  <path id="f19" class="flow" data-from="order" data-to="kafka" fill="none" d="M 736 338 L 736 624 L 760 624"/>
+  <path id="f20" class="flow" data-from="payment" data-to="psp" fill="none" d="M 864 338 L 864 370 L 1360 370 L 1360 338"/>
+  <path id="f21" class="flow" data-from="inventory" data-to="postgres" fill="none" d="M 1039 338 L 1039 680 L 664 680 L 664 648"/>
+  <path id="f22" class="flow" data-from="kafka" data-to="notify" fill="none" d="M 815 600 L 815 478"/>
   <path id="f23" class="flow" data-from="notify" data-to="mail" fill="none" d="M 949 454 L 1290 454"/>
   <text data-label="f4-label" data-label-for="f4" class="flow-label" x="310" y="123" text-anchor="middle" font-size="11">HTTPS</text>
   <text data-label="f5-label" data-label-for="f5" class="flow-label" x="309" y="273" text-anchor="middle" font-size="11">HTTPS</text>
   <text data-label="f6-label" data-label-for="f6" class="flow-label" x="363" y="219" text-anchor="end" font-size="11">API calls</text>
   <text data-label="f7-label" data-label-for="f7" class="flow-label" x="341" y="389" text-anchor="middle" font-size="11">HTTPS</text>
   <text data-label="f8-label" data-label-for="f8" class="flow-label" x="511" y="179" text-anchor="end" font-size="11">token check</text>
-  <text data-label="f9-label" data-label-for="f9" class="flow-label" x="772" y="191" text-anchor="middle" font-size="11">REST</text>
-  <text data-label="f10-label" data-label-for="f10" class="flow-label" x="630" y="242" text-anchor="middle" font-size="11">REST</text>
-  <text data-label="f11-label" data-label-for="f11" class="flow-label" x="518" y="322" text-anchor="middle" font-size="11">REST</text>
+  <text data-label="f9-label" data-label-for="f9" class="flow-label" x="732" y="191" text-anchor="middle" font-size="11">REST</text>
+  <text data-label="f10-label" data-label-for="f10" class="flow-label" x="1019" y="211" text-anchor="middle" font-size="11">REST</text>
+  <text data-label="f11-label" data-label-for="f11" class="flow-label" x="517" y="322" text-anchor="middle" font-size="11">REST</text>
   <text data-label="f12-label" data-label-for="f12" class="flow-label" x="1002" y="95" text-anchor="middle" font-size="11">OIDC</text>
-  <text data-label="f13-label" data-label-for="f13" class="flow-label" x="967" y="538" text-anchor="start" font-size="11">queries</text>
-  <text data-label="f15-label" data-label-for="f15" class="flow-label" x="1209" y="253" text-anchor="start" font-size="11">sessions</text>
-  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="653" y="474" text-anchor="start" font-size="11">SQL</text>
-  <text data-label="f17-label" data-label-for="f17" class="flow-label" x="764" y="295" text-anchor="middle" font-size="11">gRPC</text>
-  <text data-label="f18-label" data-label-for="f18" class="flow-label" x="844" y="255" text-anchor="middle" font-size="11">gRPC</text>
-  <text data-label="f19-label" data-label-for="f19" class="flow-label" x="761" y="418" text-anchor="start" font-size="11">order events</text>
-  <text data-label="f20-label" data-label-for="f20" class="flow-label" x="1286" y="382" text-anchor="middle" font-size="11">charges</text>
-  <text data-label="f22-label" data-label-for="f22" class="flow-label" x="844" y="538" text-anchor="start" font-size="11">consume</text>
+  <text data-label="f13-label" data-label-for="f13" class="flow-label" x="961" y="538" text-anchor="end" font-size="11">queries</text>
+  <text data-label="f15-label" data-label-for="f15" class="flow-label" x="1209" y="277" text-anchor="start" font-size="11">sessions</text>
+  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="684" y="474" text-anchor="start" font-size="11">SQL</text>
+  <text data-label="f17-label" data-label-for="f17" class="flow-label" x="777" y="303" text-anchor="middle" font-size="11">gRPC</text>
+  <text data-label="f18-label" data-label-for="f18" class="flow-label" x="1026" y="255" text-anchor="middle" font-size="11">gRPC</text>
+  <text data-label="f19-label" data-label-for="f19" class="flow-label" x="745" y="415" text-anchor="start" font-size="11">order events</text>
+  <text data-label="f20-label" data-label-for="f20" class="flow-label" x="1286" y="359" text-anchor="middle" font-size="11">charges</text>
+  <text data-label="f22-label" data-label-for="f22" class="flow-label" x="824" y="538" text-anchor="start" font-size="11">consume</text>
   <text data-label="f23-label" data-label-for="f23" class="flow-label" x="1120" y="443" text-anchor="middle" font-size="11">send</text>
 </svg>
