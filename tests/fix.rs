@@ -1526,6 +1526,25 @@ fn detours_around_connectors_rather_than_crossing_them() {
     assert_fix_snapshots!(result);
 }
 
+/// Given the C4 container diagram, where the dispatch and payment services
+///   face each other across a narrow gap at the same height
+/// When the diagram is fixed
+/// Then no connector turns on or just beside another: the call into the
+///   payments and the one out of dispatch do not meet at one corner
+#[test]
+fn routes_no_connector_to_turn_just_beside_another() {
+    let svg = include_str!("fixtures/c4-food-delivery-containers.svg");
+
+    let result = fix(svg);
+
+    assert!(
+        !has_issue(&result.report, "connector-near-miss"),
+        "{:?}",
+        result.report.issues
+    );
+    assert_eq!(near_misses(&result.report), Vec::<(String, String)>::new());
+}
+
 /// Given a box with two connectors leaving its left side for two nodes far
 ///   below it, past a column of nodes in between, so both run down the left
 /// When the diagram is fixed

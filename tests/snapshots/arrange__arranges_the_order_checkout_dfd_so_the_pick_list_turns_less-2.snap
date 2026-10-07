@@ -2,7 +2,7 @@
 source: tests/arrange.rs
 expression: result.svg.as_str()
 ---
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-114 0 1474 700" width="1474" height="700">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-110 0 1470 700" width="1470" height="700">
 
   <style>
     text { font-family: system-ui, sans-serif; fill: #1f2937; }
@@ -96,8 +96,8 @@ expression: result.svg.as_str()
   </g>
   <path id="f1" class="flow" data-from="customer" data-to="browse" fill="none" d="M 80 280 L 80 230 L 281 230 L 281 203"/>
   <path id="f2" class="flow" data-from="browse" data-to="products" fill="none" d="M 247 169 L 32 169 L 32 613 L 220 613"/>
-  <path id="f3" class="flow" data-from="products" data-to="browse" fill="none" d="M 220 627 L 12 627 L 12 131 L 247 131"/>
-  <path id="f4" class="flow" data-from="browse" data-to="customer" fill="none" d="M 319 203 L 319 250 L 120 250 L 120 280"/>
+  <path id="f3" class="flow" data-from="products" data-to="browse" fill="none" d="M 220 627 L 16 627 L 16 131 L 247 131"/>
+  <path id="f4" class="flow" data-from="browse" data-to="customer" fill="none" d="M 319 203 L 319 256 L 120 256 L 120 280"/>
   <path id="f5" class="flow" data-from="customer" data-to="cart" fill="none" d="M 100 332 L 100 420 L 237 420"/>
   <path id="f6" class="flow" data-from="cart" data-to="carts" fill="none" d="M 363 420 L 480 420 L 480 600"/>
   <path id="f7" class="flow" data-from="carts" data-to="checkout" fill="none" d="M 520 600 L 520 335"/>
@@ -118,8 +118,8 @@ expression: result.svg.as_str()
   <path id="f22" class="flow" data-from="checkout" data-to="customer" fill="none" d="M 503 310 L 160 310"/>
   <text data-label="f1-label" data-label-for="f1" class="flow-label" x="181" y="219" text-anchor="middle" font-size="11">search terms</text>
   <text data-label="f2-label" data-label-for="f2" class="flow-label" x="41" y="396" text-anchor="start" font-size="11">query</text>
-  <text data-label="f3-label" data-label-for="f3" class="flow-label" x="3" y="384" text-anchor="end" font-size="11">product details</text>
-  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="220" y="270" text-anchor="middle" font-size="11">listings</text>
+  <text data-label="f3-label" data-label-for="f3" class="flow-label" x="7" y="384" text-anchor="end" font-size="11">product details</text>
+  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="220" y="276" text-anchor="middle" font-size="11">listings</text>
   <text data-label="f5-label" data-label-for="f5" class="flow-label" x="169" y="409" text-anchor="middle" font-size="11">items</text>
   <text data-label="f6-label" data-label-for="f6" class="flow-label" x="471" y="515" text-anchor="end" font-size="11">cart lines</text>
   <text data-label="f7-label" data-label-for="f7" class="flow-label" x="529" y="473" text-anchor="start" font-size="11">cart</text>

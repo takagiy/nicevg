@@ -6,8 +6,8 @@ use std::collections::{BinaryHeap, HashMap};
 
 use crate::diagram::DiagramNode;
 use crate::geometry::{
-    Bounds, Point, distance_to_route, hypot, intersection, point, round, route_is_clear, routes_overlap,
-    segment_intersects_interior, segment_length, segments, without_redundant_points,
+    Bounds, Point, distance_to_route, distance_to_segment, hypot, intersection, point, round, route_is_clear,
+    routes_overlap, segment_intersects_interior, segment_length, segments, without_redundant_points,
 };
 
 pub const BEND_PENALTY: f64 = 40.0;
@@ -29,6 +29,9 @@ pub const SIDE_CHANGE_COST: f64 = 0.5;
 /// one neighbour never forces an extra bend but a bundle can.
 pub const CROWDING_COST: f64 = 30.0;
 pub const LANE_SPACING: f64 = 10.0;
+/// Grid lines this close or closer add vertices without giving a route any
+/// real choice, so they are merged or left out.
+const LINE_MERGE: f64 = 4.0;
 /// Running beside another connector costs this much extra per unit of
 /// length: a lot within a lane of it, a little within two lanes.
 const CLOSE_RUN_COST: f64 = 2.0;
@@ -36,6 +39,9 @@ const NEAR_RUN_COST: f64 = 0.2;
 /// Crossing another connector costs as much as a detour of 300px: a route
 /// goes the long way round rather than cross when it can.
 const CROSSING_PENALTY: f64 = 300.0;
+/// Turning on or just beside another connector, or running past its turn,
+/// makes the two read as one line turning: worse than a crossing.
+const NEAR_MISS_PENALTY: f64 = 2.0 * CROSSING_PENALTY;
 pub const CLEARANCE: f64 = 8.0;
 /// How far a route runs straight into its target before the last bend,
 /// longest first. An arrowhead is about 10px long, so the clearance alone
@@ -271,34 +277,33 @@ pub fn search(
     let crossed_segments: Vec<(Point, Point)> = occupied.iter().flat_map(|route| segments(route)).collect();
     let occupied_segments: Vec<(Point, Point)> = crossed_segments.iter().chain(rails).copied().collect();
     let axis = |pick: fn(&Point) -> f64, low: fn(&Bounds) -> f64, high: fn(&Bounds) -> f64| {
-        // Lanes one and two lanes beside connectors already drawn let new
-        // routes run alongside them when every other line through a
-        // channel is taken, keeping clear of them when there is room.
-        let lanes = occupied_segments.iter().flat_map(|(from, to)| {
-            let at = pick(from);
-            (at == pick(to))
-                .then_some([
-                    at - 2.0 * LANE_SPACING,
-                    at - LANE_SPACING,
-                    at + LANE_SPACING,
-                    at + 2.0 * LANE_SPACING,
-                ])
-                .into_iter()
-                .flatten()
-        });
-        let edges = sorted_distinct(
-            starts
-                .iter()
-                .chain(ends)
-                .map(|terminal| pick(&terminal.point))
-                .chain(obstacles.iter().flat_map(|bounds| [low(bounds), high(bounds)])),
-        );
-        // Midlines of the gaps between edges, rounded to whole units.
-        let channels = edges.windows(2).map(|pair| round((pair[0] + pair[1]) / 2.0));
-        sorted_distinct(edges.iter().copied().chain(channels).chain(lanes))
+        let spans: Vec<(f64, f64)> = obstacles.iter().map(|bounds| (low(bounds), high(bounds))).collect();
+        let terminals: Vec<f64> = starts
+            .iter()
+            .chain(ends)
+            .map(|terminal| pick(&terminal.point))
+            .collect();
+        // Connectors (and rails) running along this axis' lines.
+        let along: Vec<f64> = occupied_segments
+            .iter()
+            .filter(|(from, to)| pick(from) == pick(to))
+            .map(|(from, _)| pick(from))
+            .collect();
+        axis_lines(&spans, &terminals, &along, &along)
     };
-    let xs = axis(|p| p.x, |b| b.x, Bounds::right);
-    let ys = axis(|p| p.y, |b| b.y, Bounds::bottom);
+    let (xs, x_spans) = axis(|p| p.x, |b| b.x, Bounds::right);
+    let (ys, y_spans) = axis(|p| p.y, |b| b.y, Bounds::bottom);
+    // Obstacles pushed outwards onto the shared lines.
+    let obstacles: Vec<Bounds> = x_spans
+        .iter()
+        .zip(&y_spans)
+        .map(|((left, right), (top, bottom))| Bounds {
+            x: *left,
+            y: *top,
+            width: right - left,
+            height: bottom - top,
+        })
+        .collect();
     drop(phase);
     tracing::Span::current()
         .record("columns", xs.len())
@@ -423,10 +428,51 @@ pub fn search(
     }
 
     drop(phase);
+    let phase = tracing::info_span!("search_near_misses").entered();
+    let rows = ys.len();
+    // Grid points within the near-miss distance of another connector cost
+    // extra to turn at, and grid edges passing that close to another
+    // connector's turn cost extra to take.
+    let reach = crate::inspect::NEAR_MISS_DISTANCE;
+    let lines_near = |lines: &[f64], low: f64, high: f64| {
+        lines.partition_point(|line| *line <= low - reach)..lines.partition_point(|line| *line < high + reach)
+    };
+    let mut turn_beside = vec![false; cells];
+    for (from, to) in &crossed_segments {
+        for yi in lines_near(&ys, from.y.min(to.y), from.y.max(to.y)) {
+            for xi in lines_near(&xs, from.x.min(to.x), from.x.max(to.x)) {
+                if distance_to_segment(point(xs[xi], ys[yi]), *from, *to) < reach {
+                    turn_beside[key(xi, yi)] = true;
+                }
+            }
+        }
+    }
+    let mut past_turn_horizontal = vec![false; cells];
+    let mut past_turn_vertical = vec![false; cells];
+    for corner in occupied
+        .iter()
+        .flat_map(|route| route.iter().skip(1).take(route.len().saturating_sub(2)))
+    {
+        let (columns, rows_near) = (lines_near(&xs, corner.x, corner.x), lines_near(&ys, corner.y, corner.y));
+        // Edges along the rows near the turn, from the line before it.
+        for yi in rows_near.clone() {
+            for xi in columns.start.saturating_sub(1)..columns.end.min(width.saturating_sub(1)) {
+                if distance_to_segment(*corner, point(xs[xi], ys[yi]), point(xs[xi + 1], ys[yi])) < reach {
+                    past_turn_horizontal[key(xi, yi)] = true;
+                }
+            }
+        }
+        for xi in columns {
+            for yi in rows_near.start.saturating_sub(1)..rows_near.end.min(rows.saturating_sub(1)) {
+                if distance_to_segment(*corner, point(xs[xi], ys[yi]), point(xs[xi], ys[yi + 1])) < reach {
+                    past_turn_vertical[key(xi, yi)] = true;
+                }
+            }
+        }
+    }
     // Running counts along each row of the horizontal edges (and along each
     // column of the vertical ones) that cannot be taken or that cross a
     // connector, so a straight run's count is a difference of two.
-    let rows = ys.len();
     let running = |edges: &[bool], along_rows: bool| {
         let (lines, steps) = if along_rows { (rows, width) } else { (width, rows) };
         let mut counts = vec![0u32; lines * (steps + 1)];
@@ -465,6 +511,7 @@ pub fn search(
         .iter()
         .map(|terminal| Some((index_of(&xs, terminal.point.x)?, index_of(&ys, terminal.point.y)?)))
         .collect();
+    drop(phase);
     let phase = tracing::info_span!("search_astar", visited = tracing::field::Empty).entered();
 
     let cell_of = |target: &Point| Some(key(index_of(&xs, target.x)?, index_of(&ys, target.y)?));
@@ -652,10 +699,20 @@ pub fn search(
             } else {
                 crossing_horizontal[edge]
             };
+            // Turning here, or onto the end stub there, beside another
+            // connector, or running past another's turn.
+            let beside = (turns == 1 && turn_beside[cell])
+                || end.is_some_and(|(_, terminal)| vertical != terminal.axis && turn_beside[next_cell]);
+            let past = if vertical == 1 {
+                past_turn_vertical[edge]
+            } else {
+                past_turn_horizontal[edge]
+            };
             let next_cost = cost
                 + length * (if outline[edge] { 1.01 } else { 1.0 } + near)
                 + bend
-                + if crossing { CROSSING_PENALTY } else { 0.0 };
+                + if crossing { CROSSING_PENALTY } else { 0.0 }
+                + if beside || past { NEAR_MISS_PENALTY } else { 0.0 };
             if next_cost >= distance[next_state] {
                 continue;
             }
@@ -679,6 +736,118 @@ pub fn search(
         end: end_cells.get(&cell_of_state(reached)).map(|(index, _)| *index),
         path: without_redundant_points(&path),
     })
+}
+
+/// The grid lines along one axis, and the obstacles' `spans` along it with
+/// edges lying within the merge distance of each other pushed outwards onto
+/// one shared line. Lines run on every obstacle edge, on `terminals` and on
+/// `occupied` connectors (both kept where they are, never crossed by a push),
+/// through the middle of each gap wide enough between edges and terminals,
+/// and one and two lanes beside the connectors at `lanes_beside`, where
+/// clear of the other lines.
+fn axis_lines(
+    spans: &[(f64, f64)],
+    terminals: &[f64],
+    occupied: &[f64],
+    lanes_beside: &[f64],
+) -> (Vec<f64>, Vec<(f64, f64)>) {
+    let fixed = sorted_distinct(terminals.iter().chain(occupied).copied());
+    // A push from `from` to `to` that would carry a fixed line inside the
+    // obstacle.
+    let carries_fixed = |from: f64, to: f64| {
+        fixed.iter().any(|line| {
+            if to < from {
+                to < *line && *line <= from
+            } else {
+                from <= *line && *line < to
+            }
+        })
+    };
+    // Edges as (position, whether it is the high edge, obstacle), in order.
+    let mut edges: Vec<(f64, bool, usize)> = spans
+        .iter()
+        .enumerate()
+        .flat_map(|(index, (low, high))| [(*low, false, index), (*high, true, index)])
+        .collect();
+    edges.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut snapped: Vec<(f64, f64)> = spans.to_vec();
+    let mut start = 0;
+    while start < edges.len() {
+        let mut end = start + 1;
+        while end < edges.len() && edges[end].0 - edges[start].0 <= LINE_MERGE {
+            end += 1;
+        }
+        let cluster = &edges[start..end];
+        let lowest_low = cluster
+            .iter()
+            .filter(|edge| !edge.1)
+            .map(|edge| edge.0)
+            .fold(f64::INFINITY, f64::min);
+        let highest_high = cluster
+            .iter()
+            .filter(|edge| edge.1)
+            .map(|edge| edge.0)
+            .fold(f64::NEG_INFINITY, f64::max);
+        // One line serves all when every high edge lies below every low one:
+        // a fixed line between them if there is one, else the middle.
+        let shared = (highest_high <= lowest_low).then(|| {
+            fixed
+                .iter()
+                .copied()
+                .find(|line| (highest_high..=lowest_low).contains(line))
+                .unwrap_or_else(|| round((highest_high + lowest_low) / 2.0).clamp(highest_high, lowest_low))
+        });
+        for &(position, high, index) in cluster {
+            let target = match (shared, high) {
+                (Some(line), _) if lowest_low.is_finite() && highest_high.is_finite() => line,
+                (_, false) => lowest_low,
+                (_, true) => highest_high,
+            };
+            if target != position && !carries_fixed(position, target) {
+                if high {
+                    snapped[index].1 = target;
+                } else {
+                    snapped[index].0 = target;
+                }
+            }
+        }
+        start = end;
+    }
+    let base = sorted_distinct(
+        snapped
+            .iter()
+            .flat_map(|(low, high)| [*low, *high])
+            .chain(terminals.iter().copied()),
+    );
+    // Midlines of the gaps between edges wide enough to hold one clear of
+    // both, rounded to whole units.
+    let channels = base
+        .windows(2)
+        .filter(|pair| pair[1] - pair[0] > 2.0 * LINE_MERGE)
+        .map(|pair| round((pair[0] + pair[1]) / 2.0));
+    let mut lines = sorted_distinct(base.iter().copied().chain(channels).chain(occupied.iter().copied()));
+    // Lanes one and two lanes beside connectors already drawn let new routes
+    // run alongside them when every other line through a channel is taken.
+    let lanes = sorted_distinct(lanes_beside.iter().flat_map(|at| {
+        [
+            at - 2.0 * LANE_SPACING,
+            at - LANE_SPACING,
+            at + LANE_SPACING,
+            at + 2.0 * LANE_SPACING,
+        ]
+    }));
+    for lane in lanes {
+        let at = lines.partition_point(|line| *line < lane);
+        let clear = [at.checked_sub(1), Some(at)]
+            .into_iter()
+            .flatten()
+            .filter_map(|index| lines.get(index))
+            .all(|line| (line - lane).abs() > LINE_MERGE);
+        if clear {
+            lines.insert(at, lane);
+        }
+    }
+    (lines, snapped)
 }
 
 /// The fewest turns a route arriving at `here` along `axis` can still make
@@ -1435,6 +1604,61 @@ mod tests {
     /// Given a route that has turned zero to four times
     /// When its next turn is costed
     /// Then a third or later turn costs more than the first two
+    /// Given two obstacles whose facing edges lie 4px apart
+    /// When the grid lines along that axis are drawn
+    /// Then the two edges share one line between them, each obstacle
+    ///   pushed outwards onto it, and no line runs within the merge
+    ///   distance of another
+    #[test]
+    fn draws_one_line_for_obstacle_edges_close_together() {
+        let (lines, spans) = axis_lines(&[(300.0, 388.0), (392.0, 500.0)], &[], &[], &[]);
+
+        assert_eq!(spans[0].1, spans[1].0);
+        assert!(spans[0].1 >= 388.0 && spans[1].0 <= 392.0);
+        assert!(lines.windows(2).all(|pair| pair[1] - pair[0] > LINE_MERGE), "{lines:?}");
+        assert!(lines.contains(&spans[0].1));
+    }
+
+    /// Given an obstacle edge on a terminal's line and another obstacle's
+    ///   edge 2px from it
+    /// When the grid lines are drawn
+    /// Then the terminal's line stays where it is and both edges meet on it,
+    ///   so the terminal never ends up inside an obstacle
+    #[test]
+    fn keeps_a_terminal_line_and_merges_edges_onto_it() {
+        let (lines, spans) = axis_lines(&[(60.0, 140.0), (142.0, 206.0)], &[142.0], &[], &[]);
+
+        assert!(lines.contains(&142.0));
+        assert_eq!(spans[0].1, 142.0);
+        assert_eq!(spans[1].0, 142.0);
+    }
+
+    /// Given an obstacle edge on a terminal's line and an overlapping
+    ///   obstacle whose near edge is 2px outside it
+    /// When the grid lines are drawn
+    /// Then the edge on the terminal's line is not pushed past the terminal
+    #[test]
+    fn does_not_push_an_edge_past_a_terminal() {
+        let (_, spans) = axis_lines(&[(140.0, 300.0), (142.0, 206.0)], &[142.0], &[], &[]);
+
+        assert_eq!(spans[1].0, 142.0);
+    }
+
+    /// Given a gap of 5px between two obstacles, and a connector whose lane
+    ///   would fall 1px from an obstacle edge
+    /// When the grid lines are drawn
+    /// Then the narrow gap gets no channel midline, the lane next to the
+    ///   edge is left out, and lanes clear of other lines are kept
+    #[test]
+    fn leaves_out_lines_crowding_others() {
+        let (lines, _) = axis_lines(&[(0.0, 100.0), (105.0, 200.0), (241.0, 260.0)], &[], &[250.0], &[250.0]);
+
+        assert!(!lines.contains(&102.0) && !lines.contains(&103.0), "{lines:?}");
+        assert!(lines.contains(&50.0));
+        assert!(!lines.contains(&240.0), "{lines:?}");
+        assert!(lines.contains(&270.0));
+    }
+
     #[test]
     fn counts_the_turns_a_route_cannot_avoid() {
         // A stub ending 24px above a port at (100, 100), arrived at moving down.
