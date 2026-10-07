@@ -3,7 +3,7 @@ source: tests/fix.rs
 expression: result.svg.as_str()
 ---
 
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2306 1071">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2306 1068">
         <g data-node="aml">
           <rect x="1258" y="40" width="196" height="60" rx="14"/>
           <text x="1356" y="66" font-size="13" text-anchor="middle">9 AML Screening</text>
@@ -45,15 +45,15 @@ expression: result.svg.as_str()
           <text x="2182" y="1005" font-size="11" text-anchor="middle">WORM storage</text>
         </g>
         <path id="f57" data-from="partneradp" data-to="mq" d="M 1762 790 L 1762 960"/>
-        <path id="f58" data-from="domadp" data-to="mq" d="M 2070 300 L 1973 300 L 1973 990 L 1860 990"/>
+        <path id="f58" data-from="domadp" data-to="mq" d="M 2070 300 L 1884 300 L 1884 990 L 1860 990"/>
         <path id="f70" data-from="ledger" data-to="regrep" d="M 950 960 L 950 814 L 2168 814 L 2168 790"/>
-        <path id="f71" data-from="aml" data-to="regrep" d="M 1454 60 L 1993 60 L 1993 760 L 2070 760"/>
-        <path id="f75" data-from="aml" data-to="audit" d="M 1454 80 L 1953 80 L 1953 980 L 2070 980"/>
-        <path id="f76" data-from="tfront" data-to="audit" d="M 236 300 L 544 300 L 544 1028 L 2013 1028 L 2013 1000 L 2070 1000"/>
-        <text data-label="l57" data-label-for="f57" x="1771" y="889" font-size="12" text-anchor="start">status event</text>
-        <text data-label="l58" data-label-for="f58" x="1982" y="892" font-size="12" text-anchor="start">status event</text>
-        <text data-label="l70" data-label-for="f70" x="1376" y="803" font-size="12" text-anchor="middle">transactions</text>
-        <text data-label="l71" data-label-for="f71" x="1724" y="49" font-size="12" text-anchor="middle">STR candidates</text>
-        <text data-label="l75" data-label-for="f75" x="1944" y="445" font-size="12" text-anchor="end">screening log</text>
-        <text data-label="l76" data-label-for="f76" x="1279" y="1049" font-size="12" text-anchor="middle">teller log</text>
+        <path id="f71" data-from="aml" data-to="regrep" d="M 1454 60 L 1904 60 L 1904 760 L 2070 760"/>
+        <path id="f75" data-from="aml" data-to="audit" d="M 1454 80 L 1559 80 L 1559 1028 L 1904 1028 L 1904 980 L 2070 980"/>
+        <path id="f76" data-from="tfront" data-to="audit" d="M 236 300 L 544 300 L 544 1048 L 1924 1048 L 1924 1000 L 2070 1000"/>
+        <text data-label="l57" data-label-for="f57" x="1753" y="889" font-size="12" text-anchor="end">status event</text>
+        <text data-label="l58" data-label-for="f58" x="1875" y="547" font-size="12" text-anchor="end">status event</text>
+        <text data-label="l70" data-label-for="f70" x="1255" y="803" font-size="12" text-anchor="middle">transactions</text>
+        <text data-label="l71" data-label-for="f71" x="1913" y="520" font-size="12" text-anchor="start">STR candidates</text>
+        <text data-label="l75" data-label-for="f75" x="1568" y="464" font-size="12" text-anchor="start">screening log</text>
+        <text data-label="l76" data-label-for="f76" x="1234" y="1037" font-size="12" text-anchor="middle">teller log</text>
       </svg>

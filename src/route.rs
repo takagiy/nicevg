@@ -11,6 +11,9 @@ use crate::geometry::{
 };
 
 pub const BEND_PENALTY: f64 = 40.0;
+/// The most end terminals a search is given: three stubs on each of the
+/// four sides.
+const MAX_ENDS: usize = 12;
 /// A route's first two turns cost the bend penalty; each later one costs
 /// this many times as much, so a route turns twice rather than four times
 /// when it can.
@@ -229,8 +232,10 @@ fn steps_covering(lines: &[f64], a: f64, b: f64) -> (usize, isize) {
     (first, end)
 }
 
+/// A queued state: its priority (cost so far plus estimate), the state and
+/// its cost so far when queued.
 #[derive(PartialEq)]
-struct Entry(f64, usize);
+struct Entry(f64, usize, f64);
 
 impl Eq for Entry {}
 
@@ -418,7 +423,50 @@ pub fn search(
     }
 
     drop(phase);
+    // Running counts along each row of the horizontal edges (and along each
+    // column of the vertical ones) that cannot be taken or that cross a
+    // connector, so a straight run's count is a difference of two.
+    let rows = ys.len();
+    let running = |edges: &[bool], along_rows: bool| {
+        let (lines, steps) = if along_rows { (rows, width) } else { (width, rows) };
+        let mut counts = vec![0u32; lines * (steps + 1)];
+        for line in 0..lines {
+            for step in 0..steps.saturating_sub(1) {
+                let edge = if along_rows { key(step, line) } else { key(line, step) };
+                counts[line * (steps + 1) + step + 1] = counts[line * (steps + 1) + step] + u32::from(edges[edge]);
+            }
+        }
+        counts
+    };
+    let row_blocked = running(&blocked_horizontal, true);
+    let row_crossing = running(&crossing_horizontal, true);
+    let column_blocked = running(&blocked_vertical, false);
+    let column_crossing = running(&crossing_vertical, false);
+    // Edges taken and crossings on the straight run between two grid points
+    // on one row or one column.
+    let run_counts = |from: (usize, usize), to: (usize, usize)| -> (u32, u32) {
+        if from.1 == to.1 {
+            let (low, high) = (from.0.min(to.0), from.0.max(to.0));
+            let base = from.1 * (width + 1);
+            (
+                row_blocked[base + high] - row_blocked[base + low],
+                row_crossing[base + high] - row_crossing[base + low],
+            )
+        } else {
+            let (low, high) = (from.1.min(to.1), from.1.max(to.1));
+            let base = from.0 * (rows + 1);
+            (
+                column_blocked[base + high] - column_blocked[base + low],
+                column_crossing[base + high] - column_crossing[base + low],
+            )
+        }
+    };
+    let end_indices: Vec<Option<(usize, usize)>> = ends
+        .iter()
+        .map(|terminal| Some((index_of(&xs, terminal.point.x)?, index_of(&ys, terminal.point.y)?)))
+        .collect();
     let phase = tracing::info_span!("search_astar", visited = tracing::field::Empty).entered();
+
     let cell_of = |target: &Point| Some(key(index_of(&xs, target.x)?, index_of(&ys, target.y)?));
     let end_cells: HashMap<usize, (usize, Terminal)> = ends
         .iter()
@@ -426,15 +474,6 @@ pub fn search(
         .filter_map(|(index, terminal)| Some((cell_of(&terminal.point)?, (index, *terminal))))
         .collect();
     let point_of = |cell: usize| point(xs[cell % width], ys[cell / width]);
-    // A*: every edge costs at least its length, so the Manhattan distance to
-    // the nearest end never overestimates and the cheapest route is found.
-    let estimate = |cell: usize| {
-        let here = point_of(cell);
-        ends.iter()
-            .map(|terminal| (terminal.point.x - here.x).abs() + (terminal.point.y - here.y).abs())
-            .fold(f64::INFINITY, f64::min)
-    };
-
     // A state is a cell, the axis the route arrived along (0: horizontally,
     // 1: vertically) and how many times it has turned, counting up to the
     // turns that cost the same.
@@ -443,6 +482,85 @@ pub fn search(
     let cell_of_state = |state: usize| state / levels / 2;
     let axis_of = |state: usize| state / levels % 2;
     let turned_of = |state: usize| state % levels;
+    // A*: a lower bound on what is left to pay, so the cheapest route is
+    // still found. Every edge costs at least its length and the turns the
+    // route cannot avoid cost at least their price, so the end stub's own
+    // cost, the Manhattan distance and those turns are one. When the fewest
+    // turns leave a single way in, the route also pays either for what
+    // blocks or crosses that way or for two more turns to leave it.
+    let estimate = |state: usize| {
+        // An end reached is paid for in full, its stub and any turn onto it.
+        if end_cells.contains_key(&cell_of_state(state)) {
+            return 0.0;
+        }
+        let cell = cell_of_state(state);
+        let here = point_of(cell);
+        let (xi, yi) = (cell % width, cell / width);
+        let (axis, turned) = (axis_of(state), turned_of(state));
+        if ends.len() > MAX_ENDS {
+            return ends
+                .iter()
+                .map(|terminal| (terminal.point.x - here.x).abs() + (terminal.point.y - here.y).abs())
+                .fold(f64::INFINITY, f64::min);
+        }
+        // The cheap part first; an end whose cheap part already reaches the
+        // best total cannot win, so its way in is not looked at.
+        let mut cheap = [(f64::INFINITY, 0usize, 0usize); MAX_ENDS];
+        for (index, terminal) in ends.iter().enumerate().take(MAX_ENDS) {
+            let fewest = fewest_turns(here, axis, terminal);
+            let turns: f64 = (0..fewest).map(|turn| turn_cost(turned + turn, bend_penalty)).sum();
+            cheap[index] = (
+                terminal.cost + (terminal.point.x - here.x).abs() + (terminal.point.y - here.y).abs() + turns,
+                index,
+                fewest,
+            );
+        }
+        let cheap = &mut cheap[..ends.len().min(MAX_ENDS)];
+        cheap.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+        let mut best = f64::INFINITY;
+        for &(cost, index, fewest) in cheap.iter() {
+            if cost >= best {
+                break;
+            }
+            let terminal = &ends[index];
+            // With no turn or one to spare, the route has one way in: straight
+            // on, or straight to the corner and then straight in. Leaving it,
+            // the route turns twice more; keeping to it, it crosses what lies
+            // across it.
+            let detour = match (fewest, end_indices[index]) {
+                (0 | 1, Some((end_x, end_y))) => {
+                    let (blocked, crossed) = if fewest == 0 {
+                        run_counts((xi, yi), (end_x, end_y))
+                    } else {
+                        let corner = if axis == 1 { (xi, end_y) } else { (end_x, yi) };
+                        let corner_point = point(xs[corner.0], ys[corner.1]);
+                        // The last leg has to run towards the port.
+                        let backwards = (terminal.point.x - corner_point.x) * (terminal.port.x - terminal.point.x)
+                            + (terminal.point.y - corner_point.y) * (terminal.port.y - terminal.point.y)
+                            < 0.0;
+                        let (first_blocked, first_crossed) = run_counts((xi, yi), corner);
+                        let (last_blocked, last_crossed) = run_counts(corner, (end_x, end_y));
+                        (
+                            first_blocked + last_blocked + u32::from(backwards),
+                            first_crossed + last_crossed,
+                        )
+                    };
+                    let two_more: f64 = (fewest..fewest + 2)
+                        .map(|turn| turn_cost(turned + turn, bend_penalty))
+                        .sum();
+                    if blocked > 0 {
+                        two_more
+                    } else {
+                        two_more.min(f64::from(crossed) * CROSSING_PENALTY)
+                    }
+                }
+                _ => 0.0,
+            };
+            best = best.min(cost + detour);
+        }
+        best
+    };
+
     let mut distance = vec![f64::INFINITY; cells * 2 * levels];
     let mut previous: Vec<Option<usize>> = vec![None; cells * 2 * levels];
     let mut queue = BinaryHeap::new();
@@ -453,15 +571,16 @@ pub fn search(
             continue;
         }
         distance[state] = terminal.cost;
-        queue.push(Reverse(Entry(terminal.cost + estimate(cell), state)));
+        queue.push(Reverse(Entry(terminal.cost + estimate(state), state, terminal.cost)));
     }
     let mut reached = None;
     let mut visited = 0usize;
-    while let Some(Reverse(Entry(priority, state))) = queue.pop() {
+    while let Some(Reverse(Entry(_, state, reached_at))) = queue.pop() {
         visited += 1;
         let cell = cell_of_state(state);
         let cost = distance[state];
-        if priority > cost + estimate(cell) {
+        // A cheaper way here was found after this entry was queued.
+        if reached_at > cost {
             continue;
         }
         if end_cells.contains_key(&cell) {
@@ -542,7 +661,7 @@ pub fn search(
             }
             distance[next_state] = next_cost;
             previous[next_state] = Some(state);
-            queue.push(Reverse(Entry(next_cost + estimate(next_cell), next_state)));
+            queue.push(Reverse(Entry(next_cost + estimate(next_state), next_state, next_cost)));
         }
     }
     phase.record("visited", visited);
@@ -560,6 +679,26 @@ pub fn search(
         end: end_cells.get(&cell_of_state(reached)).map(|(index, _)| *index),
         path: without_redundant_points(&path),
     })
+}
+
+/// The fewest turns a route arriving at `here` along `axis` can still make
+/// to reach `terminal`. Each turn swaps the axis, so their number is even
+/// when the axes match and odd when they differ; none only when the
+/// terminal lies straight ahead, reached from the side away from its port.
+fn fewest_turns(here: Point, axis: usize, terminal: &Terminal) -> usize {
+    if axis != terminal.axis {
+        return 1;
+    }
+    let on_line = if axis == 1 {
+        here.x == terminal.point.x
+    } else {
+        here.y == terminal.point.y
+    };
+    // Moving towards the port; coming from its side would double back.
+    let towards_port = (terminal.point.x - here.x) * (terminal.port.x - terminal.point.x)
+        + (terminal.point.y - here.y) * (terminal.port.y - terminal.point.y)
+        >= 0.0;
+    if on_line && towards_port { 0 } else { 2 }
 }
 
 /// The cost of a route's next turn after it has turned `turned` times.
@@ -1296,6 +1435,22 @@ mod tests {
     /// Given a route that has turned zero to four times
     /// When its next turn is costed
     /// Then a third or later turn costs more than the first two
+    #[test]
+    fn counts_the_turns_a_route_cannot_avoid() {
+        // A stub ending 24px above a port at (100, 100), arrived at moving down.
+        let terminal = Terminal {
+            point: point(100.0, 76.0),
+            axis: 1,
+            port: point(100.0, 100.0),
+            cost: 0.0,
+        };
+
+        assert_eq!(fewest_turns(point(100.0, 20.0), 1, &terminal), 0);
+        assert_eq!(fewest_turns(point(40.0, 20.0), 1, &terminal), 2);
+        assert_eq!(fewest_turns(point(40.0, 20.0), 0, &terminal), 1);
+        assert_eq!(fewest_turns(point(100.0, 90.0), 1, &terminal), 2);
+    }
+
     #[test]
     fn costs_a_route_s_third_and_later_turns_more() {
         assert_eq!(turn_cost(0, BEND_PENALTY), turn_cost(1, BEND_PENALTY));
