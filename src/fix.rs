@@ -14,9 +14,9 @@ use crate::diagram::{
 use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
-    JOG_LENGTH, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Side, Sides, choose_sides, connector_ports,
-    crossings, end_on_shapes, is_on_outline, label_landmarks, place_label, place_label_clear, route_connector,
-    runs_across, side_of, spread_ports, turns,
+    LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Side, Sides, choose_sides, connector_ports, crossings,
+    end_on_shapes, is_on_outline, label_landmarks, place_label, place_label_clear, route_connector, runs_across,
+    side_of, spread_ports, turns,
 };
 use crate::text::{label_texts, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
@@ -1175,20 +1175,11 @@ fn improve_ports(
         let Some(line) = stepped_end(&route) else {
             return (ports, routes);
         };
-        // Where the line before a jog lies off the side's usable stretch,
+        // Where the line before the step lies off the side's usable stretch,
         // the end moves as near it as it may; the route rerouted to there
-        // may then run straight in. A longer step is a detour, not a jog.
+        // may then run straight in.
         let (low, high) = usable(index, end, side);
-        let along = if matches!(side, Side::Left | Side::Right) {
-            port.y
-        } else {
-            port.x
-        };
-        let line = if (line - along).abs() <= JOG_LENGTH {
-            line.clamp(low, high)
-        } else {
-            line
-        };
+        let line = line.clamp(low, high);
         if moved_to(port, side, line) == port || !free(&ports, index, end, line) {
             return (ports, routes);
         }

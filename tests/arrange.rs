@@ -383,21 +383,19 @@ fn arranges_the_storefront_architecture_without_denting_a_row() {
     assert_fix_snapshots!(result);
 }
 
-/// Given the order checkout DFD draft, where after fixing the pick list from
-///   allocate to ship climbs in a staircase to stay off the approval line
+/// Given the order checkout DFD draft, where the pick list from allocate to
+///   ship has to get past the approval line
 /// When the diagram is arranged
-/// Then a node moves so the pick list turns less, connectors reach allocate
-///   and manage cart without a short stub or a crossing right at the node,
-///   and nothing is reported
+/// Then the pick list turns at most once, connectors reach allocate and
+///   manage cart without a short stub or a crossing right at the node, and
+///   nothing is reported
 #[test]
-fn arranges_the_order_checkout_dfd_so_the_pick_list_turns_less() {
+fn arranges_the_order_checkout_dfd_with_the_pick_list_turning_once() {
     let svg = include_str!("fixtures/order-checkout-dfd.svg");
 
-    let fixed = fix(svg);
     let result = arrange(svg);
 
-    assert!(bend_count(&connector_points(&fixed.report, "f17")) >= 2);
-    assert!(bend_count(&connector_points(&result.report, "f17")) < bend_count(&connector_points(&fixed.report, "f17")));
+    assert!(bend_count(&connector_points(&result.report, "f17")) <= 1);
     // Connectors reach allocate and manage cart readably: no end stub
     // under 20px into allocate, no crossing within 20px of manage cart.
     assert!(shortest_end_segment(&result.report, "allocate") >= 20.0);
