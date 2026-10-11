@@ -3,6 +3,7 @@
 //! connectors and place their labels, then grow the viewBox.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 
 use serde::Serialize;
 
@@ -20,7 +21,7 @@ use crate::route::{
 };
 use crate::text::{label_text_index, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
-use crate::{AnalysisReport, SvgInputError, analyze, parse, report_of};
+use crate::{AnalysisReport, SvgInputError, parse, report_of};
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct FixChange {
@@ -38,18 +39,37 @@ pub struct FixResult {
 
 /// A document being repaired, with the changes made so far.
 #[derive(Clone)]
-struct Draft {
-    document: Document,
-    changes: Vec<FixChange>,
+pub(crate) struct Draft {
+    pub(crate) document: Document,
+    pub(crate) changes: Vec<FixChange>,
+    /// Nodes just moved, whose connectors are rerouted to follow.
     moved_node_ids: Vec<String>,
+    /// The report of `document`, read once; a changed draft starts without.
+    report: OnceLock<AnalysisReport>,
 }
 
 impl Draft {
-    /// The report of the document as it would be written out.
+    pub(crate) fn new(document: Document, changes: Vec<FixChange>, moved_node_ids: Vec<String>) -> Draft {
+        Draft {
+            document,
+            changes,
+            moved_node_ids,
+            report: OnceLock::new(),
+        }
+    }
+
     #[tracing::instrument(name = "draft_report", skip_all)]
-    fn report(&self) -> AnalysisReport {
-        let written = serialize(&self.document);
-        report_of(&parse(&written).expect("a serialized draft parses again"))
+    pub(crate) fn report(&self) -> &AnalysisReport {
+        self.report.get_or_init(|| report_of(&self.document))
+    }
+
+    /// The document written out, with its changes and report.
+    pub(crate) fn written(&self) -> FixResult {
+        FixResult {
+            svg: serialize(&self.document),
+            changes: self.changes.clone(),
+            report: self.report().clone(),
+        }
     }
 
     fn changed(self, document: Document, code: &str, message: String, elements: &[&str]) -> Draft {
@@ -58,11 +78,7 @@ impl Draft {
             message,
             elements: elements.iter().map(|element| (*element).to_owned()).collect(),
         };
-        Draft {
-            document,
-            changes: [self.changes, vec![change]].concat(),
-            ..self
-        }
+        Draft::new(document, [self.changes, vec![change]].concat(), self.moved_node_ids)
     }
 }
 
@@ -77,51 +93,40 @@ pub fn fix(svg: &str) -> Result<FixResult, SvgInputError> {
 /// placed late, and labels left without a slot get another try. A pass is
 /// kept only while it reduces the issues.
 pub fn fix_with_passes(svg: &str, max_passes: usize) -> Result<FixResult, SvgInputError> {
-    fix_after_moves(svg, &[], max_passes)
+    let draft = Draft::new(parse(svg)?, Vec::new(), Vec::new());
+    Ok(fix_after_moves(draft, max_passes).written())
 }
 
-/// Fixes a document whose nodes `moved` were just moved, so the connectors
-/// attached to them are rerouted to follow.
-#[tracing::instrument(skip_all, fields(moved = moved.len()))]
-pub(crate) fn fix_after_moves(svg: &str, moved: &[String], max_passes: usize) -> Result<FixResult, SvgInputError> {
-    fn refine(best: FixResult, remaining: usize) -> Result<FixResult, SvgInputError> {
-        if remaining == 0 || best.report.issues.is_empty() {
-            return Ok(best);
+/// Fixes a draft, rerouting the connectors of the nodes it just moved to
+/// follow them.
+#[tracing::instrument(skip_all, fields(moved = draft.moved_node_ids.len()))]
+pub(crate) fn fix_after_moves(draft: Draft, max_passes: usize) -> Draft {
+    fn refine(best: Draft, remaining: usize) -> Draft {
+        if remaining == 0 || best.report().issues.is_empty() {
+            return best;
         }
-        let next = fix_once(&best.svg, &[])?;
-        if next.report.issues.len() >= best.report.issues.len() {
-            return Ok(best);
+        let next = fix_once(Draft::new(best.document.clone(), best.changes.clone(), Vec::new()));
+        if next.report().issues.len() >= best.report().issues.len() {
+            return best;
         }
-        let changes = [best.changes, next.changes.clone()].concat();
-        refine(FixResult { changes, ..next }, remaining - 1)
+        refine(next, remaining - 1)
     }
-    refine(fix_once(svg, moved)?, max_passes.saturating_sub(1))
+    refine(fix_once(draft), max_passes.saturating_sub(1))
 }
 
 #[tracing::instrument(skip_all)]
-fn fix_once(svg: &str, moved: &[String]) -> Result<FixResult, SvgInputError> {
-    let draft = Draft {
-        document: parse(svg)?,
-        changes: Vec::new(),
-        moved_node_ids: moved.to_vec(),
-    };
+fn fix_once(draft: Draft) -> Draft {
     let landmarks = connector_landmarks(&draft.report().diagram);
-    let draft = expand_view_box(settle_labels(
+    expand_view_box(settle_labels(
         reroute_connectors(separate_nodes(expand_nodes(draft))),
         &landmarks,
-    ));
-    let written = serialize(&draft.document);
-    Ok(FixResult {
-        report: analyze(&written)?,
-        svg: written,
-        changes: draft.changes,
-    })
+    ))
 }
 
 /// Grows node shapes whose labels do not fit, leaving the labels in place.
 #[tracing::instrument(skip_all)]
 fn expand_nodes(draft: Draft) -> Draft {
-    let report = draft.report();
+    let report = draft.report().clone();
     report
         .issues
         .iter()
@@ -205,7 +210,7 @@ fn separate_nodes(draft: Draft) -> Draft {
         if attempt >= 100 {
             return draft;
         }
-        let report = draft.report();
+        let report = draft.report().clone();
         let Some(issue) = report
             .issues
             .iter()
@@ -503,7 +508,7 @@ fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_ro
 /// connectors and of labels that drifted from their connector.
 #[tracing::instrument(skip_all, fields(reroutes = tracing::field::Empty, partners = tracing::field::Empty))]
 fn reroute_connectors(draft: Draft) -> Draft {
-    let report = draft.report();
+    let report = draft.report().clone();
     let diagram = &report.diagram;
 
     let nodes_by_id: HashMap<&str, &DiagramNode> = diagram.nodes.iter().map(|node| (node.id.as_str(), node)).collect();
@@ -830,13 +835,9 @@ fn reroute_connectors(draft: Draft) -> Draft {
 /// the labels of the moved connectors again. A result that would be left
 /// with more issues stays as it was.
 #[tracing::instrument(skip_all)]
-pub(crate) fn spread_close_runs(result: FixResult) -> Result<FixResult, SvgInputError> {
-    let draft = Draft {
-        document: parse(&result.svg)?,
-        changes: result.changes.clone(),
-        moved_node_ids: Vec::new(),
-    };
-    let report = draft.report();
+pub(crate) fn spread_close_runs(result: Draft) -> Draft {
+    let draft = Draft::new(result.document.clone(), result.changes.clone(), Vec::new());
+    let report = draft.report().clone();
     let diagram = &report.diagram;
     let obstacles_for = |connector: &DiagramConnector| -> Vec<Bounds> {
         diagram
@@ -917,7 +918,7 @@ pub(crate) fn spread_close_runs(result: FixResult) -> Result<FixResult, SvgInput
         routes = trial;
     }
     if moved.is_empty() {
-        return Ok(result);
+        return result;
     }
     let mut moved: Vec<usize> = moved.into_iter().collect();
     moved.sort_unstable();
@@ -935,17 +936,11 @@ pub(crate) fn spread_close_runs(result: FixResult) -> Result<FixResult, SvgInput
         .unzip();
     let routed = write_routes(&draft, diagram, &reroutes, finals);
     let draft = expand_view_box(settle_labels(routed.draft, &connector_landmarks(diagram)));
-    let written = serialize(&draft.document);
-    let spread = FixResult {
-        report: analyze(&written)?,
-        svg: written,
-        changes: draft.changes,
-    };
-    Ok(if spread.report.issues.len() > result.report.issues.len() {
+    if draft.report().issues.len() > result.report().issues.len() {
         result
     } else {
-        spread
-    })
+        draft
+    }
 }
 
 /// Moves middle segment `k` of route `index` onto `line`, pushing on by two
@@ -1034,7 +1029,7 @@ fn connector_landmarks(diagram: &Diagram) -> HashMap<String, Vec<Point>> {
 /// one's label, when a spot clear of the others exists.
 #[tracing::instrument(skip_all)]
 fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
-    let report = draft.report();
+    let report = draft.report().clone();
     let diagram = &report.diagram;
     let routes: Vec<Vec<Point>> = diagram.connectors.iter().map(|c| c.points.clone()).collect();
     let now = connector_landmarks(diagram);
@@ -1479,7 +1474,7 @@ fn regex_fill(style: &str) -> bool {
 /// Grows the viewBox to the drawing plus its safe padding when it clips.
 #[tracing::instrument(skip_all)]
 fn expand_view_box(draft: Draft) -> Draft {
-    let report = draft.report();
+    let report = draft.report().clone();
     let root_path = vec![draft.document.root_index()];
     let view_box = parse_view_box(draft.document.root().attr("viewBox"));
     let clipped = report.issues.iter().any(|issue| issue.code == "viewport-clipping");
@@ -1567,6 +1562,7 @@ fn absolute_length(text: &str) -> Option<(f64, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analyze;
 
     /// Given two connectors whose middle segments run down side by side 8px
     ///   apart, with room on either side
@@ -1588,7 +1584,7 @@ mod tests {
         let (before_p, before_q) = (points(&fixed, "p"), points(&fixed, "q"));
         assert_eq!(before_q[1].x - before_p[1].x, 8.0);
 
-        let spread = spread_close_runs(fixed).unwrap();
+        let spread = spread_close_runs(Draft::new(parse(&fixed.svg).unwrap(), Vec::new(), Vec::new())).written();
 
         let (p, q) = (points(&spread, "p"), points(&spread, "q"));
         assert!((q[1].x - p[1].x).abs() >= 16.0, "{p:?} {q:?}");
@@ -1621,7 +1617,7 @@ mod tests {
         let x = |result: &FixResult, id: &str| result.report.diagram.connector(id).unwrap().points[1].x;
         assert_eq!((x(&fixed, "p"), x(&fixed, "q"), x(&fixed, "r")), (210.0, 202.0, 192.0));
 
-        let spread = spread_close_runs(fixed).unwrap();
+        let spread = spread_close_runs(Draft::new(parse(&fixed.svg).unwrap(), Vec::new(), Vec::new())).written();
 
         let (p, q, r) = (x(&spread, "p"), x(&spread, "q"), x(&spread, "r"));
         assert!(

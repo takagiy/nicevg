@@ -14,12 +14,12 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::diagram::{Diagram, DiagramConnector, DiagramNode, ancestor_ids, holds_end, node_group};
-use crate::fix::{FixChange, FixResult, fix, fix_after_moves, spread_close_runs};
+use crate::fix::{Draft, FixChange, FixResult, fix_after_moves, spread_close_runs};
 use crate::geometry::{
     Bounds, Point, format_number, hypot, intersection, parse_number, point, segment_intersects_interior, segments,
 };
 use crate::route::{Fade, SHORT_END, SHORT_END_FADE, chords_cross, crossings, route_cost, routes_cost, turns};
-use crate::xml::{Element, serialize};
+use crate::xml::Element;
 use crate::{AnalysisReport, SvgInputError, parse};
 
 /// How far a node may end up from where fixing left it, on each axis.
@@ -84,15 +84,14 @@ const LABEL_CLEARANCE: f64 = 4.0;
 /// bends, crossings and crowded lanes.
 #[tracing::instrument(skip_all)]
 pub fn arrange(svg: &str) -> Result<FixResult, SvgInputError> {
-    let fixed = fix(svg)?;
-    let baseline = fixed.report.diagram.clone();
-    let context = Context::new(baseline);
+    let fixed = fix_after_moves(Draft::new(parse(svg)?, Vec::new(), Vec::new()), 5);
+    let context = Context::new(fixed.report().diagram.clone());
     let start = State {
-        score: context.score(&fixed, &HashMap::new()),
+        score: context.score(fixed.report(), &HashMap::new()),
         result: fixed,
         offsets: HashMap::new(),
     };
-    spread_close_runs(improve(&context, start, MAX_STEPS).result)
+    Ok(spread_close_runs(improve(&context, start, MAX_STEPS).result).written())
 }
 
 struct Context {
@@ -106,7 +105,7 @@ struct Context {
 
 #[derive(Clone)]
 struct State {
-    result: FixResult,
+    result: Draft,
     /// How far each moved node is from where fixing left it.
     offsets: HashMap<String, Point>,
     score: f64,
@@ -128,8 +127,8 @@ fn improve(context: &Context, state: State, steps: usize) -> State {
     let best = evaluate_all(context, &state, &candidates)
         .into_iter()
         .flatten()
-        .filter(|next| next.result.report.issues.len() <= state.result.report.issues.len())
-        .filter(|next| total_jogs(&next.result.report.diagram) <= total_jogs(&state.result.report.diagram))
+        .filter(|next| next.result.report().issues.len() <= state.result.report().issues.len())
+        .filter(|next| total_jogs(&next.result.report().diagram) <= total_jogs(&state.result.report().diagram))
         .reduce(|best, next| if next.score < best.score { next } else { best });
     match best {
         Some(next) if next.score < state.score - 1e-9 => improve(context, next, steps - 1),
@@ -172,7 +171,7 @@ fn evaluate_all(context: &Context, state: &State, candidates: &[(String, Move)])
 fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<State> {
     let in_place = step.dx == 0.0 && step.dy == 0.0;
     let ids: Vec<String> = id.split(TOGETHER).map(str::to_owned).collect();
-    let mut document = parse(&state.result.svg).ok()?;
+    let mut document = state.result.document.clone();
     let mut offsets = state.offsets.clone();
     if !in_place {
         for member in &ids {
@@ -196,7 +195,6 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
             *offset = point(offset.x + step.dx, offset.y + step.dy);
         }
     }
-    let moved = fix_after_moves(&serialize(&document), &ids, 5).ok()?;
     let names = ids.iter().map(|id| format!("\"{id}\"")).collect::<Vec<_>>().join(", ");
     let change = FixChange {
         code: "arrange-node".to_owned(),
@@ -208,18 +206,14 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
         ),
         elements: ids.clone(),
     };
-    let change = (!in_place).then_some(change);
-    let result = FixResult {
-        changes: [
-            state.result.changes.clone(),
-            change.into_iter().collect(),
-            moved.changes.clone(),
-        ]
-        .concat(),
-        ..moved
-    };
+    let changes = [
+        state.result.changes.clone(),
+        (!in_place).then_some(change).into_iter().collect(),
+    ]
+    .concat();
+    let result = fix_after_moves(Draft::new(document, changes, ids), 5);
     Some(State {
-        score: context.score(&result, &offsets),
+        score: context.score(result.report(), &offsets),
         result,
         offsets,
     })
@@ -266,7 +260,7 @@ fn translated(existing: &str, step: Move) -> String {
 /// issues.
 #[tracing::instrument(skip_all)]
 fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
-    let diagram = &state.result.report.diagram;
+    let diagram = &state.result.report().diagram;
     let node = |id: &str| diagram.node(id);
     let straighten = diagram
         .connectors
@@ -356,7 +350,7 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
                 })
                 .collect::<Vec<_>>()
         });
-    let troubled = troubled_nodes(&state.result.report);
+    let troubled = troubled_nodes(state.result.report());
     // A row or column with a troubled node moves as one, across its line:
     // it keeps its alignment while making room above or beside it.
     let lines = context
@@ -542,7 +536,7 @@ impl Context {
     /// started, inside its container, and on the same side of every other
     /// node outside its `group` as in the input.
     fn allows_one(&self, state: &State, id: &str, group: &[&str], step: Move) -> bool {
-        let diagram = &state.result.report.diagram;
+        let diagram = &state.result.report().diagram;
         let (Some(node), Some(original)) = (diagram.node(id), self.baseline_node(id)) else {
             return false;
         };
@@ -603,8 +597,7 @@ impl Context {
     }
 
     #[tracing::instrument(skip_all)]
-    fn score(&self, result: &FixResult, offsets: &HashMap<String, Point>) -> f64 {
-        let report = &result.report;
+    fn score(&self, report: &AnalysisReport, offsets: &HashMap<String, Point>) -> f64 {
         let connectors = &report.diagram.connectors;
         let pairs = connectors
             .iter()
