@@ -3,7 +3,7 @@
 //! connectors and place their labels, then grow the viewBox.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use serde::Serialize;
 
@@ -45,7 +45,7 @@ pub(crate) struct Draft {
     /// Nodes just moved, whose connectors are rerouted to follow.
     moved_node_ids: Vec<String>,
     /// The report of `document`, read once; a changed draft starts without.
-    report: OnceLock<AnalysisReport>,
+    report: OnceLock<Arc<AnalysisReport>>,
 }
 
 impl Draft {
@@ -59,8 +59,17 @@ impl Draft {
     }
 
     #[tracing::instrument(name = "draft_report", skip_all)]
-    pub(crate) fn report(&self) -> &AnalysisReport {
-        self.report.get_or_init(|| report_of(&self.document))
+    pub(crate) fn report(&self) -> &Arc<AnalysisReport> {
+        self.report.get_or_init(|| Arc::new(report_of(&self.document)))
+    }
+
+    /// The same document and changes, now following the nodes `moved`; the
+    /// report already read is kept.
+    pub(crate) fn moving(&self, moved: Vec<String>) -> Draft {
+        Draft {
+            moved_node_ids: moved,
+            ..self.clone()
+        }
     }
 
     /// The document written out, with its changes and report.
@@ -68,7 +77,7 @@ impl Draft {
         FixResult {
             svg: serialize(&self.document),
             changes: self.changes.clone(),
-            report: self.report().clone(),
+            report: AnalysisReport::clone(self.report()),
         }
     }
 
@@ -105,7 +114,7 @@ pub(crate) fn fix_after_moves(draft: Draft, max_passes: usize) -> Draft {
         if remaining == 0 || best.report().issues.is_empty() {
             return best;
         }
-        let next = fix_once(Draft::new(best.document.clone(), best.changes.clone(), Vec::new()));
+        let next = fix_once(best.moving(Vec::new()));
         if next.report().issues.len() >= best.report().issues.len() {
             return best;
         }
@@ -836,7 +845,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
 /// with more issues stays as it was.
 #[tracing::instrument(skip_all)]
 pub(crate) fn spread_close_runs(result: Draft) -> Draft {
-    let draft = Draft::new(result.document.clone(), result.changes.clone(), Vec::new());
+    let draft = result.moving(Vec::new());
     let report = draft.report().clone();
     let diagram = &report.diagram;
     let obstacles_for = |connector: &DiagramConnector| -> Vec<Bounds> {

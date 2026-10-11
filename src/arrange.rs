@@ -206,12 +206,12 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
         ),
         elements: ids.clone(),
     };
-    let changes = [
-        state.result.changes.clone(),
-        (!in_place).then_some(change).into_iter().collect(),
-    ]
-    .concat();
-    let result = fix_after_moves(Draft::new(document, changes, ids), 5);
+    let draft = if in_place {
+        state.result.moving(ids)
+    } else {
+        Draft::new(document, [state.result.changes.clone(), vec![change]].concat(), ids)
+    };
+    let result = fix_after_moves(draft, 5);
     Some(State {
         score: context.score(result.report(), &offsets),
         result,
