@@ -240,28 +240,19 @@ fn sorted_distinct(values: impl IntoIterator<Item = f64>) -> Vec<f64> {
 }
 
 fn index_of(lines: &[f64], value: f64) -> Option<usize> {
-    lines.iter().position(|line| *line == value)
+    let index = lines.partition_point(|line| *line < value);
+    (lines.get(index) == Some(&value)).then_some(index)
 }
 
 /// Indices of the grid steps (between lines[i] and lines[i + 1]) that share
 /// some length with the span from a to b; lines are sorted ascending.
 fn steps_covering(lines: &[f64], a: f64, b: f64) -> (usize, isize) {
     let (low, high) = (a.min(b), a.max(b));
-    let (mut first, mut last) = (0usize, lines.len().saturating_sub(1));
-    while first < last {
-        let middle = (first + last) / 2;
-        if lines.get(middle + 1).copied().unwrap_or(f64::INFINITY) > low {
-            last = middle;
-        } else {
-            first = middle + 1;
-        }
-    }
-    let mut end = first as isize - 1;
-    while ((end + 1) as usize) < lines.len().saturating_sub(1)
-        && lines.get((end + 1) as usize).copied().unwrap_or(f64::INFINITY) < high
-    {
-        end += 1;
-    }
+    let first = lines.partition_point(|line| *line <= low).saturating_sub(1);
+    let end = lines
+        .partition_point(|line| *line < high)
+        .min(lines.len().saturating_sub(1)) as isize
+        - 1;
     (first, end)
 }
 
@@ -422,11 +413,16 @@ fn grid(
     // starts running alongside.
     let mut near_horizontal = vec![0.0f64; cells];
     let mut near_vertical = vec![0.0f64; cells];
+    // Only lines closer than the reach of running alongside cost anything.
+    let lines_within = |lines: &[f64], at: f64| {
+        lines.partition_point(|line| *line <= at - CLOSE_RUN.reach)
+            ..lines.partition_point(|line| *line < at + CLOSE_RUN.reach)
+    };
     for (from, to) in &occupied_segments {
         if from.y == to.y {
             let (first, last) = steps_covering(&xs, from.x, to.x);
-            for (yi, y) in ys.iter().enumerate() {
-                let extra = close_run_cost((y - from.y).abs());
+            for yi in lines_within(&ys, from.y) {
+                let extra = close_run_cost((ys[yi] - from.y).abs());
                 for xi in (first as isize..=last).filter(|_| extra > 0.0) {
                     let index = key(xi as usize, yi);
                     near_horizontal[index] = near_horizontal[index].max(extra);
@@ -434,8 +430,8 @@ fn grid(
             }
         } else if from.x == to.x {
             let (first, last) = steps_covering(&ys, from.y, to.y);
-            for (xi, x) in xs.iter().enumerate() {
-                let extra = close_run_cost((x - from.x).abs());
+            for xi in lines_within(&xs, from.x) {
+                let extra = close_run_cost((xs[xi] - from.x).abs());
                 for yi in (first as isize..=last).filter(|_| extra > 0.0) {
                     let index = key(xi, yi as usize);
                     near_vertical[index] = near_vertical[index].max(extra);
@@ -451,20 +447,25 @@ fn grid(
     // one leaving it does not, so passing straight through counts once.
     let mut crossing_horizontal = vec![false; cells];
     let mut crossing_vertical = vec![false; cells];
+    // Lines strictly inside a span, and the step that reaches a value: the
+    // one from the last line below it.
+    let lines_inside = |lines: &[f64], low: f64, high: f64| {
+        lines.partition_point(|line| *line <= low)..lines.partition_point(|line| *line < high)
+    };
+    let step_reaching = |lines: &[f64], value: f64| {
+        let next = lines.partition_point(|line| *line < value);
+        (next > 0 && next < lines.len()).then(|| next - 1)
+    };
     for (from, to) in &crossed_segments {
         if from.x == to.x {
-            let (low, high) = (from.y.min(to.y), from.y.max(to.y));
-            for (yi, _) in ys.iter().enumerate().filter(|(_, y)| low < **y && **y < high) {
-                for xi in (0..width.saturating_sub(1)).filter(|xi| xs[*xi] < from.x && from.x <= xs[xi + 1]) {
-                    crossing_horizontal[key(xi, yi)] = true;
-                }
+            let Some(xi) = step_reaching(&xs, from.x) else { continue };
+            for yi in lines_inside(&ys, from.y.min(to.y), from.y.max(to.y)) {
+                crossing_horizontal[key(xi, yi)] = true;
             }
         } else if from.y == to.y {
-            let (low, high) = (from.x.min(to.x), from.x.max(to.x));
-            for (xi, _) in xs.iter().enumerate().filter(|(_, x)| low < **x && **x < high) {
-                for yi in (0..ys.len().saturating_sub(1)).filter(|yi| ys[*yi] < from.y && from.y <= ys[yi + 1]) {
-                    crossing_vertical[key(xi, yi)] = true;
-                }
+            let Some(yi) = step_reaching(&ys, from.y) else { continue };
+            for xi in lines_inside(&xs, from.x.min(to.x), from.x.max(to.x)) {
+                crossing_vertical[key(xi, yi)] = true;
             }
         }
     }

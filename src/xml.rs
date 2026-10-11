@@ -1,6 +1,9 @@
 //! A small owned XML tree that parses and serializes the way the original
 //! DOM implementation did, so repaired documents keep their exact text.
-//! Updates are pure: they return a new document.
+//! Updates are pure: they return a new document, sharing every subtree the
+//! update did not touch with the old one.
+
+use std::sync::Arc;
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -21,7 +24,8 @@ pub enum Node {
 pub struct Element {
     pub name: String,
     pub attributes: Vec<(String, String)>,
-    pub children: Vec<Node>,
+    /// Shared between copies of the element until one of them changes.
+    pub children: Arc<Vec<Node>>,
     /// Set on elements created in the SVG namespace where no ancestor
     /// declares it, so serialization adds the declaration.
     pub declares_svg_namespace: bool,
@@ -40,7 +44,7 @@ impl Element {
         Element {
             name: name.to_owned(),
             attributes: Vec::new(),
-            children: Vec::new(),
+            children: Arc::default(),
             declares_svg_namespace: false,
         }
     }
@@ -127,6 +131,22 @@ impl Document {
         out
     }
 
+    /// The elements inside the element at `path`, in document order.
+    pub fn descendants(&self, path: &[usize]) -> Vec<(Path, &Element)> {
+        fn walk<'a>(element: &'a Element, path: &[usize], out: &mut Vec<(Path, &'a Element)>) {
+            for (index, child) in element.children.iter().enumerate() {
+                if let Node::Element(child) = child {
+                    let child_path = [path, &[index]].concat();
+                    out.push((child_path.clone(), child));
+                    walk(child, &child_path, out);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(self.element(path), path, &mut out);
+        out
+    }
+
     pub fn elements_named(&self, name: &str) -> Vec<(Path, &Element)> {
         self.elements()
             .into_iter()
@@ -152,7 +172,7 @@ impl Document {
                     change(element.clone())
                 } else {
                     Element {
-                        children: rebuild(&element.children, rest, change),
+                        children: Arc::new(rebuild(&element.children, rest, change)),
                         ..element.clone()
                     }
                 };
@@ -202,12 +222,12 @@ pub fn parse(source: &str) -> Result<Document, ParseError> {
     let error = |message: String| ParseError(message);
 
     let push = |stack: &mut Vec<Element>, document: &mut Vec<Node>, node: Node| match stack.last_mut() {
-        Some(parent) => parent.children.push(node),
+        Some(parent) => Arc::make_mut(&mut parent.children).push(node),
         None => document.push(node),
     };
     let push_text = |stack: &mut Vec<Element>, document: &mut Vec<Node>, text: String| {
         let siblings = match stack.last_mut() {
-            Some(parent) => &mut parent.children,
+            Some(parent) => Arc::make_mut(&mut parent.children),
             None => document,
         };
         match siblings.last_mut() {
@@ -324,7 +344,7 @@ fn element_of(start: &quick_xml::events::BytesStart) -> Result<Element, ParseErr
     Ok(Element {
         name,
         attributes,
-        children: Vec::new(),
+        children: Arc::default(),
         declares_svg_namespace: false,
     })
 }

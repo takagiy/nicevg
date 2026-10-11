@@ -447,6 +447,8 @@ fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_ro
             .map(|c| (c.id.clone(), c.points.clone()))
             .collect(),
     };
+    // Rewriting one connector leaves where the others are drawn as it was.
+    let all_drawn = drawn_connectors(&draft.document);
     reroutes
         .iter()
         .zip(final_routes)
@@ -454,8 +456,8 @@ fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_ro
             let connector = reroute.connector;
             let routes = with_route(state.routes, &connector.id, route.clone());
             let document = &state.draft.document;
-            let Some(drawn) = drawn_connectors(document)
-                .into_iter()
+            let Some(drawn) = all_drawn
+                .iter()
                 .find(|drawn| drawn.id == connector.id || (drawn.from == connector.from && drawn.to == connector.to))
             else {
                 return Routing { routes, ..state };

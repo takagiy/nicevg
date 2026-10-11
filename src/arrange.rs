@@ -414,7 +414,9 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
                 (ends.join(TOGETHER), Move { dx: 0.0, dy: 0.0 })
             })
     });
+    // Candidates in the order found, each once.
     let mut seen: Vec<(String, Move)> = Vec::new();
+    let mut found: HashSet<(String, i64, i64)> = HashSet::new();
     for (id, step) in reroute
         .chain(together)
         .chain(straighten)
@@ -427,7 +429,9 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
             dy: step.dy.round(),
         };
         let in_place = rounded.dx == 0.0 && rounded.dy == 0.0;
-        if !seen.contains(&(id.clone(), rounded)) && (in_place || context.allows(state, &id, rounded)) {
+        let key = (id.clone(), rounded.dx as i64, rounded.dy as i64);
+        if !found.contains(&key) && (in_place || context.allows(state, &id, rounded)) {
+            found.insert(key);
             seen.push((id, rounded));
         }
     }

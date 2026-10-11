@@ -1,6 +1,7 @@
 //! What a document means as a diagram: nodes, connectors, labels and the
 //! shapes left unsupported, read without changing anything.
 
+use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -9,7 +10,7 @@ use serde::Serialize;
 use crate::arrow::{drawn_connectors, names_an_end};
 use crate::geometry::{Bounds, Point, enclosing, number_list, parse_number, point, points_bounds};
 use crate::pathdata;
-use crate::text::{label_bounds, label_texts, text_bounds};
+use crate::text::{label_bounds, label_text_index, text_bounds};
 use crate::xml::{Document, Element, Path};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -224,11 +225,17 @@ pub fn node_group(document: &Document, id: &str) -> Option<Path> {
         .map(|(path, _)| path)
 }
 
+/// The lines, then the polylines, then the paths of a document, each in
+/// document order, from one walk.
 pub fn connector_elements(document: &Document) -> Vec<(Path, &Element)> {
-    ["line", "polyline", "path"]
-        .iter()
-        .flat_map(|name| document.elements_named(name))
-        .collect()
+    let names = ["line", "polyline", "path"];
+    let mut elements: Vec<(Path, &Element)> = document
+        .elements()
+        .into_iter()
+        .filter(|(_, element)| names.contains(&element.name.as_str()))
+        .collect();
+    elements.sort_by_key(|(_, element)| names.iter().position(|name| *name == element.name));
+    elements
 }
 
 pub(crate) fn non_empty(value: &str) -> Option<&str> {
@@ -265,11 +272,9 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
             }
             let shape_path = if annotated {
                 document
-                    .elements()
+                    .descendants(&path)
                     .into_iter()
-                    .find(|(candidate, element)| {
-                        candidate.len() > path.len() && candidate.starts_with(&path) && is_node_shape(element)
-                    })
+                    .find(|(_, element)| is_node_shape(element))
                     .map(|(candidate, _)| candidate)
             } else {
                 direct_shape
@@ -293,12 +298,13 @@ pub fn read(document: &Document) -> Diagram {
     let recognized = recognize_nodes(document);
     drop(phase);
     let phase = tracing::info_span!("read_nodes").entered();
+    let by_path: HashMap<&[usize], &Recognized> = recognized.iter().map(|node| (node.path.as_slice(), node)).collect();
     let nodes = recognized
         .iter()
         .map(|node| {
             let parent_id = (1..node.path.len())
                 .rev()
-                .find_map(|depth| recognized.iter().find(|other| other.path == node.path[..depth]))
+                .find_map(|depth| by_path.get(&node.path[..depth]))
                 .map(|parent| parent.id.clone());
             DiagramNode {
                 id: node.id.clone(),
@@ -334,6 +340,7 @@ pub fn read(document: &Document) -> Diagram {
             (element.name == "g" || element.name == "text") && !element.attr("data-label").is_empty()
         })
         .collect();
+    let texts = label_text_index(document);
     let labels = labelled
         .iter()
         .filter(|(path, _)| {
@@ -351,7 +358,7 @@ pub fn read(document: &Document) -> Diagram {
                         .or_else(|| non_empty(element.attr("data-label-for")).map(str::to_owned));
                 }
                 None => {
-                    if let Some(bounds) = label_bounds(document, &label_texts(document, id)) {
+                    if let Some(bounds) = label_bounds(document, texts.get(id).map_or(&[][..], Vec::as_slice)) {
                         labels.push(DiagramLabel {
                             id: id.to_owned(),
                             bounds,

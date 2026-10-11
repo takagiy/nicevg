@@ -91,9 +91,9 @@ pub fn names_an_end(element: &Element) -> bool {
 
 fn polygons_within(document: &Document, ancestor: &[usize]) -> Vec<Path> {
     document
-        .elements_named("polygon")
+        .descendants(ancestor)
         .into_iter()
-        .filter(|(path, _)| path.len() > ancestor.len() && path.starts_with(ancestor))
+        .filter(|(_, element)| element.name == "polygon")
         .map(|(path, _)| path)
         .collect()
 }
