@@ -327,14 +327,16 @@ struct Reroute<'a> {
     target: &'a DiagramNode,
 }
 
-/// Reroutes connectors that cross nodes, overlap, end inside nodes, pass too
-/// close to labels or follow moved nodes; then places the labels of rerouted
-/// connectors and of labels that drifted from their connector.
-#[tracing::instrument(skip_all, fields(reroutes = tracing::field::Empty, partners = tracing::field::Empty))]
-fn reroute_connectors(draft: Draft) -> Draft {
-    let report = draft.report();
+/// What fixing reroutes: the ids of the tied labels that drifted from their
+/// connector or cover a node, and the connectors to reroute. Those are the
+/// ones with an issue rerouting fixes, those whose drifted label finds no
+/// slot beside them as they run, and those following a moved node.
+fn pick_reroutes<'a>(
+    report: &'a AnalysisReport,
+    moved_node_ids: &[String],
+    nodes_by_id: &HashMap<&str, &'a DiagramNode>,
+) -> (HashSet<&'a str>, Vec<Reroute<'a>>) {
     let diagram = &report.diagram;
-
     // A tied label that drifted from its connector or covers a node moves
     // beside its connector on its own when there is room there; otherwise
     // the connector is rerouted to give it a slot.
@@ -409,14 +411,13 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 }),
         )
         .collect();
-    let nodes_by_id: HashMap<&str, &DiagramNode> = diagram.nodes.iter().map(|node| (node.id.as_str(), node)).collect();
     let reroutes: Vec<Reroute> = diagram
         .connectors
         .iter()
         .filter(|connector| {
             with_issues.contains(connector.id.as_str())
-                || draft.moved_node_ids.contains(&connector.from)
-                || draft.moved_node_ids.contains(&connector.to)
+                || moved_node_ids.contains(&connector.from)
+                || moved_node_ids.contains(&connector.to)
         })
         .filter_map(|connector| {
             Some(Reroute {
@@ -426,6 +427,85 @@ fn reroute_connectors(draft: Draft) -> Draft {
             })
         })
         .collect();
+    (detached_ids, reroutes)
+}
+
+/// A draft with routes written in, and every connector's route by id.
+struct Routing {
+    draft: Draft,
+    routes: Vec<(String, Vec<Point>)>,
+}
+
+/// Writes each rerouted connector's new route into the document, moving its
+/// arrowheads along, and gives every connector's route afterwards.
+fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_routes: Vec<Vec<Point>>) -> Routing {
+    let initial = Routing {
+        draft: draft.clone(),
+        routes: diagram
+            .connectors
+            .iter()
+            .map(|c| (c.id.clone(), c.points.clone()))
+            .collect(),
+    };
+    reroutes
+        .iter()
+        .zip(final_routes)
+        .fold(initial, |state, (reroute, route)| {
+            let connector = reroute.connector;
+            let routes = with_route(state.routes, &connector.id, route.clone());
+            let document = &state.draft.document;
+            let Some(drawn) = drawn_connectors(document)
+                .into_iter()
+                .find(|drawn| drawn.id == connector.id || (drawn.from == connector.from && drawn.to == connector.to))
+            else {
+                return Routing { routes, ..state };
+            };
+            let shaft = &drawn.shaft;
+            // Routes are in diagram coordinates; the shaft's own are inside its
+            // ancestors' translations.
+            let offset = translation(document, shaft);
+            let local: Vec<Point> = shaft_route(&drawn, &route)
+                .into_iter()
+                .map(|p| Point {
+                    x: p.x - offset.x,
+                    y: p.y - offset.y,
+                })
+                .collect();
+            let replacement = rerouted_element(
+                document.element(shaft),
+                &local,
+                document.needs_svg_namespace(&shaft[..shaft.len() - 1]),
+            );
+            let updated = drawn
+                .heads
+                .iter()
+                .fold(
+                    document.replace(shaft, replacement),
+                    |document, head| match moved_head(&document, head, &route) {
+                        Some(polygon) => document.replace(&head.path, polygon),
+                        None => document,
+                    },
+                );
+            let message = format!("Rerouted connector \"{}\" around diagram obstacles.", connector.id);
+            Routing {
+                draft: state
+                    .draft
+                    .changed(updated, "route-connector", message, &[&connector.id]),
+                routes,
+            }
+        })
+}
+
+/// Reroutes connectors that cross nodes, overlap, end inside nodes, pass too
+/// close to labels or follow moved nodes; then places the labels of rerouted
+/// connectors and of labels that drifted from their connector.
+#[tracing::instrument(skip_all, fields(reroutes = tracing::field::Empty, partners = tracing::field::Empty))]
+fn reroute_connectors(draft: Draft) -> Draft {
+    let report = draft.report();
+    let diagram = &report.diagram;
+
+    let nodes_by_id: HashMap<&str, &DiagramNode> = diagram.nodes.iter().map(|node| (node.id.as_str(), node)).collect();
+    let (detached_ids, reroutes) = pick_reroutes(&report, &draft.moved_node_ids, &nodes_by_id);
     let rerouted_ids: HashSet<&str> = reroutes.iter().map(|reroute| reroute.connector.id.as_str()).collect();
     let settled: Vec<Vec<Point>> = diagram
         .connectors
@@ -681,64 +761,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
         })
         .unzip();
 
-    struct Routing {
-        draft: Draft,
-        routes: Vec<(String, Vec<Point>)>,
-    }
-    let initial = Routing {
-        draft: draft.clone(),
-        routes: diagram
-            .connectors
-            .iter()
-            .map(|c| (c.id.clone(), c.points.clone()))
-            .collect(),
-    };
-    let routed =
-        reroutes
-            .iter()
-            .zip(final_routes)
-            .fold(initial, |state, (reroute, route)| {
-                let connector = reroute.connector;
-                let routes = with_route(state.routes, &connector.id, route.clone());
-                let document = &state.draft.document;
-                let Some(drawn) = drawn_connectors(document).into_iter().find(|drawn| {
-                    drawn.id == connector.id || (drawn.from == connector.from && drawn.to == connector.to)
-                }) else {
-                    return Routing { routes, ..state };
-                };
-                let shaft = &drawn.shaft;
-                // Routes are in diagram coordinates; the shaft's own are inside its
-                // ancestors' translations.
-                let offset = translation(document, shaft);
-                let local: Vec<Point> = shaft_route(&drawn, &route)
-                    .into_iter()
-                    .map(|p| Point {
-                        x: p.x - offset.x,
-                        y: p.y - offset.y,
-                    })
-                    .collect();
-                let replacement = rerouted_element(
-                    document.element(shaft),
-                    &local,
-                    document.needs_svg_namespace(&shaft[..shaft.len() - 1]),
-                );
-                let updated = drawn
-                    .heads
-                    .iter()
-                    .fold(document.replace(shaft, replacement), |document, head| match moved_head(
-                        &document, head, &route,
-                    ) {
-                        Some(polygon) => document.replace(&head.path, polygon),
-                        None => document,
-                    });
-                let message = format!("Rerouted connector \"{}\" around diagram obstacles.", connector.id);
-                Routing {
-                    draft: state
-                        .draft
-                        .changed(updated, "route-connector", message, &[&connector.id]),
-                    routes,
-                }
-            });
+    let routed = write_routes(&draft, diagram, &reroutes, final_routes);
 
     let moving: Vec<_> = diagram
         .labels
@@ -1330,4 +1353,35 @@ fn absolute_length(text: &str) -> Option<(f64, &str)> {
         .ok()
         .filter(|value| value.is_finite() && *value > 0.0)?;
     absolute.contains(&unit).then_some((value, unit))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Given two boxes joined by a straight connector with no issue
+    /// When what to reroute is picked, with no node moved and with one of
+    ///   its ends moved
+    /// Then the connector is left alone until its node moves
+    #[test]
+    fn picks_a_connector_to_reroute_only_once_its_node_moves() {
+        let report = analyze(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100">
+              <g data-node="a"><rect x="0" y="20" width="100" height="60"/><text x="50" y="55">A</text></g>
+              <g data-node="b"><rect x="300" y="20" width="100" height="60"/><text x="350" y="55">B</text></g>
+              <line data-from="a" data-to="b" x1="100" y1="50" x2="300" y2="50"/>
+            </svg>"#,
+        )
+        .unwrap();
+        let nodes_by_id: HashMap<&str, &DiagramNode> = report
+            .diagram
+            .nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        let picked = |moved: &[String]| pick_reroutes(&report, moved, &nodes_by_id).1.len();
+
+        assert_eq!(picked(&[]), 0);
+        assert_eq!(picked(&["a".to_owned()]), 1);
+    }
 }
