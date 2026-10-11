@@ -18,7 +18,9 @@ use crate::fix::{FixChange, FixResult, fix, fix_after_moves};
 use crate::geometry::{
     Bounds, Point, format_number, hypot, intersection, parse_number, point, segment_intersects_interior, segments,
 };
-use crate::route::{Fade, SHORT_END, SHORT_END_FADE, chords_cross, crossings, route_cost, routes_cost, turns};
+use crate::route::{
+    Fade, JOG_LENGTH, SHORT_END, SHORT_END_FADE, chords_cross, crossings, route_cost, routes_cost, turns,
+};
 use crate::xml::{Element, serialize};
 use crate::{AnalysisReport, SvgInputError, parse};
 
@@ -50,12 +52,9 @@ const LOOSE_DENT_COST: f64 = 400.0;
 const OFF_LINE_COST: f64 = 80.0;
 /// A connector with any bend reads as a detour, on top of its bends.
 const BENT_COST: f64 = 120.0;
-/// A step this long or shorter between two runs heading the same way is a
-/// jog: the line staggers aside instead of turning. No move may add one.
-const JOG_LENGTH: f64 = 20.0;
 /// What a step between two runs heading the same way costs: in full when
-/// tiny, half at the jog limit above, so a step just past it still costs
-/// something.
+/// tiny, half at the jog limit, so a step just past it still costs
+/// something. No move may add a jog.
 const JOG: Fade = Fade {
     start: 10.0,
     reach: 30.0,

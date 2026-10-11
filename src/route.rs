@@ -60,6 +60,9 @@ pub const CLEARANCE: f64 = 8.0;
 /// leaves the last bend under it; shorter stubs are the fallbacks when
 /// another node is in the way.
 pub const END_STUBS: [f64; 3] = [24.0, 16.0, CLEARANCE];
+/// A step this long or shorter between two runs heading the same way is a
+/// jog: the line staggers aside instead of turning.
+pub(crate) const JOG_LENGTH: f64 = 20.0;
 /// An end segment shorter than this, or a crossing nearer the node than
 /// this, makes it hard to see the connector arrive.
 pub(crate) const SHORT_END: f64 = 20.0;

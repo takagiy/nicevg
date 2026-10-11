@@ -14,9 +14,9 @@ use crate::diagram::{
 use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
-    LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Side, Sides, choose_sides, connector_ports, crossings,
-    end_on_shapes, is_on_outline, label_landmarks, place_label, place_label_clear, route_connector, runs_across,
-    side_of, spread_ports, turns,
+    JOG_LENGTH, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Side, Sides, choose_sides, connector_ports,
+    crossings, end_on_shapes, is_on_outline, label_landmarks, place_label, place_label_clear, route_connector,
+    runs_across, side_of, spread_ports, turns,
 };
 use crate::text::{label_texts, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
@@ -1069,17 +1069,23 @@ fn improve_ports(
     };
     // Whether an end can take the coordinate `value` along its side: away
     // from the side's corners and a lane from every other port there.
-    let free = |ports: &[Ports], index: usize, end: usize, value: f64| {
+    // The stretch of a side its ports may take: away from the side's corners.
+    let usable = |index: usize, end: usize, side: Side| {
         let node = node_at(index, end);
-        let side = side_of(port_at(&ports[index], end), &node.bounds);
-        let along_y = matches!(side, Side::Left | Side::Right);
-        let (low, length) = if along_y {
+        let (low, length) = if matches!(side, Side::Left | Side::Right) {
             (node.bounds.y, node.bounds.height)
         } else {
             (node.bounds.x, node.bounds.width)
         };
         // A port near a circle's tangent would meet it at a glancing angle.
         let margin = if node.shape.is_some() { length / 4.0 } else { 8.0 };
+        (low + margin, low + length - margin)
+    };
+    let free = |ports: &[Ports], index: usize, end: usize, value: f64| {
+        let node = node_at(index, end);
+        let side = side_of(port_at(&ports[index], end), &node.bounds);
+        let along_y = matches!(side, Side::Left | Side::Right);
+        let (low, high) = usable(index, end, side);
         let mut taken = fixed
             .get(&side_key(&node.bounds, side))
             .into_iter()
@@ -1099,9 +1105,7 @@ fn improve_ports(
                     })
                 })
             }));
-        value >= low + margin
-            && value <= low + length - margin
-            && taken.all(|other| (other - value).abs() >= LANE_SPACING)
+        value >= low && value <= high && taken.all(|other| (other - value).abs() >= LANE_SPACING)
     };
     let moved_to = |port: Point, side: Side, value: f64| {
         if matches!(side, Side::Left | Side::Right) {
@@ -1171,7 +1175,21 @@ fn improve_ports(
         let Some(line) = stepped_end(&route) else {
             return (ports, routes);
         };
-        if !free(&ports, index, end, line) {
+        // Where the line before a jog lies off the side's usable stretch,
+        // the end moves as near it as it may; the route rerouted to there
+        // may then run straight in. A longer step is a detour, not a jog.
+        let (low, high) = usable(index, end, side);
+        let along = if matches!(side, Side::Left | Side::Right) {
+            port.y
+        } else {
+            port.x
+        };
+        let line = if (line - along).abs() <= JOG_LENGTH {
+            line.clamp(low, high)
+        } else {
+            line
+        };
+        if moved_to(port, side, line) == port || !free(&ports, index, end, line) {
             return (ports, routes);
         }
         let changed = [(index, with_port(ports[index], end, moved_to(port, side, line)))];
