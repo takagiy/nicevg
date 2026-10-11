@@ -430,8 +430,7 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
         };
         let in_place = rounded.dx == 0.0 && rounded.dy == 0.0;
         let key = (id.clone(), rounded.dx as i64, rounded.dy as i64);
-        if !found.contains(&key) && (in_place || context.allows(state, &id, rounded)) {
-            found.insert(key);
+        if found.insert(key) && (in_place || context.allows(state, &id, rounded)) {
             seen.push((id, rounded));
         }
     }

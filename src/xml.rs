@@ -115,19 +115,9 @@ impl Document {
 
     /// Every element with its path, in document order.
     pub fn elements(&self) -> Vec<(Path, &Element)> {
-        fn walk<'a>(element: &'a Element, path: Path, out: &mut Vec<(Path, &'a Element)>) {
-            out.push((path.clone(), element));
-            for (index, child) in element.children.iter().enumerate() {
-                if let Node::Element(child) = child {
-                    let mut child_path = path.clone();
-                    child_path.push(index);
-                    walk(child, child_path, out);
-                }
-            }
-        }
-        let mut out = Vec::new();
-        let root = self.root_index();
-        walk(self.root(), vec![root], &mut out);
+        let root = vec![self.root_index()];
+        let mut out = self.descendants(&root);
+        out.insert(0, (root, self.root()));
         out
     }
 

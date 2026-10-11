@@ -2,7 +2,7 @@
 //! cascades them, lines split at positioned `tspan`s, and labels that
 //! gather one or more texts.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -250,40 +250,33 @@ fn label_id(element: &Element) -> Option<&str> {
     non_empty(element.attr("data-label")).or_else(|| non_empty(element.attr("id")))
 }
 
-/// The texts making up a label: those inside a group carrying the id, or
-/// else every text naming it.
-pub fn label_texts(document: &Document, id: &str) -> Vec<Path> {
-    label_text_index(document).remove(id).unwrap_or_default()
-}
-
-/// The texts making up every label, by label id, from one walk of the
-/// document: those inside the first group carrying the id, or else every
-/// text naming it.
+/// The texts making up every label, by label id: those inside the first
+/// group carrying the id, or else every text naming it.
 pub fn label_text_index(document: &Document) -> HashMap<String, Vec<Path>> {
     let elements = document.elements();
-    let mut groups: HashMap<&str, &[usize]> = HashMap::new();
+    let mut texts: HashMap<String, Vec<Path>> = HashMap::new();
+    for (path, element) in elements.iter().filter(|(_, element)| element.name == "text") {
+        if let Some(id) = label_id(element) {
+            texts.entry(id.to_owned()).or_default().push(path.clone());
+        }
+    }
+    let mut grouped: HashSet<&str> = HashSet::new();
     for (path, element) in &elements {
         if element.name == "g"
             && let Some(id) = non_empty(element.attr("data-label"))
+            && grouped.insert(id)
         {
-            groups.entry(id).or_insert(path);
+            let inside = document.descendants(path).into_iter();
+            texts.insert(
+                id.to_owned(),
+                inside
+                    .filter(|(_, text)| text.name == "text")
+                    .map(|(path, _)| path)
+                    .collect(),
+            );
         }
     }
-    let group_ids: HashMap<&[usize], &str> = groups.iter().map(|(id, path)| (*path, *id)).collect();
-    let mut in_groups: HashMap<String, Vec<Path>> = HashMap::new();
-    let mut named: HashMap<String, Vec<Path>> = HashMap::new();
-    for (path, element) in elements.iter().filter(|(_, element)| element.name == "text") {
-        for id in (1..path.len()).filter_map(|depth| group_ids.get(&path[..depth])) {
-            in_groups.entry((*id).to_owned()).or_default().push(path.clone());
-        }
-        if let Some(id) = label_id(element) {
-            named.entry(id.to_owned()).or_default().push(path.clone());
-        }
-    }
-    for id in groups.keys() {
-        named.insert((*id).to_owned(), in_groups.remove(*id).unwrap_or_default());
-    }
-    named
+    texts
 }
 
 /// The box around every line of a label's texts.

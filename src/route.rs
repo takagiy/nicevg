@@ -246,14 +246,18 @@ fn index_of(lines: &[f64], value: f64) -> Option<usize> {
 
 /// Indices of the grid steps (between lines[i] and lines[i + 1]) that share
 /// some length with the span from a to b; lines are sorted ascending.
-fn steps_covering(lines: &[f64], a: f64, b: f64) -> (usize, isize) {
+fn steps_covering(lines: &[f64], a: f64, b: f64) -> std::ops::Range<usize> {
     let (low, high) = (a.min(b), a.max(b));
-    let first = lines.partition_point(|line| *line <= low).saturating_sub(1);
-    let end = lines
-        .partition_point(|line| *line < high)
-        .min(lines.len().saturating_sub(1)) as isize
-        - 1;
-    (first, end)
+    lines.partition_point(|line| *line <= low).saturating_sub(1)
+        ..lines
+            .partition_point(|line| *line < high)
+            .min(lines.len().saturating_sub(1))
+}
+
+/// Indices of the lines strictly between low and high; lines are sorted
+/// ascending.
+fn lines_inside(lines: &[f64], low: f64, high: f64) -> std::ops::Range<usize> {
+    lines.partition_point(|line| *line <= low)..lines.partition_point(|line| *line < high)
 }
 
 /// A queued state: its priority (cost so far plus estimate), the state and
@@ -393,15 +397,13 @@ fn grid(
     for (from, to) in &occupied_segments {
         if from.y == to.y {
             let Some(yi) = index_of(&ys, from.y) else { continue };
-            let (first, last) = steps_covering(&xs, from.x, to.x);
-            for xi in first as isize..=last {
-                blocked_horizontal[key(xi as usize, yi)] = true;
+            for xi in steps_covering(&xs, from.x, to.x) {
+                blocked_horizontal[key(xi, yi)] = true;
             }
         } else if from.x == to.x {
             let Some(xi) = index_of(&xs, from.x) else { continue };
-            let (first, last) = steps_covering(&ys, from.y, to.y);
-            for yi in first as isize..=last {
-                blocked_vertical[key(xi, yi as usize)] = true;
+            for yi in steps_covering(&ys, from.y, to.y) {
+                blocked_vertical[key(xi, yi)] = true;
             }
         }
     }
@@ -414,26 +416,23 @@ fn grid(
     let mut near_horizontal = vec![0.0f64; cells];
     let mut near_vertical = vec![0.0f64; cells];
     // Only lines closer than the reach of running alongside cost anything.
-    let lines_within = |lines: &[f64], at: f64| {
-        lines.partition_point(|line| *line <= at - CLOSE_RUN.reach)
-            ..lines.partition_point(|line| *line < at + CLOSE_RUN.reach)
-    };
+    let reach = CLOSE_RUN.reach;
     for (from, to) in &occupied_segments {
         if from.y == to.y {
-            let (first, last) = steps_covering(&xs, from.x, to.x);
-            for yi in lines_within(&ys, from.y) {
+            let steps = steps_covering(&xs, from.x, to.x);
+            for yi in lines_inside(&ys, from.y - reach, from.y + reach) {
                 let extra = close_run_cost((ys[yi] - from.y).abs());
-                for xi in (first as isize..=last).filter(|_| extra > 0.0) {
-                    let index = key(xi as usize, yi);
+                for xi in steps.clone() {
+                    let index = key(xi, yi);
                     near_horizontal[index] = near_horizontal[index].max(extra);
                 }
             }
         } else if from.x == to.x {
-            let (first, last) = steps_covering(&ys, from.y, to.y);
-            for xi in lines_within(&xs, from.x) {
+            let steps = steps_covering(&ys, from.y, to.y);
+            for xi in lines_inside(&xs, from.x - reach, from.x + reach) {
                 let extra = close_run_cost((xs[xi] - from.x).abs());
-                for yi in (first as isize..=last).filter(|_| extra > 0.0) {
-                    let index = key(xi, yi as usize);
+                for yi in steps.clone() {
+                    let index = key(xi, yi);
                     near_vertical[index] = near_vertical[index].max(extra);
                 }
             }
@@ -447,11 +446,7 @@ fn grid(
     // one leaving it does not, so passing straight through counts once.
     let mut crossing_horizontal = vec![false; cells];
     let mut crossing_vertical = vec![false; cells];
-    // Lines strictly inside a span, and the step that reaches a value: the
-    // one from the last line below it.
-    let lines_inside = |lines: &[f64], low: f64, high: f64| {
-        lines.partition_point(|line| *line <= low)..lines.partition_point(|line| *line < high)
-    };
+    // The step that reaches a value: the one from the last line below it.
     let step_reaching = |lines: &[f64], value: f64| {
         let next = lines.partition_point(|line| *line < value);
         (next > 0 && next < lines.len()).then(|| next - 1)

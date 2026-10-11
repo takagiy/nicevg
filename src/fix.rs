@@ -18,7 +18,7 @@ use crate::route::{
     connector_ports, crossings, end_on_shapes, is_on_outline, label_landmarks, overlap, place_label, place_label_clear,
     route_connector, route_cost, routes_cost, runs_across, side_of, spread_ports, turns,
 };
-use crate::text::{label_texts, move_label, text_bounds};
+use crate::text::{label_text_index, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
 use crate::{AnalysisReport, SvgInputError, analyze, parse, report_of};
 
@@ -466,7 +466,7 @@ fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_ro
             // Routes are in diagram coordinates; the shaft's own are inside its
             // ancestors' translations.
             let offset = translation(document, shaft);
-            let local: Vec<Point> = shaft_route(&drawn, &route)
+            let local: Vec<Point> = shaft_route(drawn, &route)
                 .into_iter()
                 .map(|p| Point {
                     x: p.x - offset.x,
@@ -783,6 +783,8 @@ fn reroute_connectors(draft: Draft) -> Draft {
         .map(|(_, label)| label.bounds)
         .collect();
     let all_final: Vec<Vec<Point>> = routed.routes.iter().map(|(_, route)| route.clone()).collect();
+    // Moving a label rewrites positions only, so every text keeps its path.
+    let label_texts = label_text_index(&routed.draft.document);
     let (placed, _) = moving
         .iter()
         .fold((routed.draft, still), |(draft, obstacles), (_, label)| {
@@ -792,7 +794,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 .iter()
                 .find(|(id, _)| *id == connector_id)
                 .map(|(_, route)| route);
-            let texts = label_texts(&draft.document, &label.id);
+            let texts = label_texts.get(&label.id).map_or(&[][..], Vec::as_slice);
             let (Some(route), false) = (route, texts.is_empty()) else {
                 return (draft, obstacles);
             };
@@ -809,7 +811,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
             };
             let updated = move_label(
                 draft.document.clone(),
-                &texts,
+                texts,
                 label.bounds,
                 placement.bounds,
                 placement.anchor,
@@ -1059,10 +1061,12 @@ fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
         })
         .collect();
     let others: Vec<Bounds> = diagram.labels.iter().map(|label| label.bounds).collect();
+    // Moving a label rewrites positions only, so every text keeps its path.
+    let label_texts = label_text_index(&draft.document);
     let (settled, _) = unsettled
         .into_iter()
         .fold((draft, others), |(draft, obstacles), (label, connector, stale)| {
-            let texts = label_texts(&draft.document, &label.id);
+            let texts = label_texts.get(&label.id).map_or(&[][..], Vec::as_slice);
             if texts.is_empty() {
                 return (draft, obstacles);
             }
@@ -1086,7 +1090,7 @@ fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
             };
             let updated = move_label(
                 draft.document.clone(),
-                &texts,
+                texts,
                 label.bounds,
                 placement.bounds,
                 placement.anchor,
