@@ -284,22 +284,48 @@ impl PartialOrd for Entry {
     }
 }
 
-/// A* over a sparse orthogonal grid built from obstacle edges, the channels
-/// between them, lanes beside drawn connectors and the terminals. Starts
-/// from whichever start terminal and stops at whichever end terminal is
-/// cheapest overall.
-/// `rails` are lines a route may cross but should not run along, such as
-/// the borders of containers around its ends: running on one is ruled
-/// out and running close beside one costs like running beside a connector.
-#[tracing::instrument(skip_all, fields(columns = tracing::field::Empty, rows = tracing::field::Empty, occupied = occupied.len(), obstacles = obstacles.len()))]
-pub fn search(
+/// The grid a route is searched on and what each of its points and steps
+/// costs. A point (xi, yi) is at `yi * xs.len() + xi`, and a step at the
+/// index of its left or upper point.
+struct Grid {
+    xs: Vec<f64>,
+    ys: Vec<f64>,
+    /// Points inside an obstacle.
+    blocked_cell: Vec<bool>,
+    /// Steps entering an obstacle or running on another connector.
+    blocked_horizontal: Vec<bool>,
+    blocked_vertical: Vec<bool>,
+    /// Steps on an obstacle's clearance outline.
+    outline_horizontal: Vec<bool>,
+    outline_vertical: Vec<bool>,
+    /// What running alongside another connector costs on each step.
+    near_horizontal: Vec<f64>,
+    near_vertical: Vec<f64>,
+    /// Steps crossing another connector.
+    crossing_horizontal: Vec<bool>,
+    crossing_vertical: Vec<bool>,
+    /// Points within the near-miss distance of another connector.
+    turn_beside: Vec<bool>,
+    /// Steps passing within the near-miss distance of another's turn.
+    past_turn_horizontal: Vec<bool>,
+    past_turn_vertical: Vec<bool>,
+    /// Running counts of blocked and crossing steps along each row and
+    /// each column.
+    row_blocked: Vec<u32>,
+    row_crossing: Vec<u32>,
+    column_blocked: Vec<u32>,
+    column_crossing: Vec<u32>,
+}
+
+/// Builds the grid for a search from the obstacles, the connectors already
+/// drawn, the rails and the terminals.
+fn grid(
     starts: &[Terminal],
     ends: &[Terminal],
     obstacles: &[Bounds],
     occupied: &[Vec<Point>],
     rails: &[(Point, Point)],
-    bend_penalty: f64,
-) -> Option<Found> {
+) -> Grid {
     let phase = tracing::info_span!("search_grid_lines").entered();
     let crossed_segments: Vec<(Point, Point)> = occupied.iter().flat_map(|route| segments(route)).collect();
     let occupied_segments: Vec<(Point, Point)> = crossed_segments.iter().chain(rails).copied().collect();
@@ -332,9 +358,6 @@ pub fn search(
         })
         .collect();
     drop(phase);
-    tracing::Span::current()
-        .record("columns", xs.len())
-        .record("rows", ys.len());
     let width = xs.len();
     let cells = width * ys.len();
     let key = |xi: usize, yi: usize| yi * width + xi;
@@ -507,6 +530,72 @@ pub fn search(
     let row_crossing = running(&crossing_horizontal, true);
     let column_blocked = running(&blocked_vertical, false);
     let column_crossing = running(&crossing_vertical, false);
+    drop(phase);
+    Grid {
+        xs,
+        ys,
+        blocked_cell,
+        blocked_horizontal,
+        blocked_vertical,
+        outline_horizontal,
+        outline_vertical,
+        near_horizontal,
+        near_vertical,
+        crossing_horizontal,
+        crossing_vertical,
+        turn_beside,
+        past_turn_horizontal,
+        past_turn_vertical,
+        row_blocked,
+        row_crossing,
+        column_blocked,
+        column_crossing,
+    }
+}
+
+/// A* over a sparse orthogonal grid built from obstacle edges, the channels
+/// between them, lanes beside drawn connectors and the terminals. Starts
+/// from whichever start terminal and stops at whichever end terminal is
+/// cheapest overall.
+/// `rails` are lines a route may cross but should not run along, such as
+/// the borders of containers around its ends: running on one is ruled
+/// out and running close beside one costs like running beside a connector.
+#[tracing::instrument(skip_all, fields(columns = tracing::field::Empty, rows = tracing::field::Empty, occupied = occupied.len(), obstacles = obstacles.len()))]
+pub fn search(
+    starts: &[Terminal],
+    ends: &[Terminal],
+    obstacles: &[Bounds],
+    occupied: &[Vec<Point>],
+    rails: &[(Point, Point)],
+    bend_penalty: f64,
+) -> Option<Found> {
+    let Grid {
+        xs,
+        ys,
+        blocked_cell,
+        blocked_horizontal,
+        blocked_vertical,
+        outline_horizontal,
+        outline_vertical,
+        near_horizontal,
+        near_vertical,
+        crossing_horizontal,
+        crossing_vertical,
+        turn_beside,
+        past_turn_horizontal,
+        past_turn_vertical,
+        row_blocked,
+        row_crossing,
+        column_blocked,
+        column_crossing,
+    } = grid(starts, ends, obstacles, occupied, rails);
+    tracing::Span::current()
+        .record("columns", xs.len())
+        .record("rows", ys.len());
+    let (width, rows) = (xs.len(), ys.len());
+    let cells = width * rows;
+    let key = |xi: usize, yi: usize| yi * width + xi;
+    let phase = tracing::info_span!("search_heuristic").entered();
     // Edges taken and crossings on the straight run between two grid points
     // on one row or one column.
     let run_counts = |from: (usize, usize), to: (usize, usize)| -> (u32, u32) {
@@ -1889,6 +1978,31 @@ mod tests {
         assert!(routes_cost(&along, &turning) >= NEAR_MISS_PENALTY);
         assert_eq!(routes_cost(&along, &far), 0.0);
         assert_eq!(routes_cost(&across, &along), routes_cost(&along, &across));
+    }
+
+    /// Given a connector drawn along y = 0 and terminals on y = 6
+    /// When the grid for a search is built
+    /// Then the steps on y = 6 beside the connector cost running alongside
+    ///   it in full, and those on the lane at y = 20 cost nothing
+    #[test]
+    fn marks_the_steps_running_alongside_a_drawn_connector() {
+        let terminal = |x: f64| Terminal {
+            point: point(x, 6.0),
+            axis: 0,
+            port: point(x - 24.0, 6.0),
+            cost: 0.0,
+        };
+        let built = grid(
+            &[terminal(-50.0)],
+            &[terminal(200.0)],
+            &[],
+            &[vec![point(0.0, 0.0), point(100.0, 0.0)]],
+            &[],
+        );
+        let step = |y: f64| built.near_horizontal[index_of(&built.ys, y).unwrap() * built.xs.len()];
+
+        assert_eq!(step(6.0), CLOSE_RUN.full);
+        assert_eq!(step(20.0), 0.0);
     }
 
     /// Given a connector drawn along y = 0 and a route to find straight
