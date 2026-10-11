@@ -447,17 +447,22 @@ fn connector_overlaps(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
 /// line turning.
 pub const NEAR_MISS_DISTANCE: f64 = 5.0;
 
+/// How many turns of `route` lie within the near-miss distance of the
+/// segments of another route.
+pub(crate) fn turns_beside(route: &[Point], other: &[(Point, Point)]) -> usize {
+    route
+        .get(1..route.len().saturating_sub(1))
+        .unwrap_or_default()
+        .iter()
+        .filter(|corner| {
+            other
+                .iter()
+                .any(|(a, b)| distance_to_segment(**corner, *a, *b) < NEAR_MISS_DISTANCE)
+        })
+        .count()
+}
+
 fn connector_near_misses(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
-    // Whether a turn of `route` lies within the near-miss distance of `other`.
-    let turns_beside = |route: &[Point], other: &[Point]| {
-        let segments = segments(other);
-        route.len() > 2
-            && route[1..route.len() - 1].iter().any(|corner| {
-                segments
-                    .iter()
-                    .any(|(a, b)| distance_to_segment(*corner, *a, *b) < NEAR_MISS_DISTANCE)
-            })
-    };
     connectors
         .iter()
         .enumerate()
@@ -465,7 +470,9 @@ fn connector_near_misses(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
             connectors[index + 1..]
                 .iter()
                 .filter(move |second| {
-                    turns_beside(&first.points, &second.points) || turns_beside(&second.points, &first.points)
+                    turns_beside(&first.points, &segments(&second.points))
+                        + turns_beside(&second.points, &segments(&first.points))
+                        > 0
                 })
                 .map(move |second| {
                     issue(

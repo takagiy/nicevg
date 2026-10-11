@@ -933,13 +933,14 @@ fn close_run_cost(distance: f64) -> f64 {
 /// What a drawn route costs on its own, priced as the search prices it:
 /// its length and its bends.
 pub(crate) fn route_cost(route: &[Point]) -> f64 {
-    let route = without_redundant_points(route);
-    let length: f64 = segments(&route)
+    let length: f64 = segments(route)
         .iter()
         .map(|(a, b)| (a.x - b.x).abs() + (a.y - b.y).abs())
         .sum();
-    let bends = route.len().saturating_sub(2);
-    length + (0..bends).map(|turned| turn_cost(turned, BEND_PENALTY)).sum::<f64>()
+    length
+        + (0..turns(route))
+            .map(|turned| turn_cost(turned, BEND_PENALTY))
+            .sum::<f64>()
 }
 
 /// What two drawn routes cost each other, priced as the search prices a
@@ -974,21 +975,9 @@ pub(crate) fn routes_cost(first: &[Point], second: &[Point]) -> f64 {
             }
         }
     }
-    let turns_beside = |route: &[Point], others: &[(Point, Point)]| {
-        route[1..route.len().saturating_sub(1).max(1)]
-            .iter()
-            .filter(|corner| {
-                others
-                    .iter()
-                    .any(|(a, b)| distance_to_segment(**corner, *a, *b) < crate::inspect::NEAR_MISS_DISTANCE)
-            })
-            .count()
-    };
-    if first.len() >= 2 && second.len() >= 2 {
-        cost +=
-            (turns_beside(first, &second_segments) + turns_beside(second, &first_segments)) as f64 * NEAR_MISS_PENALTY;
-    }
-    cost
+    cost + (crate::inspect::turns_beside(first, &second_segments)
+        + crate::inspect::turns_beside(second, &first_segments)) as f64
+        * NEAR_MISS_PENALTY
 }
 
 /// The cost of a route's next turn after it has turned `turned` times.
@@ -1025,7 +1014,7 @@ pub fn route_connector(
         && route_is_clear(&direct, &obstacles)
         && occupied
             .iter()
-            .all(|other| !routes_overlap(&direct, other) && !routes_cross(&direct, other))
+            .all(|other| !routes_overlap(&direct, other) && crossings(&direct, other) == 0)
     {
         return direct;
     }
@@ -1228,12 +1217,24 @@ fn would_cross(sides: Sides, (a, b): (Point, Point), (c, d): (Point, Point)) -> 
         || (other_low < low && low < other_high && other_high < high)
 }
 
-/// Whether any segments of two routes pass through each other.
-fn routes_cross(first: &[Point], second: &[Point]) -> bool {
+/// How many times two routes pass through each other.
+pub(crate) fn crossings(first: &[Point], second: &[Point]) -> usize {
     let others = segments(second);
     segments(first)
         .iter()
-        .any(|(a, b)| others.iter().any(|(c, d)| chords_cross(*a, *b, *c, *d)))
+        .map(|(a, b)| others.iter().filter(|(c, d)| chords_cross(*a, *b, *c, *d)).count())
+        .sum()
+}
+
+/// How many times a route changes direction.
+pub(crate) fn turns(route: &[Point]) -> usize {
+    route
+        .windows(3)
+        .filter(|w| {
+            let (a, b, c) = (w[0], w[1], w[2]);
+            (b.x - a.x) * (c.y - b.y) != (b.y - a.y) * (c.x - b.x)
+        })
+        .count()
 }
 
 /// Whether two straight segments pass through each other.
@@ -1828,10 +1829,12 @@ mod tests {
         );
     }
 
-    /// Given routes with no bend up to four bends, all 300px long
+    /// Given routes with no bend up to four bends, all 300px long, and a
+    ///   straight one with a point in the middle of its line
     /// When each is costed on its own
     /// Then it costs its length plus its bends, each from the third on
-    ///   costing more than the first two, as the search prices them
+    ///   costing more than the first two, as the search prices them, and
+    ///   the point in the middle of a line is no bend
     #[test]
     fn costs_a_drawn_route_by_its_length_and_bends() {
         let straight = [point(0.0, 0.0), point(300.0, 0.0)];
@@ -1846,6 +1849,10 @@ mod tests {
         ];
 
         assert_eq!(route_cost(&straight), 300.0);
+        assert_eq!(
+            route_cost(&[point(0.0, 0.0), point(150.0, 0.0), point(300.0, 0.0)]),
+            300.0
+        );
         assert_eq!(route_cost(&one_bend), 300.0 + BEND_PENALTY);
         assert_eq!(
             route_cost(&stairs),

@@ -14,9 +14,9 @@ use crate::diagram::{
 use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
-    LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Side, Sides, choose_sides, chords_cross, connector_ports,
+    LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Side, Sides, choose_sides, connector_ports, crossings,
     end_on_shapes, is_on_outline, label_landmarks, place_label, place_label_clear, route_connector, runs_across,
-    side_of, spread_ports,
+    side_of, spread_ports, turns,
 };
 use crate::text::{label_texts, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
@@ -628,7 +628,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
             all_ends.iter().any(|(other, ports, route)| {
                 other.connector.id != partner.connector.id
                     && meets(other, ports).iter().any(|end| own.contains(end))
-                    && route_crossings(route, std::slice::from_ref(&partner.connector.points)) > 0
+                    && crossings(route, &partner.connector.points) > 0
             })
         })
         .map(|(partner, _)| partner.connector.id.as_str())
@@ -976,7 +976,13 @@ fn improve_ports(
             let crossed: usize = set
                 .iter()
                 .enumerate()
-                .map(|(index, route)| route_crossings(route, &others) + route_crossings(route, &set[index + 1..]))
+                .map(|(index, route)| {
+                    others
+                        .iter()
+                        .chain(&set[index + 1..])
+                        .map(|other| crossings(route, other))
+                        .sum::<usize>()
+                })
                 .sum();
             (crossed, set.iter().map(|route| turns(route)).sum::<usize>())
         };
@@ -1121,7 +1127,7 @@ fn improve_ports(
             let (one, other) = (node_at(first, a), node_at(second, b));
             let (p, q) = (port_at(&ports[first], a), port_at(&ports[second], b));
             let shared = one.id == other.id && side_of(p, &one.bounds) == side_of(q, &other.bounds);
-            if !shared || route_crossings(&routes[first], std::slice::from_ref(&routes[second])) == 0 {
+            if !shared || crossings(&routes[first], &routes[second]) == 0 {
                 return (ports, routes);
             }
             let changed = [
@@ -1172,27 +1178,6 @@ fn stepped_end(route: &[Point]) -> Option<f64> {
     } else {
         None
     }
-}
-
-/// How many times a route crosses the others.
-fn route_crossings(route: &[Point], others: &[Vec<Point>]) -> usize {
-    let own = segments(route);
-    others
-        .iter()
-        .flat_map(|other| segments(other))
-        .map(|(c, d)| own.iter().filter(|(a, b)| chords_cross(*a, *b, c, d)).count())
-        .sum()
-}
-
-/// How many times a route changes direction.
-fn turns(route: &[Point]) -> usize {
-    route
-        .windows(3)
-        .filter(|w| {
-            let (a, b, c) = (w[0], w[1], w[2]);
-            (b.x - a.x) * (c.y - b.y) != (b.y - a.y) * (c.x - b.x)
-        })
-        .count()
 }
 
 fn with_route(routes: Vec<(String, Vec<Point>)>, id: &str, route: Vec<Point>) -> Vec<(String, Vec<Point>)> {

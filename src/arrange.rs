@@ -18,7 +18,7 @@ use crate::fix::{FixChange, FixResult, fix, fix_after_moves};
 use crate::geometry::{
     Bounds, Point, format_number, hypot, intersection, parse_number, point, segment_intersects_interior, segments,
 };
-use crate::route::{Fade, SHORT_END, SHORT_END_FADE, chords_cross, route_cost, routes_cost};
+use crate::route::{Fade, SHORT_END, SHORT_END_FADE, chords_cross, crossings, route_cost, routes_cost, turns};
 use crate::xml::{Element, serialize};
 use crate::{AnalysisReport, SvgInputError, parse};
 
@@ -268,7 +268,7 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
     let straighten = diagram
         .connectors
         .iter()
-        .filter(|c| c.points.len() > 2)
+        .filter(|c| turns(&c.points) > 0)
         .flat_map(|connector| {
             let (first, last) = (connector.points[0], connector.points[connector.points.len() - 1]);
             [
@@ -304,7 +304,7 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
     let unblock = diagram
         .connectors
         .iter()
-        .filter(|c| c.points.len() > 2)
+        .filter(|c| turns(&c.points) > 0)
         .flat_map(|connector| {
             let (first, last) = (connector.points[0], connector.points[connector.points.len() - 1]);
             let reach = CLEARANCE + 1.0;
@@ -368,7 +368,7 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
     let reroute = diagram
         .connectors
         .iter()
-        .filter(|c| c.points.len() > 2)
+        .filter(|c| turns(&c.points) > 0)
         .flat_map(|c| [c.from.clone(), c.to.clone()])
         .map(|id| (id, Move { dx: 0.0, dy: 0.0 }));
     // Connectors that cross or touch may each be stuck where the other
@@ -570,7 +570,7 @@ impl Context {
             + pairs
                 .map(|(first, second)| routes_cost(&first.points, &second.points))
                 .sum::<f64>();
-        let bent = connectors.iter().filter(|c| c.points.len() > 2).count();
+        let bent = connectors.iter().filter(|c| turns(&c.points) > 0).count();
         let movement: f64 = offsets.values().map(|offset| offset.x.abs() + offset.y.abs()).sum();
         report.issues.len() as f64 * ISSUE_COST
             + routes
@@ -853,14 +853,6 @@ fn jogs(points: &[Point]) -> usize {
         .windows(4)
         .filter(|run| heads_on(run) && (run[1].x - run[2].x).abs() + (run[1].y - run[2].y).abs() <= JOG_LENGTH)
         .count()
-}
-
-fn crossings(first: &[Point], second: &[Point]) -> usize {
-    let others = segments(second);
-    segments(first)
-        .iter()
-        .map(|(a, b)| others.iter().filter(|(c, d)| chords_cross(*a, *b, *c, *d)).count())
-        .sum()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

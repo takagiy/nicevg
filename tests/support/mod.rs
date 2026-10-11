@@ -149,7 +149,10 @@ pub fn is_orthogonal(points: &[Point]) -> bool {
 }
 
 pub fn bend_count(points: &[Point]) -> usize {
-    points.len().saturating_sub(2)
+    points
+        .windows(3)
+        .filter(|w| (w[1].x - w[0].x) * (w[2].y - w[1].y) != (w[1].y - w[0].y) * (w[2].x - w[1].x))
+        .count()
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
