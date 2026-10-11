@@ -778,9 +778,9 @@ fn unclear_ends(connectors: &[DiagramConnector]) -> f64 {
                 .into_iter()
                 .map(|(_, end, inner)| {
                     let length = (end.x - inner.x).abs() + (end.y - inner.y).abs();
-                    SHORT_END_FADE.tuned("END").cost(length)
+                    SHORT_END_FADE.cost(length)
                         + crossed_near(connectors, &connector.id, end, inner, CROSSING_AT_END.reach)
-                            .map_or(0.0, |distance| CROSSING_AT_END.tuned("CROSS").cost(distance))
+                            .map_or(0.0, |distance| CROSSING_AT_END.cost(distance))
                 })
                 .collect::<Vec<_>>()
         })

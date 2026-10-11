@@ -313,19 +313,7 @@ fn arranges_the_storefront_architecture_without_denting_a_row() {
             .diagram
             .connectors
             .iter()
-            .map(|connector| {
-                // A short step between two runs heading the same way.
-                connector
-                    .points
-                    .windows(4)
-                    .filter(|run| {
-                        let same_way = (run[1].x - run[0].x) * (run[3].x - run[2].x)
-                            + (run[1].y - run[0].y) * (run[3].y - run[2].y)
-                            > 0.0;
-                        same_way && (run[1].x - run[2].x).abs() + (run[1].y - run[2].y).abs() <= 20.0
-                    })
-                    .count()
-            })
+            .map(|connector| jog_steps(&connector.points))
             .sum()
     };
 
@@ -555,20 +543,25 @@ fn arranges_a_tall_loan_dfd_without_steps_at_the_ends() {
     assert_fix_snapshots!(result);
 }
 
-/// Connectors whose route steps aside anywhere: a step of 20px or less
-///   between two runs heading the same way.
+/// Steps of 20px or less between two runs of a route heading the same way.
+fn jog_steps(points: &[Point]) -> usize {
+    points
+        .windows(4)
+        .filter(|run| {
+            let same_way =
+                (run[1].x - run[0].x) * (run[3].x - run[2].x) + (run[1].y - run[0].y) * (run[3].y - run[2].y) > 0.0;
+            same_way && (run[1].x - run[2].x).abs() + (run[1].y - run[2].y).abs() <= 20.0
+        })
+        .count()
+}
+
+/// Connectors whose route steps aside anywhere.
 fn jogged(report: &AnalysisReport) -> Vec<String> {
     report
         .diagram
         .connectors
         .iter()
-        .filter(|connector| {
-            connector.points.windows(4).any(|run| {
-                let same_way =
-                    (run[1].x - run[0].x) * (run[3].x - run[2].x) + (run[1].y - run[0].y) * (run[3].y - run[2].y) > 0.0;
-                same_way && (run[1].x - run[2].x).abs() + (run[1].y - run[2].y).abs() <= 20.0
-            })
-        })
+        .filter(|connector| jog_steps(&connector.points) > 0)
         .map(|connector| connector.id.clone())
         .collect()
 }

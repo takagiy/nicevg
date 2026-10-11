@@ -41,9 +41,13 @@ const CLOSE_RUN: Fade = Fade {
     reach: 16.0,
     full: 120.0,
 };
-/// Two segments overlapping less than this side by side only brush past
-/// each other, and cost that much less.
-const CLOSE_RUN_OVERLAP: f64 = 20.0;
+/// How much of running alongside two segments pay by how far they overlap:
+/// overlapping less than 20px they only brush past each other.
+const BRUSHING: Fade = Fade {
+    start: 0.0,
+    reach: 20.0,
+    full: 1.0,
+};
 /// Crossing another connector costs as much as a detour of 300px: a route
 /// goes the long way round rather than cross when it can.
 const CROSSING_PENALTY: f64 = 300.0;
@@ -209,7 +213,7 @@ fn end_terminals(port: Point, target: &Bounds, obstacles: &[Bounds]) -> Vec<Term
             **length == CLEARANCE || route_is_clear(&[port, outward(port, side_of(port, target), **length)], obstacles)
         })
         .map(|length| {
-            let short = SHORT_END_FADE.tuned("END").cost(*length);
+            let short = SHORT_END_FADE.cost(*length);
             stub_terminal(port, target, *length, END_STUBS[0] - length + short)
         })
         .collect()
@@ -914,19 +918,6 @@ pub(crate) struct Fade {
 }
 
 impl Fade {
-    pub(crate) fn tuned(self, name: &str) -> Fade {
-        let get = |key: &str, default: f64| {
-            std::env::var(format!("{name}_{key}"))
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(default)
-        };
-        Fade {
-            start: get("START", self.start),
-            reach: get("REACH", self.reach),
-            full: get("FULL", self.full),
-        }
-    }
     pub(crate) fn cost(self, length: f64) -> f64 {
         let t = ((length - self.start) / (self.reach - self.start)).clamp(0.0, 1.0);
         self.full * (1.0 - t * t * t * (t * (6.0 * t - 15.0) + 10.0))
@@ -979,12 +970,7 @@ pub(crate) fn routes_cost(first: &[Point], second: &[Point]) -> f64 {
             };
             let overlap = high.min(other_high) - low.max(other_low);
             if overlap > 0.0 {
-                let brushing = Fade {
-                    start: 0.0,
-                    reach: CLOSE_RUN_OVERLAP,
-                    full: 1.0,
-                };
-                cost += close_run_cost(distance) * (1.0 - brushing.cost(overlap));
+                cost += close_run_cost(distance) * (1.0 - BRUSHING.cost(overlap));
             }
         }
     }
@@ -1896,6 +1882,44 @@ mod tests {
         assert!(routes_cost(&along, &turning) >= NEAR_MISS_PENALTY);
         assert_eq!(routes_cost(&along, &far), 0.0);
         assert_eq!(routes_cost(&across, &along), routes_cost(&along, &across));
+    }
+
+    /// Given a connector drawn along y = 0 and a route to find straight
+    ///   along y = 6, with a row of far-off boxes splitting that line into
+    ///   many grid steps
+    /// When the route is searched
+    /// Then it runs straight alongside the connector, paying for running
+    ///   alongside once rather than on every step, which would make
+    ///   stepping away and back with four bends cheaper
+    #[test]
+    fn pays_once_for_running_alongside_a_connector_however_many_steps() {
+        let terminal = |x: f64, port: f64| Terminal {
+            point: point(x, 6.0),
+            axis: 0,
+            port: point(port, 6.0),
+            cost: 0.0,
+        };
+        let boxes: Vec<Bounds> = (0..8)
+            .map(|index| Bounds {
+                x: 20.0 + 50.0 * f64::from(index),
+                y: -400.0,
+                width: 20.0,
+                height: 20.0,
+            })
+            .collect();
+        let drawn = vec![vec![point(0.0, 0.0), point(400.0, 0.0)]];
+
+        let found = search(
+            &[terminal(-20.0, -44.0)],
+            &[terminal(420.0, 444.0)],
+            &boxes,
+            &drawn,
+            &[],
+            BEND_PENALTY,
+        )
+        .unwrap();
+
+        assert_eq!(found.path, vec![point(-20.0, 6.0), point(420.0, 6.0)]);
     }
 
     #[test]
