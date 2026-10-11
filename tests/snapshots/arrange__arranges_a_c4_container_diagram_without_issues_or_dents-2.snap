@@ -115,11 +115,11 @@ expression: result.svg.as_str()
     <rect x="1560" y="600" width="210" height="92" rx="6"/>
     <text x="1665" y="626" text-anchor="middle"><tspan x="1665" dy="0" class="name" font-size="14">Payment provider</tspan><tspan x="1665" dy="18" class="tag" font-size="11">[Software System]</tspan><tspan x="1665" dy="16" class="description" font-size="11">Cards and wallets</tspan></text>
   </g>
-  <g data-node="maps" class="external" transform="translate(-60 0)">
+  <g data-node="maps" class="external">
     <rect x="1560" y="280" width="210" height="92" rx="6"/>
     <text x="1665" y="306" text-anchor="middle"><tspan x="1665" dy="0" class="name" font-size="14">Maps API</tspan><tspan x="1665" dy="18" class="tag" font-size="11">[Software System]</tspan><tspan x="1665" dy="16" class="description" font-size="11">Routing and ETAs</tspan></text>
   </g>
-  <g data-node="messaging" class="external">
+  <g data-node="messaging" class="external" transform="translate(40 0)">
     <rect x="1560" y="960" width="210" height="92" rx="6"/>
     <text x="1665" y="986" text-anchor="middle"><tspan x="1665" dy="0" class="name" font-size="14">Messaging provider</tspan><tspan x="1665" dy="18" class="tag" font-size="11">[Software System]</tspan><tspan x="1665" dy="16" class="description" font-size="11">Push and SMS</tspan></text>
   </g>
@@ -135,23 +135,23 @@ expression: result.svg.as_str()
   <path id="r6" class="rel" data-from="portal" data-to="gateway" fill="none" d="M 615 372 L 615 420"/>
   <path id="r7" class="rel" data-from="courier_app" data-to="gateway" fill="none" d="M 850 326 L 760 326 L 760 420"/>
   <path id="r8" class="rel" data-from="console" data-to="gateway" fill="none" d="M 1335 372 L 1335 443 L 860 443"/>
-  <path id="r9" class="rel" data-from="courier_app" data-to="maps" fill="none" d="M 955 372 L 955 396 L 1570 396 L 1570 372"/>
+  <path id="r9" class="rel" data-from="courier_app" data-to="maps" fill="none" d="M 955 372 L 955 396 L 1630 396 L 1630 372"/>
   <path id="r10" class="rel" data-from="gateway" data-to="identity" fill="none" d="M 560 466 L 195 466 L 195 600"/>
   <path id="r11" class="rel" data-from="gateway" data-to="orders" fill="none" d="M 560 489 L 485 489 L 485 600"/>
   <path id="r12" class="rel" data-from="gateway" data-to="menu" fill="none" d="M 710 512 L 710 600"/>
-  <path id="r13" class="rel" data-from="gateway" data-to="dispatch" fill="none" d="M 860 489 L 903 489 L 903 646 L 960 646"/>
-  <path id="r14" class="rel" data-from="gateway" data-to="payments" fill="none" d="M 860 466 L 1189 466 L 1189 646 L 1230 646"/>
+  <path id="r13" class="rel" data-from="gateway" data-to="dispatch" fill="none" d="M 860 489 L 912 489 L 912 646 L 960 646"/>
+  <path id="r14" class="rel" data-from="gateway" data-to="payments" fill="none" d="M 860 466 L 1192 466 L 1192 646 L 1230 646"/>
   <path id="r15" class="rel" data-from="identity" data-to="identity_db" fill="none" d="M 195 692 L 195 800"/>
-  <path id="r16" class="rel" data-from="orders" data-to="order_db" fill="none" d="M 380 646 L 356 646 L 356 846 L 380 846"/>
-  <path id="r17" class="rel" data-from="orders" data-to="payments" fill="none" d="M 520 692 L 520 716 L 1335 716 L 1335 692"/>
-  <path id="r18" class="rel" data-from="orders" data-to="events" fill="none" d="M 450 692 L 450 738 L 896 738 L 896 846 L 960 846"/>
+  <path id="r16" class="rel" data-from="orders" data-to="order_db" fill="none" d="M 433 692 L 433 800"/>
+  <path id="r17" class="rel" data-from="orders" data-to="payments" fill="none" d="M 538 692 L 538 716 L 1335 716 L 1335 692"/>
+  <path id="r18" class="rel" data-from="orders" data-to="events" fill="none" d="M 485 692 L 485 743 L 901 743 L 901 846 L 960 846"/>
   <path id="r19" class="rel" data-from="menu" data-to="search" fill="none" d="M 775 692 L 775 800"/>
   <path id="r20" class="rel" data-from="dispatch" data-to="events" fill="none" d="M 1065 692 L 1065 800"/>
   <path id="r21" class="rel" data-from="dispatch" data-to="locations" fill="none" d="M 1170 646 L 1178 646 L 1178 846 L 1230 846"/>
-  <path id="r22" class="rel" data-from="dispatch" data-to="maps" fill="none" d="M 1065 600 L 1065 489 L 1640 489 L 1640 372"/>
+  <path id="r22" class="rel" data-from="dispatch" data-to="maps" fill="none" d="M 1065 600 L 1065 489 L 1700 489 L 1700 372"/>
   <path id="r23" class="rel" data-from="payments" data-to="psp" fill="none" d="M 1440 646 L 1600 646"/>
   <path id="r24" class="rel" data-from="notify" data-to="events" fill="none" d="M 880 991 L 1065 991 L 1065 892"/>
-  <path id="r25" class="rel" data-from="notify" data-to="messaging" fill="none" d="M 880 1021 L 1560 1021"/>
+  <path id="r25" class="rel" data-from="notify" data-to="messaging" fill="none" d="M 880 1021 L 1600 1021"/>
   <path id="r26" class="rel" data-from="notify" data-to="email" fill="none" d="M 775 1052 L 775 1166 L 1230 1166"/>
   <path id="r27" class="rel" data-from="identity" data-to="notify" fill="none" d="M 300 646 L 340 646 L 340 1006 L 670 1006"/>
   <text data-label="r1-label" data-label-for="r1" class="rel-label" x="204" y="241" text-anchor="start" font-size="11"><tspan x="204">Orders and tracks</tspan></text>
@@ -162,23 +162,23 @@ expression: result.svg.as_str()
   <text data-label="r6-label" data-label-for="r6" class="rel-label" x="624" y="394" text-anchor="start" font-size="11"><tspan x="624">Calls API</tspan><tspan x="624" dy="14">[HTTPS/JSON]</tspan></text>
   <text data-label="r7-label" data-label-for="r7" class="rel-label" x="769" y="390" text-anchor="start" font-size="11"><tspan x="769">Calls API</tspan><tspan x="769" dy="14">[HTTPS/JSON]</tspan></text>
   <text data-label="r8-label" data-label-for="r8" class="rel-label" x="1344" y="427" text-anchor="start" font-size="11"><tspan x="1344">Calls API</tspan><tspan x="1344" dy="14">[HTTPS/JSON]</tspan></text>
-  <text data-label="r9-label" data-label-for="r9" class="rel-label" x="1140" y="371" text-anchor="middle" font-size="11"><tspan x="1140">Navigates with</tspan><tspan x="1140" dy="14">[SDK]</tspan></text>
+  <text data-label="r9-label" data-label-for="r9" class="rel-label" x="1158" y="371" text-anchor="middle" font-size="11"><tspan x="1158">Navigates with</tspan><tspan x="1158" dy="14">[SDK]</tspan></text>
   <text data-label="r10-label" data-label-for="r10" class="rel-label" x="378" y="486" text-anchor="middle" font-size="11"><tspan x="378">Verifies tokens</tspan><tspan x="378" dy="14">[gRPC]</tspan></text>
   <text data-label="r11-label" data-label-for="r11" class="rel-label" x="494" y="543" text-anchor="start" font-size="11"><tspan x="494">Routes orders</tspan><tspan x="494" dy="14">[gRPC]</tspan></text>
   <text data-label="r12-label" data-label-for="r12" class="rel-label" x="719" y="554" text-anchor="start" font-size="11"><tspan x="719">Routes menu calls</tspan><tspan x="719" dy="14">[gRPC]</tspan></text>
-  <text data-label="r13-label" data-label-for="r13" class="rel-label" x="912" y="566" text-anchor="start" font-size="11"><tspan x="912">Routes courier calls</tspan><tspan x="912" dy="14">[gRPC]</tspan></text>
-  <text data-label="r14-label" data-label-for="r14" class="rel-label" x="992" y="486" text-anchor="middle" font-size="11"><tspan x="992">Routes refunds</tspan><tspan x="992" dy="14">[gRPC]</tspan></text>
+  <text data-label="r13-label" data-label-for="r13" class="rel-label" x="921" y="566" text-anchor="start" font-size="11"><tspan x="921">Routes courier calls</tspan><tspan x="921" dy="14">[gRPC]</tspan></text>
+  <text data-label="r14-label" data-label-for="r14" class="rel-label" x="993" y="486" text-anchor="middle" font-size="11"><tspan x="993">Routes refunds</tspan><tspan x="993" dy="14">[gRPC]</tspan></text>
   <text data-label="r15-label" data-label-for="r15" class="rel-label" x="204" y="744" text-anchor="start" font-size="11"><tspan x="204">Reads and writes</tspan><tspan x="204" dy="14">[SQL]</tspan></text>
-  <text data-label="r16-label" data-label-for="r16" class="rel-label" x="365" y="774" text-anchor="start" font-size="11"><tspan x="365">Reads and writes</tspan><tspan x="365" dy="14">[JDBC]</tspan></text>
-  <text data-label="r17-label" data-label-for="r17" class="rel-label" x="1254" y="736" text-anchor="middle" font-size="11"><tspan x="1254">Charges orders</tspan><tspan x="1254" dy="14">[gRPC]</tspan></text>
-  <text data-label="r18-label" data-label-for="r18" class="rel-label" x="606" y="758" text-anchor="middle" font-size="11"><tspan x="606">Publishes order events</tspan><tspan x="606" dy="14">[Kafka]</tspan></text>
+  <text data-label="r16-label" data-label-for="r16" class="rel-label" x="442" y="776" text-anchor="start" font-size="11"><tspan x="442">Reads and writes</tspan><tspan x="442" dy="14">[JDBC]</tspan></text>
+  <text data-label="r17-label" data-label-for="r17" class="rel-label" x="1255" y="736" text-anchor="middle" font-size="11"><tspan x="1255">Charges orders</tspan><tspan x="1255" dy="14">[gRPC]</tspan></text>
+  <text data-label="r18-label" data-label-for="r18" class="rel-label" x="631" y="763" text-anchor="middle" font-size="11"><tspan x="631">Publishes order events</tspan><tspan x="631" dy="14">[Kafka]</tspan></text>
   <text data-label="r19-label" data-label-for="r19" class="rel-label" x="784" y="776" text-anchor="start" font-size="11"><tspan x="784">Indexes menus</tspan><tspan x="784" dy="14">[HTTPS]</tspan></text>
   <text data-label="r20-label" data-label-for="r20" class="rel-label" x="1056" y="749" text-anchor="end" font-size="11"><tspan x="1056">Subscribes to orders</tspan><tspan x="1056" dy="14">[Kafka]</tspan></text>
   <text data-label="r21-label" data-label-for="r21" class="rel-label" x="1187" y="774" text-anchor="start" font-size="11"><tspan x="1187">Tracks couriers</tspan><tspan x="1187" dy="14">[RESP]</tspan></text>
-  <text data-label="r22-label" data-label-for="r22" class="rel-label" x="1381" y="509" text-anchor="middle" font-size="11"><tspan x="1381">Gets routes and ETAs</tspan><tspan x="1381" dy="14">[HTTPS]</tspan></text>
+  <text data-label="r22-label" data-label-for="r22" class="rel-label" x="1383" y="509" text-anchor="middle" font-size="11"><tspan x="1383">Gets routes and ETAs</tspan><tspan x="1383" dy="14">[HTTPS]</tspan></text>
   <text data-label="r23-label" data-label-for="r23" class="rel-label" x="1536" y="621" text-anchor="middle" font-size="11"><tspan x="1536">Captures payments</tspan><tspan x="1536" dy="14">[HTTPS]</tspan></text>
   <text data-label="r24-label" data-label-for="r24" class="rel-label" x="1074" y="940" text-anchor="start" font-size="11"><tspan x="1074">Subscribes to events</tspan><tspan x="1074" dy="14">[Kafka]</tspan></text>
-  <text data-label="r25-label" data-label-for="r25" class="rel-label" x="1220" y="996" text-anchor="middle" font-size="11"><tspan x="1220">Sends push and SMS</tspan><tspan x="1220" dy="14">[HTTPS]</tspan></text>
+  <text data-label="r25-label" data-label-for="r25" class="rel-label" x="1240" y="996" text-anchor="middle" font-size="11"><tspan x="1240">Sends push and SMS</tspan><tspan x="1240" dy="14">[HTTPS]</tspan></text>
   <text data-label="r26-label" data-label-for="r26" class="rel-label" x="1003" y="1141" text-anchor="middle" font-size="11"><tspan x="1003">Sends receipts</tspan><tspan x="1003" dy="14">[SMTP]</tspan></text>
   <text data-label="r27-label" data-label-for="r27" class="rel-label" x="505" y="981" text-anchor="middle" font-size="11"><tspan x="505">Requests verification codes</tspan><tspan x="505" dy="14">[gRPC]</tspan></text>
 </svg>

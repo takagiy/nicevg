@@ -11,12 +11,12 @@ use crate::diagram::{
     Diagram, DiagramConnector, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, holds_end, is_node_shape,
     node_group, number_attribute, rect_bounds, translation,
 };
-use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, segments};
+use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, route_is_clear, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
-    LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Side, Sides, choose_sides, connector_ports, crossings,
-    end_on_shapes, is_on_outline, label_landmarks, place_label, place_label_clear, route_connector, runs_across,
-    side_of, spread_ports, turns,
+    CLEARANCE, CLOSE_RUN, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Side, Sides, choose_sides,
+    connector_ports, crossings, end_on_shapes, is_on_outline, label_landmarks, overlap, place_label, place_label_clear,
+    route_connector, route_cost, routes_cost, runs_across, side_of, spread_ports, turns,
 };
 use crate::text::{label_texts, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
@@ -819,6 +819,194 @@ fn reroute_connectors(draft: Draft) -> Draft {
     placed
 }
 
+/// Once the layout is settled, moves a middle segment of a connector that
+/// runs closer than two lanes beside another away from it, onto the line
+/// where running alongside costs nothing, wherever the routes then cost
+/// less and stay clear of the nodes and labels around them; then places
+/// the labels of the moved connectors again. A result that would be left
+/// with more issues stays as it was.
+#[tracing::instrument(skip_all)]
+pub(crate) fn spread_close_runs(result: FixResult) -> Result<FixResult, SvgInputError> {
+    let draft = Draft {
+        document: parse(&result.svg)?,
+        changes: result.changes.clone(),
+        moved_node_ids: Vec::new(),
+    };
+    let report = draft.report();
+    let diagram = &report.diagram;
+    let obstacles_for = |connector: &DiagramConnector| -> Vec<Bounds> {
+        diagram
+            .nodes
+            .iter()
+            .filter(|node| !holds_end(&diagram.nodes, connector, node))
+            .map(|node| node.bounds)
+            .chain(
+                diagram
+                    .labels
+                    .iter()
+                    .filter(|label| label.connector.as_deref() != Some(connector.id.as_str()))
+                    .map(|label| label.bounds),
+            )
+            .map(|bounds| bounds.inflate(CLEARANCE))
+            .collect()
+    };
+    let obstacles: Vec<Vec<Bounds>> = diagram.connectors.iter().map(obstacles_for).collect();
+    let total = |routes: &[Vec<Point>]| {
+        routes.iter().map(|route| route_cost(route)).sum::<f64>()
+            + routes
+                .iter()
+                .enumerate()
+                .flat_map(|(index, first)| routes[index + 1..].iter().map(move |second| routes_cost(first, second)))
+                .sum::<f64>()
+    };
+    let mut routes: Vec<Vec<Point>> = diagram.connectors.iter().map(|c| c.points.clone()).collect();
+    let mut current = total(&routes);
+    let mut moved: HashSet<usize> = HashSet::new();
+    for _ in 0..4 * routes.len() {
+        // The first middle segment that runs too close beside another and
+        // whose move away, pushing any it comes too close to, costs less.
+        let better = (0..routes.len()).find_map(|index| {
+            (1..routes[index].len().saturating_sub(2)).find_map(|k| {
+                let (a, b) = (routes[index][k], routes[index][k + 1]);
+                routes
+                    .iter()
+                    .enumerate()
+                    .filter(|(other, _)| *other != index)
+                    .flat_map(|(_, other)| segments(other))
+                    .find_map(|(c, d)| {
+                        let (at, other) = if a.x == b.x && c.x == d.x {
+                            (a.x, c.x)
+                        } else if a.y == b.y && c.y == d.y {
+                            (a.y, c.y)
+                        } else {
+                            return None;
+                        };
+                        let gap = (at - other).abs();
+                        if gap == 0.0 || gap >= CLOSE_RUN.reach || overlap((a, b), (c, d)) <= 0.0 {
+                            return None;
+                        }
+                        let away = (at - other).signum();
+                        let mut trial = routes.clone();
+                        let pushed = push(
+                            &mut trial,
+                            &obstacles,
+                            index,
+                            k,
+                            other + away * CLOSE_RUN.reach,
+                            away,
+                            0,
+                        );
+                        let cost = total(&trial);
+                        (pushed && cost < current - 1e-9).then_some((trial, cost))
+                    })
+            })
+        });
+        let Some((trial, cost)) = better else { break };
+        moved.extend((0..routes.len()).filter(|index| trial[*index] != routes[*index]));
+        routes = trial;
+        current = cost;
+    }
+    if moved.is_empty() {
+        return Ok(result);
+    }
+    let mut moved: Vec<usize> = moved.into_iter().collect();
+    moved.sort_unstable();
+    let (reroutes, finals): (Vec<Reroute>, Vec<Vec<Point>>) = moved
+        .iter()
+        .filter_map(|index| {
+            let connector = &diagram.connectors[*index];
+            let reroute = Reroute {
+                connector,
+                source: diagram.node(&connector.from)?,
+                target: diagram.node(&connector.to)?,
+            };
+            Some((reroute, routes[*index].clone()))
+        })
+        .unzip();
+    let routed = write_routes(&draft, diagram, &reroutes, finals);
+    let draft = expand_view_box(settle_labels(routed.draft, &connector_landmarks(diagram)));
+    let written = serialize(&draft.document);
+    let spread = FixResult {
+        report: analyze(&written)?,
+        svg: written,
+        changes: draft.changes,
+    };
+    Ok(if spread.report.issues.len() > result.report.issues.len() {
+        result
+    } else {
+        spread
+    })
+}
+
+/// Moves middle segment `k` of route `index` onto `line`, pushing on by two
+/// lanes, in the same direction `away`, any other route's middle segment
+/// beyond it that it would run within two lanes of. Fails when a route would
+/// turn back on itself, run into the clearance of a node or label, or have
+/// to push a route's first or last segment.
+fn push(
+    routes: &mut [Vec<Point>],
+    obstacles: &[Vec<Bounds>],
+    index: usize,
+    k: usize,
+    line: f64,
+    away: f64,
+    depth: usize,
+) -> bool {
+    if depth > 4 {
+        return false;
+    }
+    let route = &routes[index];
+    let vertical = route[k].x == route[k + 1].x;
+    let mut moved = route.clone();
+    for point in &mut moved[k..=k + 1] {
+        if vertical {
+            point.x = line;
+        } else {
+            point.y = line;
+        }
+    }
+    let heading = |p: Point, q: Point| ((q.x - p.x).signum(), (q.y - p.y).signum());
+    let keeps_headings = route
+        .windows(2)
+        .zip(moved.windows(2))
+        .all(|(old, new)| new[0] != new[1] && heading(old[0], old[1]) == heading(new[0], new[1]));
+    if !keeps_headings || !route_is_clear(&moved[k - 1..=k + 2], &obstacles[index]) {
+        return false;
+    }
+    let segment = (moved[k], moved[k + 1]);
+    routes[index] = moved;
+    for other in (0..routes.len()).filter(|other| *other != index) {
+        let others = segments(&routes[other]);
+        for (m, (c, d)) in others.iter().enumerate() {
+            let at = if vertical && c.x == d.x {
+                c.x
+            } else if !vertical && c.y == d.y {
+                c.y
+            } else {
+                continue;
+            };
+            if (at - line) * away < 0.0 || (at - line).abs() >= CLOSE_RUN.reach || overlap(segment, (*c, *d)) <= 0.0 {
+                continue;
+            }
+            if m == 0
+                || m + 1 == others.len()
+                || !push(
+                    routes,
+                    obstacles,
+                    other,
+                    m,
+                    line + away * CLOSE_RUN.reach,
+                    away,
+                    depth + 1,
+                )
+            {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// The crossings, bends and ends of every connector, by connector id.
 fn connector_landmarks(diagram: &Diagram) -> HashMap<String, Vec<Point>> {
     let routes: Vec<Vec<Point>> = diagram.connectors.iter().map(|c| c.points.clone()).collect();
@@ -1367,6 +1555,68 @@ fn absolute_length(text: &str) -> Option<(f64, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Given two connectors whose middle segments run down side by side 8px
+    ///   apart, with room on either side
+    /// When their close runs are spread once the layout is settled
+    /// Then the two run at least two lanes apart, each keeps its bends, and
+    ///   both still start and end where they did
+    #[test]
+    fn spreads_middle_segments_running_too_close_apart() {
+        let fixed = fix(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 480">
+              <g data-node="a"><rect x="0" y="0" width="60" height="40"/></g>
+              <g data-node="b"><rect x="300" y="300" width="60" height="40"/></g>
+              <g data-node="c"><rect x="0" y="100" width="60" height="40"/></g>
+              <g data-node="d"><rect x="300" y="400" width="60" height="40"/></g>
+              <path id="p" data-from="a" data-to="b" fill="none" d="M 60 20 L 200 20 L 200 320 L 300 320"/>
+              <path id="q" data-from="c" data-to="d" fill="none" d="M 60 120 L 208 120 L 208 420 L 300 420"/>
+            </svg>"#)
+        .unwrap();
+        let points = |result: &FixResult, id: &str| result.report.diagram.connector(id).unwrap().points.clone();
+        let (before_p, before_q) = (points(&fixed, "p"), points(&fixed, "q"));
+        assert_eq!(before_q[1].x - before_p[1].x, 8.0);
+
+        let spread = spread_close_runs(fixed).unwrap();
+
+        let (p, q) = (points(&spread, "p"), points(&spread, "q"));
+        assert!((q[1].x - p[1].x).abs() >= 16.0, "{p:?} {q:?}");
+        assert_eq!((turns(&p), turns(&q)), (2, 2));
+        assert_eq!(
+            (p[0], p[3], q[0], q[3]),
+            (before_p[0], before_p[3], before_q[0], before_q[3])
+        );
+    }
+
+    /// Given three connectors whose middle segments run down side by side,
+    ///   8px and then 10px apart, with room on either side
+    /// When their close runs are spread once the layout is settled
+    /// Then every two of them run at least two lanes apart: moving one away
+    ///   from its neighbour pushes the next one on
+    #[test]
+    fn spreads_a_bundle_of_close_runs_pushing_each_on() {
+        let fixed = fix(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 580">
+              <g data-node="a"><rect x="0" y="0" width="60" height="40"/></g>
+              <g data-node="b"><rect x="300" y="300" width="60" height="40"/></g>
+              <g data-node="c"><rect x="0" y="100" width="60" height="40"/></g>
+              <g data-node="d"><rect x="300" y="400" width="60" height="40"/></g>
+              <g data-node="e"><rect x="0" y="200" width="60" height="40"/></g>
+              <g data-node="f"><rect x="300" y="500" width="60" height="40"/></g>
+              <path id="p" data-from="a" data-to="b" fill="none" d="M 60 20 L 210 20 L 210 320 L 300 320"/>
+              <path id="q" data-from="c" data-to="d" fill="none" d="M 60 120 L 202 120 L 202 420 L 300 420"/>
+              <path id="r" data-from="e" data-to="f" fill="none" d="M 60 220 L 192 220 L 192 520 L 300 520"/>
+            </svg>"#)
+        .unwrap();
+        let x = |result: &FixResult, id: &str| result.report.diagram.connector(id).unwrap().points[1].x;
+        assert_eq!((x(&fixed, "p"), x(&fixed, "q"), x(&fixed, "r")), (210.0, 202.0, 192.0));
+
+        let spread = spread_close_runs(fixed).unwrap();
+
+        let (p, q, r) = (x(&spread, "p"), x(&spread, "q"), x(&spread, "r"));
+        assert!(
+            (p - q).abs() >= 16.0 && (q - r).abs() >= 16.0 && (p - r).abs() >= 16.0,
+            "{p} {q} {r}"
+        );
+    }
 
     /// Given two boxes joined by a straight connector with no issue
     /// When what to reroute is picked, with no node moved and with one of

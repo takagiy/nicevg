@@ -36,7 +36,7 @@ const LINE_MERGE: f64 = 4.0;
 /// much, once however long the two run together: closely packed lines read
 /// as one band. Half as much 12px apart and nothing from 16px, where the
 /// lines already read as two.
-const CLOSE_RUN: Fade = Fade {
+pub(crate) const CLOSE_RUN: Fade = Fade {
     start: 8.0,
     reach: 16.0,
     full: 120.0,
@@ -1043,22 +1043,14 @@ pub(crate) fn routes_cost(first: &[Point], second: &[Point]) -> f64 {
             if chords_cross(*a, *b, *c, *d) {
                 cost += CROSSING_PENALTY;
             }
-            let (distance, (low, high), (other_low, other_high)) = if a.y == b.y && c.y == d.y {
-                (
-                    (a.y - c.y).abs(),
-                    (a.x.min(b.x), a.x.max(b.x)),
-                    (c.x.min(d.x), c.x.max(d.x)),
-                )
+            let distance = if a.y == b.y && c.y == d.y {
+                (a.y - c.y).abs()
             } else if a.x == b.x && c.x == d.x {
-                (
-                    (a.x - c.x).abs(),
-                    (a.y.min(b.y), a.y.max(b.y)),
-                    (c.y.min(d.y), c.y.max(d.y)),
-                )
+                (a.x - c.x).abs()
             } else {
                 continue;
             };
-            let overlap = high.min(other_high) - low.max(other_low);
+            let overlap = overlap((*a, *b), (*c, *d));
             if overlap > 0.0 {
                 cost += close_run_cost(distance) * (1.0 - BRUSHING.cost(overlap));
             }
@@ -1067,6 +1059,19 @@ pub(crate) fn routes_cost(first: &[Point], second: &[Point]) -> f64 {
     cost + (crate::inspect::turns_beside(first, &second_segments)
         + crate::inspect::turns_beside(second, &first_segments)) as f64
         * NEAR_MISS_PENALTY
+}
+
+/// How far two parallel segments run alongside each other: the length of
+/// the stretch they share along their direction, zero or less when they
+/// share none.
+pub(crate) fn overlap((a, b): (Point, Point), (c, d): (Point, Point)) -> f64 {
+    let span = |p: f64, q: f64| (p.min(q), p.max(q));
+    let ((low, high), (other_low, other_high)) = if a.x == b.x {
+        (span(a.y, b.y), span(c.y, d.y))
+    } else {
+        (span(a.x, b.x), span(c.x, d.x))
+    };
+    high.min(other_high) - low.max(other_low)
 }
 
 /// The cost of a route's next turn after it has turned `turned` times.

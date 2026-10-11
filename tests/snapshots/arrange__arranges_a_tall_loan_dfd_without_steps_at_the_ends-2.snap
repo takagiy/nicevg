@@ -58,7 +58,7 @@ expression: result.svg.as_str()
     <circle cx="540" cy="250" r="82"/>
     <text x="540" y="255" text-anchor="middle" font-size="13">1 Take application</text>
   </g>
-  <g data-node="verify" class="process">
+  <g data-node="verify" class="process" transform="translate(0 20)">
     <circle cx="540" cy="425" r="78"/>
     <text x="540" y="430" text-anchor="middle" font-size="13">2 Verify identity</text>
   </g>
@@ -106,7 +106,7 @@ expression: result.svg.as_str()
     <rect x="760" y="230" width="140" height="40" rx="6"/>
     <text x="830" y="255" text-anchor="middle" font-size="13">D1 Applications</text>
   </g>
-  <g data-node="customers" class="datastore">
+  <g data-node="customers" class="datastore" transform="translate(0 20)">
     <rect x="220" y="405" width="130" height="40" rx="6"/>
     <text x="285" y="430" text-anchor="middle" font-size="13">D2 Customers</text>
   </g>
@@ -140,12 +140,12 @@ expression: result.svg.as_str()
   </g>
   <path id="f1" class="flow" data-from="applicant" data-to="intake" fill="none" d="M 540 142 L 540 168"/>
   <path id="f2" class="flow" data-from="intake" data-to="applications" fill="none" d="M 622 250 L 760 250"/>
-  <path id="f3" class="flow" data-from="intake" data-to="verify" fill="none" d="M 469 291 L 438 291 L 438 399 L 466 399"/>
-  <path id="f4" class="flow" data-from="verify" data-to="idp" fill="none" d="M 618 417 L 898 417"/>
+  <path id="f3" class="flow" data-from="intake" data-to="verify" fill="none" d="M 540 332 L 540 367"/>
+  <path id="f4" class="flow" data-from="verify" data-to="idp" fill="none" d="M 613 417 L 898 417"/>
   <path id="f5" class="flow" data-from="idp" data-to="verify" fill="none" d="M 898 435 L 617 435"/>
-  <path id="f6" class="flow" data-from="verify" data-to="customers" fill="none" d="M 462 425 L 350 425"/>
-  <path id="f7" class="flow" data-from="verify" data-to="credit" fill="none" d="M 514 499 L 514 680 L 447 680"/>
-  <path id="f8" class="flow" data-from="verify" data-to="screen" fill="none" d="M 608 464 L 720 464 L 720 508"/>
+  <path id="f6" class="flow" data-from="verify" data-to="customers" fill="none" d="M 462 445 L 350 445"/>
+  <path id="f7" class="flow" data-from="verify" data-to="credit" fill="none" d="M 466 471 L 380 471 L 380 613"/>
+  <path id="f8" class="flow" data-from="verify" data-to="screen" fill="none" d="M 608 484 L 720 484 L 720 508"/>
   <path id="f9" class="flow" data-from="credit" data-to="bureau" fill="none" d="M 313 672 L 170 672"/>
   <path id="f10" class="flow" data-from="bureau" data-to="credit" fill="none" d="M 170 690 L 314 690"/>
   <path id="f11" class="flow" data-from="watchlists" data-to="screen" fill="none" d="M 920 590 L 802 590"/>
@@ -166,9 +166,9 @@ expression: result.svg.as_str()
   <path id="f26" class="flow" data-from="intake" data-to="offer" fill="none" d="M 458 250 L 32 250 L 32 1280 L 488 1280"/>
   <path id="f27" class="flow" data-from="intake" data-to="notify" fill="none" d="M 617 222 L 1168 222 L 1168 1828 L 588 1828"/>
   <path id="f28" class="flow" data-from="assess" data-to="notify" fill="none" d="M 599 981 L 1148 981 L 1148 1800 L 596 1800"/>
-  <path id="f29" class="flow" data-from="verify" data-to="sign" fill="none" d="M 472 464 L 16 464 L 16 1455 L 469 1455"/>
-  <path id="f30" class="flow" data-from="customers" data-to="payout" fill="none" d="M 220 425 L -4 425 L -4 1683 L 489 1683"/>
-  <path id="f31" class="flow" data-from="applicant" data-to="sign" fill="none" d="M 470 116 L -24 116 L -24 1505 L 469 1505"/>
+  <path id="f29" class="flow" data-from="verify" data-to="sign" fill="none" d="M 501 513 L 501 885 L 221.5 885 L 221.5 1455 L 469 1455"/>
+  <path id="f30" class="flow" data-from="customers" data-to="payout" fill="none" d="M 220 445 L 16 445 L 16 1683 L 489 1683"/>
+  <path id="f31" class="flow" data-from="applicant" data-to="sign" fill="none" d="M 470 116 L 0 116 L 0 1505 L 469 1505"/>
   <path id="f32" class="flow" data-from="offer" data-to="offers" fill="none" d="M 480 1310 L 360 1310"/>
   <path id="f33" class="flow" data-from="offer" data-to="sign" fill="none" d="M 540 1370 L 540 1405"/>
   <path id="f34" class="flow" data-from="offer" data-to="notify" fill="none" d="M 597 1330 L 1038 1330 L 1038 1772 L 588 1772"/>
@@ -181,12 +181,12 @@ expression: result.svg.as_str()
   <path id="f41" class="flow" data-from="notify" data-to="messaging" fill="none" d="M 540 1856 L 540 1970"/>
   <text data-label="f1-label" data-label-for="f1" class="flow-label" x="549" y="160" text-anchor="start" font-size="11">application form</text>
   <text data-label="f2-label" data-label-for="f2" class="flow-label" x="691" y="270" text-anchor="middle" font-size="11">application</text>
-  <text data-label="f3-label" data-label-for="f3" class="flow-label" x="429" y="350" text-anchor="end" font-size="11">applicant details</text>
-  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="758" y="406" text-anchor="middle" font-size="11">document scan</text>
-  <text data-label="f5-label" data-label-for="f5" class="flow-label" x="814" y="455" text-anchor="middle" font-size="11">verification result</text>
-  <text data-label="f6-label" data-label-for="f6" class="flow-label" x="406" y="445" text-anchor="middle" font-size="11">customer record</text>
-  <text data-label="f7-label" data-label-for="f7" class="flow-label" x="505" y="595" text-anchor="end" font-size="11">verified identity</text>
-  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="729" y="491" text-anchor="start" font-size="11">applicant profile</text>
+  <text data-label="f3-label" data-label-for="f3" class="flow-label" x="549" y="355" text-anchor="start" font-size="11">applicant details</text>
+  <text data-label="f4-label" data-label-for="f4" class="flow-label" x="756" y="406" text-anchor="middle" font-size="11">document scan</text>
+  <text data-label="f5-label" data-label-for="f5" class="flow-label" x="758" y="455" text-anchor="middle" font-size="11">verification result</text>
+  <text data-label="f6-label" data-label-for="f6" class="flow-label" x="406" y="434" text-anchor="middle" font-size="11">customer record</text>
+  <text data-label="f7-label" data-label-for="f7" class="flow-label" x="371" y="547" text-anchor="end" font-size="11">verified identity</text>
+  <text data-label="f8-label" data-label-for="f8" class="flow-label" x="729" y="501" text-anchor="start" font-size="11">applicant profile</text>
   <text data-label="f9-label" data-label-for="f9" class="flow-label" x="242" y="661" text-anchor="middle" font-size="11">inquiry</text>
   <text data-label="f10-label" data-label-for="f10" class="flow-label" x="242" y="710" text-anchor="middle" font-size="11">credit report</text>
   <text data-label="f11-label" data-label-for="f11" class="flow-label" x="861" y="579" text-anchor="middle" font-size="11">watchlist entries</text>
@@ -194,7 +194,7 @@ expression: result.svg.as_str()
   <text data-label="f13-label" data-label-for="f13" class="flow-label" x="792" y="688" text-anchor="start" font-size="11">device data</text>
   <text data-label="f14-label" data-label-for="f14" class="flow-label" x="901" y="762" text-anchor="middle" font-size="11">known patterns</text>
   <text data-label="f15-label" data-label-for="f15" class="flow-label" x="901" y="807" text-anchor="middle" font-size="11">new signals</text>
-  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="389" y="848" text-anchor="start" font-size="11">credit score</text>
+  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="389" y="819" text-anchor="start" font-size="11">credit score</text>
   <text data-label="f17-label" data-label-for="f17" class="flow-label" x="549" y="875" text-anchor="start" font-size="11">sanctions result</text>
   <text data-label="f18-label" data-label-for="f18" class="flow-label" x="691" y="928" text-anchor="middle" font-size="11">fraud score</text>
   <text data-label="f19-label" data-label-for="f19" class="flow-label" x="419" y="980" text-anchor="middle" font-size="11">scoring model</text>
@@ -207,9 +207,9 @@ expression: result.svg.as_str()
   <text data-label="f26-label" data-label-for="f26" class="flow-label" x="41" y="873" text-anchor="start" font-size="11">amount and term</text>
   <text data-label="f27-label" data-label-for="f27" class="flow-label" x="1177" y="1030" text-anchor="start" font-size="11">acknowledgement</text>
   <text data-label="f28-label" data-label-for="f28" class="flow-label" x="1139" y="1273" text-anchor="end" font-size="11">decline notice</text>
-  <text data-label="f29-label" data-label-for="f29" class="flow-label" x="243" y="1444" text-anchor="middle" font-size="11">verified identity</text>
-  <text data-label="f30-label" data-label-for="f30" class="flow-label" x="243" y="1703" text-anchor="middle" font-size="11">bank account</text>
-  <text data-label="f31-label" data-label-for="f31" class="flow-label" x="-33" y="816" text-anchor="end" font-size="11">e-signature</text>
+  <text data-label="f29-label" data-label-for="f29" class="flow-label" x="231" y="1090" text-anchor="start" font-size="11">verified identity</text>
+  <text data-label="f30-label" data-label-for="f30" class="flow-label" x="253" y="1703" text-anchor="middle" font-size="11">bank account</text>
+  <text data-label="f31-label" data-label-for="f31" class="flow-label" x="-9" y="816" text-anchor="end" font-size="11">e-signature</text>
   <text data-label="f32-label" data-label-for="f32" class="flow-label" x="420" y="1330" text-anchor="middle" font-size="11">offer</text>
   <text data-label="f33-label" data-label-for="f33" class="flow-label" x="549" y="1393" text-anchor="start" font-size="11">offer terms</text>
   <text data-label="f34-label" data-label-for="f34" class="flow-label" x="1029" y="1556" text-anchor="end" font-size="11">offer details</text>

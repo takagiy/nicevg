@@ -14,7 +14,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::diagram::{Diagram, DiagramConnector, DiagramNode, ancestor_ids, holds_end, node_group};
-use crate::fix::{FixChange, FixResult, fix, fix_after_moves};
+use crate::fix::{FixChange, FixResult, fix, fix_after_moves, spread_close_runs};
 use crate::geometry::{
     Bounds, Point, format_number, hypot, intersection, parse_number, point, segment_intersects_interior, segments,
 };
@@ -92,7 +92,7 @@ pub fn arrange(svg: &str) -> Result<FixResult, SvgInputError> {
         result: fixed,
         offsets: HashMap::new(),
     };
-    Ok(improve(&context, start, MAX_STEPS).result)
+    spread_close_runs(improve(&context, start, MAX_STEPS).result)
 }
 
 struct Context {
@@ -173,37 +173,40 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
     let in_place = step.dx == 0.0 && step.dy == 0.0;
     let ids: Vec<String> = id.split(TOGETHER).map(str::to_owned).collect();
     let mut document = parse(&state.result.svg).ok()?;
-    let group = node_group(&document, &ids[0])?;
-    let transform = translated(document.element(&group).attr("transform"), step);
-    document = document.update(&group, |g| {
-        if in_place {
-            return g;
-        }
-        if transform.is_empty() {
-            Element {
-                attributes: g
-                    .attributes
-                    .into_iter()
-                    .filter(|(name, _)| name != "transform")
-                    .collect(),
-                ..g
-            }
-        } else {
-            g.with_attr("transform", &transform)
-        }
-    });
-    let moved = fix_after_moves(&serialize(&document), &ids, 5).ok()?;
     let mut offsets = state.offsets.clone();
-    let offset = offsets.entry(id.to_owned()).or_insert(point(0.0, 0.0));
-    *offset = point(offset.x + step.dx, offset.y + step.dy);
+    if !in_place {
+        for member in &ids {
+            let group = node_group(&document, member)?;
+            let transform = translated(document.element(&group).attr("transform"), step);
+            document = document.update(&group, |g| {
+                if transform.is_empty() {
+                    Element {
+                        attributes: g
+                            .attributes
+                            .into_iter()
+                            .filter(|(name, _)| name != "transform")
+                            .collect(),
+                        ..g
+                    }
+                } else {
+                    g.with_attr("transform", &transform)
+                }
+            });
+            let offset = offsets.entry(member.clone()).or_insert(point(0.0, 0.0));
+            *offset = point(offset.x + step.dx, offset.y + step.dy);
+        }
+    }
+    let moved = fix_after_moves(&serialize(&document), &ids, 5).ok()?;
+    let names = ids.iter().map(|id| format!("\"{id}\"")).collect::<Vec<_>>().join(", ");
     let change = FixChange {
         code: "arrange-node".to_owned(),
         message: format!(
-            "Moved node \"{id}\" by ({}, {}) so connectors bend, cross and crowd less.",
+            "Moved {} {names} by ({}, {}) so connectors bend, cross and crowd less.",
+            if ids.len() > 1 { "nodes" } else { "node" },
             format_number(step.dx),
             format_number(step.dy)
         ),
-        elements: vec![id.to_owned()],
+        elements: ids.clone(),
     };
     let change = (!in_place).then_some(change);
     let result = FixResult {
@@ -354,6 +357,27 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
                 .collect::<Vec<_>>()
         });
     let troubled = troubled_nodes(&state.result.report);
+    // A row or column with a troubled node moves as one, across its line:
+    // it keeps its alignment while making room above or beside it.
+    let lines = context
+        .alignments
+        .iter()
+        .filter(|alignment| alignment.members.iter().any(|id| troubled.contains(id)))
+        .flat_map(|alignment| {
+            let id = alignment.members.join(TOGETHER);
+            let column = alignment.edge.is_column();
+            NUDGES.iter().flat_map(move |amount| {
+                [*amount, -amount].map(|amount| {
+                    let step = if column {
+                        Move { dx: amount, dy: 0.0 }
+                    } else {
+                        Move { dx: 0.0, dy: amount }
+                    };
+                    (id.clone(), step)
+                })
+            })
+        })
+        .collect::<Vec<_>>();
     let nudges = troubled.into_iter().flat_map(|id| {
         NUDGES.iter().flat_map(move |amount| {
             [
@@ -391,7 +415,13 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
             })
     });
     let mut seen: Vec<(String, Move)> = Vec::new();
-    for (id, step) in reroute.chain(together).chain(straighten).chain(unblock).chain(nudges) {
+    for (id, step) in reroute
+        .chain(together)
+        .chain(straighten)
+        .chain(unblock)
+        .chain(nudges)
+        .chain(lines)
+    {
         let rounded = Move {
             dx: step.dx.round(),
             dy: step.dy.round(),
@@ -498,10 +528,17 @@ impl Context {
         self.baseline.node(id)
     }
 
+    /// Whether `id`, or every node of a group joined by `TOGETHER`, may move
+    /// by `step`; nodes moving together are not checked against each other.
+    fn allows(&self, state: &State, id: &str, step: Move) -> bool {
+        let group: Vec<&str> = id.split(TOGETHER).collect();
+        group.iter().all(|member| self.allows_one(state, member, &group, step))
+    }
+
     /// Whether moving `id` by `step` keeps it within reach of where it
     /// started, inside its container, and on the same side of every other
-    /// node as in the input.
-    fn allows(&self, state: &State, id: &str, step: Move) -> bool {
+    /// node outside its `group` as in the input.
+    fn allows_one(&self, state: &State, id: &str, group: &[&str], step: Move) -> bool {
         let diagram = &state.result.report.diagram;
         let (Some(node), Some(original)) = (diagram.node(id), self.baseline_node(id)) else {
             return false;
@@ -542,20 +579,24 @@ impl Context {
             });
         parent_fits
             && clear_of_connectors
-            && diagram.nodes.iter().filter(|other| other.id != id).all(|other| {
-                let related = ancestors.contains(&other.id.as_str());
-                let clear_of_labels = other.label_bounds.iter().all(|label| {
-                    let label = label.inflate(LABEL_CLEARANCE);
-                    intersection(&moved, &label).is_none() || intersection(&node.bounds, &label).is_some()
-                });
-                let Some(other_original) = self.baseline_node(&other.id) else {
-                    return clear_of_labels;
-                };
-                clear_of_labels
-                    && (related
-                        || (keeps_sides(&original.bounds, &other_original.bounds, &moved, &other.bounds)
-                            && gap(&moved, &other.bounds) >= gap(&node.bounds, &other.bounds).min(NODE_GAP)))
-            })
+            && diagram
+                .nodes
+                .iter()
+                .filter(|other| !group.contains(&other.id.as_str()))
+                .all(|other| {
+                    let related = ancestors.contains(&other.id.as_str());
+                    let clear_of_labels = other.label_bounds.iter().all(|label| {
+                        let label = label.inflate(LABEL_CLEARANCE);
+                        intersection(&moved, &label).is_none() || intersection(&node.bounds, &label).is_some()
+                    });
+                    let Some(other_original) = self.baseline_node(&other.id) else {
+                        return clear_of_labels;
+                    };
+                    clear_of_labels
+                        && (related
+                            || (keeps_sides(&original.bounds, &other_original.bounds, &moved, &other.bounds)
+                                && gap(&moved, &other.bounds) >= gap(&node.bounds, &other.bounds).min(NODE_GAP)))
+                })
     }
 
     #[tracing::instrument(skip_all)]
