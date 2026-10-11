@@ -851,16 +851,24 @@ pub(crate) fn spread_close_runs(result: FixResult) -> Result<FixResult, SvgInput
             .collect()
     };
     let obstacles: Vec<Vec<Bounds>> = diagram.connectors.iter().map(obstacles_for).collect();
-    let total = |routes: &[Vec<Point>]| {
-        routes.iter().map(|route| route_cost(route)).sum::<f64>()
-            + routes
-                .iter()
-                .enumerate()
-                .flat_map(|(index, first)| routes[index + 1..].iter().map(move |second| routes_cost(first, second)))
-                .sum::<f64>()
+    // How much a trial changes what the routes cost: only the routes it
+    // moved cost differently, on their own and against the others.
+    let change = |routes: &[Vec<Point>], trial: &[Vec<Point>]| -> f64 {
+        let changed: Vec<bool> = routes.iter().zip(trial).map(|(old, new)| old != new).collect();
+        (0..routes.len())
+            .filter(|index| changed[*index])
+            .map(|index| {
+                route_cost(&trial[index]) - route_cost(&routes[index])
+                    + (0..routes.len())
+                        .filter(|other| *other != index && (!changed[*other] || *other > index))
+                        .map(|other| {
+                            routes_cost(&trial[index], &trial[other]) - routes_cost(&routes[index], &routes[other])
+                        })
+                        .sum::<f64>()
+            })
+            .sum()
     };
     let mut routes: Vec<Vec<Point>> = diagram.connectors.iter().map(|c| c.points.clone()).collect();
-    let mut current = total(&routes);
     let mut moved: HashSet<usize> = HashSet::new();
     for _ in 0..4 * routes.len() {
         // The first middle segment that runs too close beside another and
@@ -896,15 +904,13 @@ pub(crate) fn spread_close_runs(result: FixResult) -> Result<FixResult, SvgInput
                             away,
                             0,
                         );
-                        let cost = total(&trial);
-                        (pushed && cost < current - 1e-9).then_some((trial, cost))
+                        (pushed && change(&routes, &trial) < -1e-9).then_some(trial)
                     })
             })
         });
-        let Some((trial, cost)) = better else { break };
+        let Some(trial) = better else { break };
         moved.extend((0..routes.len()).filter(|index| trial[*index] != routes[*index]));
         routes = trial;
-        current = cost;
     }
     if moved.is_empty() {
         return Ok(result);
