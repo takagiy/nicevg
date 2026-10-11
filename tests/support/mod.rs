@@ -449,6 +449,9 @@ pub struct Quality {
     pub bends: usize,
     pub detached_labels: usize,
     pub diagonal_segments: usize,
+    /// Bends past each connector's second, which make a route harder to
+    /// follow than its first two.
+    pub late_bends: usize,
     /// How crowded connectors running side by side are: 1000 / d² summed
     /// over each pair of parallel segments, from different connectors, that
     /// run alongside each other for a stretch d apart. Rounded to hundredths.
@@ -481,6 +484,10 @@ pub fn quality_of(report: &AnalysisReport) -> Quality {
                     .filter(|(a, b)| a.x != b.x && a.y != b.y)
                     .count()
             })
+            .sum(),
+        late_bends: connectors
+            .iter()
+            .map(|connector| bend_count(&connector.points).saturating_sub(2))
             .sum(),
         parallel_density: (parallel_density(report) * 100.0).round() / 100.0,
         remaining_issues: report.issues.len(),

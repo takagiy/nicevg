@@ -18,7 +18,7 @@ use crate::fix::{FixChange, FixResult, fix, fix_after_moves};
 use crate::geometry::{
     Bounds, Point, format_number, hypot, intersection, parse_number, point, segment_intersects_interior, segments,
 };
-use crate::route::chords_cross;
+use crate::route::{Fade, SHORT_END, SHORT_END_FADE, chords_cross, route_cost, routes_cost};
 use crate::xml::{Element, serialize};
 use crate::{AnalysisReport, SvgInputError, parse};
 
@@ -29,54 +29,49 @@ const MAX_STEPS: usize = 12;
 /// Joins the ids of nodes whose connectors a candidate reroutes together.
 const TOGETHER: &str = "\u{1f}";
 
-const ISSUE_COST: f64 = 1000.0;
-const CROSSING_COST: f64 = 150.0;
-const BEND_COST: f64 = 30.0;
-/// From a connector's third bend on, each bend costs this instead: two
-/// bends read as a route around something, more as a maze.
-const LATE_BEND_COST: f64 = 90.0;
-const EASY_BENDS: usize = 2;
-const CROWDING_COST: f64 = 60.0;
-/// Parallel lines within two lanes still read as one band, less so.
-const NEAR_CROWDING_COST: f64 = 20.0;
-/// A route turning on another misreads as one line, worse than a crossing.
-const TOUCH_COST: f64 = 150.0;
-const MOVEMENT_COST: f64 = 0.5;
+// Routes are scored as the route search prices them (its length, bends,
+// crossings, close runs and near misses, a crossing costing 300), so a
+// route the search found cheaper also scores better. The costs below are
+// what only arranging weighs, in the same units.
+const ISSUE_COST: f64 = 2000.0;
+const MOVEMENT_COST: f64 = 1.0;
 /// Nodes in a row or column joined by a connector running straight along
 /// it show the flow with their alignment, so falling out of line costs
 /// much more than for neighbours that only share a coordinate (or whose
 /// connector detours).
-const JOINED_ALIGNMENT_COST: f64 = 300.0;
-const LOOSE_ALIGNMENT_COST: f64 = 50.0;
+const JOINED_ALIGNMENT_COST: f64 = 600.0;
+const LOOSE_ALIGNMENT_COST: f64 = 100.0;
 /// An inner node leaving a line its neighbours keep reads as a dent,
 /// turning the eye twice where an end leaving turns it once; worse when
 /// the node is joined to the line.
-const JOINED_DENT_COST: f64 = 300.0;
-const LOOSE_DENT_COST: f64 = 200.0;
+const JOINED_DENT_COST: f64 = 600.0;
+const LOOSE_DENT_COST: f64 = 400.0;
 /// Every node that leaves a line it was on.
-const OFF_LINE_COST: f64 = 40.0;
+const OFF_LINE_COST: f64 = 80.0;
 /// A connector with any bend reads as a detour, on top of its bends.
-const BENT_COST: f64 = 60.0;
-/// A step shorter than this in the middle of a route is a jog: the line
-/// staggers instead of turning.
+const BENT_COST: f64 = 120.0;
+/// A step this long or shorter between two runs heading the same way is a
+/// jog: the line staggers aside instead of turning. No move may add one.
 const JOG_LENGTH: f64 = 20.0;
-/// An end stub shorter than this, or a crossing nearer the node than this,
-/// makes it hard to see the connector arrive.
-const SHORT_END: f64 = 20.0;
-const SHORT_END_COST: f64 = 60.0;
-/// On top of the crossing itself.
-const CROSSING_AT_END_COST: f64 = 100.0;
-const JOG_COST: f64 = 60.0;
-/// Every pixel of route counts a little, so long detours are not free.
-const LENGTH_COST: f64 = 0.1;
+/// What a step between two runs heading the same way costs: in full when
+/// tiny, half at the jog limit above, so a step just past it still costs
+/// something.
+const JOG: Fade = Fade {
+    start: 10.0,
+    reach: 30.0,
+    full: 300.0,
+};
+/// On top of the crossing itself, for a crossing near the node, half a
+/// short end away.
+const CROSSING_AT_END: Fade = Fade {
+    start: 10.0,
+    reach: 30.0,
+    full: 200.0,
+};
 /// Connectors sharing a node side read best spread evenly, with the same
 /// gap between neighbours and to the side's corners; each even gap's worth
 /// of unevenness costs this much.
-const PORT_SPACING_COST: f64 = 40.0;
-/// Parallel segments of different connectors this close, over this much
-/// length, crowd each other.
-const CROWDED_DISTANCE: f64 = 10.0;
-const CROWDED_LENGTH: f64 = 20.0;
+const PORT_SPACING_COST: f64 = 80.0;
 /// How far connectors keep from nodes they pass.
 const CLEARANCE: f64 = 8.0;
 /// A moved node keeps this far from other nodes, its container's edges and
@@ -425,10 +420,7 @@ fn troubled_nodes(report: &AnalysisReport) -> Vec<String> {
     let tangled = connectors.iter().enumerate().flat_map(|(index, first)| {
         connectors[index + 1..]
             .iter()
-            .filter(move |second| {
-                crossings(&first.points, &second.points) + touches(&first.points, &second.points) > 0
-                    || crowding(&first.points, &second.points) > 0.0
-            })
+            .filter(move |second| routes_cost(&first.points, &second.points) > 0.0)
             .flat_map(move |second| [ends(&first.id), ends(&second.id)].concat())
     });
     let named = report.issues.iter().flat_map(|issue| &issue.elements).flat_map(|id| {
@@ -460,7 +452,7 @@ fn troubled_nodes(report: &AnalysisReport) -> Vec<String> {
             .into_iter()
             .filter(|(_, end, inner)| {
                 let short = (end.x - inner.x).abs() + (end.y - inner.y).abs() < SHORT_END;
-                short || crossed_near(connectors, &connector.id, *end, *inner).is_some()
+                short || crossed_near(connectors, &connector.id, *end, *inner, SHORT_END).is_some()
             })
             .map(|(node, _, _)| node.to_owned())
             .collect::<Vec<_>>()
@@ -574,35 +566,18 @@ impl Context {
             .iter()
             .enumerate()
             .flat_map(|(index, first)| connectors[index + 1..].iter().map(move |second| (first, second)));
-        let (crossed, crowded, touched) = pairs.fold((0, 0.0, 0), |(crossed, crowded, touched), (first, second)| {
-            (
-                crossed + crossings(&first.points, &second.points),
-                crowded + crowding(&first.points, &second.points),
-                touched + touches(&first.points, &second.points),
-            )
-        });
-        let bends: f64 = connectors
-            .iter()
-            .map(|c| bend_cost(c.points.len().saturating_sub(2)))
-            .sum();
+        let routes: f64 = connectors.iter().map(|c| route_cost(&c.points)).sum::<f64>()
+            + pairs
+                .map(|(first, second)| routes_cost(&first.points, &second.points))
+                .sum::<f64>();
         let bent = connectors.iter().filter(|c| c.points.len() > 2).count();
-        let jogs = total_jogs(&report.diagram);
-        let length: f64 = connectors
-            .iter()
-            .flat_map(|c| segments(&c.points))
-            .map(|(a, b)| (a.x - b.x).abs() + (a.y - b.y).abs())
-            .sum();
         let movement: f64 = offsets.values().map(|offset| offset.x.abs() + offset.y.abs()).sum();
         report.issues.len() as f64 * ISSUE_COST
-            + crossed as f64 * CROSSING_COST
-            + bends
+            + routes
             + bent as f64 * BENT_COST
-            + jogs as f64 * JOG_COST
-            + length * LENGTH_COST
+            + jog_cost(&report.diagram)
             + port_unevenness(&report.diagram) * PORT_SPACING_COST
             + unclear_ends(connectors)
-            + crowded
-            + touched as f64 * TOUCH_COST
             + movement * MOVEMENT_COST
             + self.alignment_cost(&report.diagram)
     }
@@ -718,11 +693,6 @@ fn keeps_sides(original: &Bounds, other_original: &Bounds, moved: &Bounds, other
                 && (!before(other_original.bottom(), original.y) || before(other.bottom(), moved.y))))
 }
 
-/// The cost of a connector's bends: more for each from the third on.
-fn bend_cost(bends: usize) -> f64 {
-    bends.min(EASY_BENDS) as f64 * BEND_COST + bends.saturating_sub(EASY_BENDS) as f64 * LATE_BEND_COST
-}
-
 /// Corners of one route that sit on the other, either way round: there the
 /// two read as one line turning instead of two lines meeting.
 fn touches(first: &[Point], second: &[Point]) -> usize {
@@ -807,9 +777,10 @@ fn unclear_ends(connectors: &[DiagramConnector]) -> f64 {
             end_segments(connector)
                 .into_iter()
                 .map(|(_, end, inner)| {
-                    let short = (end.x - inner.x).abs() + (end.y - inner.y).abs() < SHORT_END;
-                    let crossed = crossed_near(connectors, &connector.id, end, inner).is_some();
-                    f64::from(u8::from(short)) * SHORT_END_COST + f64::from(u8::from(crossed)) * CROSSING_AT_END_COST
+                    let length = (end.x - inner.x).abs() + (end.y - inner.y).abs();
+                    SHORT_END_FADE.tuned("END").cost(length)
+                        + crossed_near(connectors, &connector.id, end, inner, CROSSING_AT_END.reach)
+                            .map_or(0.0, |distance| CROSSING_AT_END.tuned("CROSS").cost(distance))
                 })
                 .collect::<Vec<_>>()
         })
@@ -834,8 +805,8 @@ fn end_segments(connector: &DiagramConnector) -> Vec<(&str, Point, Point)> {
 }
 
 /// How close to `end` another connector crosses the segment from `end` to
-/// `inner`, when that is nearer than a short stub.
-fn crossed_near(connectors: &[DiagramConnector], id: &str, end: Point, inner: Point) -> Option<f64> {
+/// `inner`, when that is nearer than `within`.
+fn crossed_near(connectors: &[DiagramConnector], id: &str, end: Point, inner: Point, within: f64) -> Option<f64> {
     connectors
         .iter()
         .filter(|other| other.id != id)
@@ -850,22 +821,37 @@ fn crossed_near(connectors: &[DiagramConnector], id: &str, end: Point, inner: Po
                 hypot(a.x - end.x, a.y - end.y)
             }
         })
-        .filter(|distance| *distance < SHORT_END)
+        .filter(|distance| *distance < within)
         .reduce(f64::min)
+}
+
+/// What the steps between runs heading the same way cost, each fading as
+/// the step grows.
+fn jog_cost(diagram: &Diagram) -> f64 {
+    diagram
+        .connectors
+        .iter()
+        .flat_map(|c| c.points.windows(4))
+        .filter(|run| heads_on(run))
+        .map(|run| JOG.cost((run[1].x - run[2].x).abs() + (run[1].y - run[2].y).abs()))
+        .sum()
+}
+
+/// Whether the first and last segments of four points head the same way.
+fn heads_on(run: &[Point]) -> bool {
+    (run[1].x - run[0].x) * (run[3].x - run[2].x) + (run[1].y - run[0].y) * (run[3].y - run[2].y) > 0.0
 }
 
 fn total_jogs(diagram: &Diagram) -> usize {
     diagram.connectors.iter().map(|c| jogs(&c.points)).sum()
 }
 
-/// Segments shorter than a jog between two turns of a route.
+/// Segments no longer than a jog between two runs of a route heading the
+/// same way; a short segment where the route turns back is no jog.
 fn jogs(points: &[Point]) -> usize {
-    segments(points)
-        .iter()
-        .enumerate()
-        .filter(|(index, (a, b))| {
-            *index > 0 && index + 1 < points.len() - 1 && (a.x - b.x).abs() + (a.y - b.y).abs() < JOG_LENGTH
-        })
+    points
+        .windows(4)
+        .filter(|run| heads_on(run) && (run[1].x - run[2].x).abs() + (run[1].y - run[2].y).abs() <= JOG_LENGTH)
         .count()
 }
 
@@ -875,41 +861,6 @@ fn crossings(first: &[Point], second: &[Point]) -> usize {
         .iter()
         .map(|(a, b)| others.iter().filter(|(c, d)| chords_cross(*a, *b, *c, *d)).count())
         .sum()
-}
-
-/// The cost of parallel segments, one from each route, running within a
-/// lane (or two) of each other for a stretch.
-fn crowding(first: &[Point], second: &[Point]) -> f64 {
-    let others = segments(second);
-    segments(first)
-        .iter()
-        .flat_map(|(a, b)| {
-            others.iter().map(move |(c, d)| {
-                let horizontal = a.y == b.y && c.y == d.y;
-                let vertical = a.x == b.x && c.x == d.x;
-                let (distance, (low, high), (other_low, other_high)) = if horizontal {
-                    ((a.y - c.y).abs(), span(a.x, b.x), span(c.x, d.x))
-                } else if vertical {
-                    ((a.x - c.x).abs(), span(a.y, b.y), span(c.y, d.y))
-                } else {
-                    return 0.0;
-                };
-                if distance <= 0.0 || high.min(other_high) - low.max(other_low) < CROWDED_LENGTH {
-                    0.0
-                } else if distance <= CROWDED_DISTANCE {
-                    CROWDING_COST
-                } else if distance < 2.0 * CROWDED_DISTANCE {
-                    NEAR_CROWDING_COST
-                } else {
-                    0.0
-                }
-            })
-        })
-        .sum()
-}
-
-fn span(a: f64, b: f64) -> (f64, f64) {
-    (a.min(b), a.max(b))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1097,16 +1048,25 @@ mod tests {
         assert!(context.alignment_cost(&moved("c")) > 0.0);
     }
 
-    /// Given connectors with one to five bends
-    /// When their bends are costed
-    /// Then each bend from the third on adds more than the second did
+    /// Given routes stepping 10px and 20px aside between two runs in the
+    ///   same direction, and a route turning back 10px further on
+    /// When their jogs are counted
+    /// Then both steps are jogs and the turn back is not
     #[test]
-    fn costs_a_connector_s_third_and_later_bends_more() {
-        let added = |bends: usize| bend_cost(bends) - bend_cost(bends - 1);
+    fn counts_only_a_step_between_runs_the_same_way_as_a_jog() {
+        let step = |aside: f64| {
+            [
+                point(0.0, 0.0),
+                point(100.0, 0.0),
+                point(100.0, aside),
+                point(200.0, aside),
+            ]
+        };
+        let back = [point(0.0, 0.0), point(100.0, 0.0), point(100.0, 10.0), point(0.0, 10.0)];
 
-        assert_eq!(added(2), added(1));
-        assert!(added(3) > added(2));
-        assert_eq!(added(4), added(3));
+        assert_eq!(jogs(&step(10.0)), 1);
+        assert_eq!(jogs(&step(20.0)), 1);
+        assert_eq!(jogs(&back), 0);
     }
 
     /// Given two routes, one turning at a point that lies on the other

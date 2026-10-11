@@ -6,6 +6,7 @@ expression: "support :: quality_of(& result.report)"
   "bends": 14,
   "detachedLabels": 0,
   "diagonalSegments": 0,
+  "lateBends": 4,
   "parallelDensity": 16.93,
   "remainingIssues": 0
 }

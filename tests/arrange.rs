@@ -314,11 +314,15 @@ fn arranges_the_storefront_architecture_without_denting_a_row() {
             .connectors
             .iter()
             .map(|connector| {
-                let points = &connector.points;
-                (1..points.len().saturating_sub(2))
-                    .filter(|index| {
-                        let (a, b) = (points[*index], points[index + 1]);
-                        (a.x - b.x).abs() + (a.y - b.y).abs() < 20.0
+                // A short step between two runs heading the same way.
+                connector
+                    .points
+                    .windows(4)
+                    .filter(|run| {
+                        let same_way = (run[1].x - run[0].x) * (run[3].x - run[2].x)
+                            + (run[1].y - run[0].y) * (run[3].y - run[2].y)
+                            > 0.0;
+                        same_way && (run[1].x - run[2].x).abs() + (run[1].y - run[2].y).abs() <= 20.0
                     })
                     .count()
             })
@@ -518,7 +522,8 @@ fn arranges_a_c4_container_diagram_without_issues_or_dents() {
 ///   stores beside the processes, and flows skipping several processes
 /// When the diagram is arranged
 /// Then nothing is reported, the layout is kept, no connector steps aside
-///   just before reaching a node, the two shortcuts leaving "take
+///   just before reaching a node or anywhere else, none arrives with a
+///   last segment shorter than 20px, the two shortcuts leaving "take
 ///   application" side by side do not cross, neither do the two
 ///   connectors entering "make offer" side by side from above, and no two
 ///   connectors come so close that they read as touching
@@ -530,6 +535,8 @@ fn arranges_a_tall_loan_dfd_without_steps_at_the_ends() {
 
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
     assert_eq!(stepped_ends(&result.report), Vec::<String>::new());
+    assert_eq!(jogged(&result.report), Vec::<String>::new());
+    assert_eq!(short_arrivals(&result.report), Vec::<String>::new());
     assert_eq!(near_misses(&result.report), Vec::<(String, String)>::new());
     // f26 runs to "make offer" and f27 to "notify", both past every
     // process in between.
@@ -546,6 +553,42 @@ fn arranges_a_tall_loan_dfd_without_steps_at_the_ends() {
     assert_layout_kept(svg, &result);
 
     assert_fix_snapshots!(result);
+}
+
+/// Connectors whose route steps aside anywhere: a step of 20px or less
+///   between two runs heading the same way.
+fn jogged(report: &AnalysisReport) -> Vec<String> {
+    report
+        .diagram
+        .connectors
+        .iter()
+        .filter(|connector| {
+            connector.points.windows(4).any(|run| {
+                let same_way =
+                    (run[1].x - run[0].x) * (run[3].x - run[2].x) + (run[1].y - run[0].y) * (run[3].y - run[2].y) > 0.0;
+                same_way && (run[1].x - run[2].x).abs() + (run[1].y - run[2].y).abs() <= 20.0
+            })
+        })
+        .map(|connector| connector.id.clone())
+        .collect()
+}
+
+/// Bent connectors whose last segment, into the node they arrive at, is
+///   shorter than 20px.
+fn short_arrivals(report: &AnalysisReport) -> Vec<String> {
+    report
+        .diagram
+        .connectors
+        .iter()
+        .filter(|connector| {
+            let points = &connector.points;
+            points.len() > 2 && {
+                let (a, b) = (points[points.len() - 2], points[points.len() - 1]);
+                (a.x - b.x).abs() + (a.y - b.y).abs() < 20.0
+            }
+        })
+        .map(|connector| connector.id.clone())
+        .collect()
 }
 
 /// Connectors whose route steps aside just before an end: a turn, a step

@@ -32,10 +32,18 @@ pub const LANE_SPACING: f64 = 10.0;
 /// Grid lines this close or closer add vertices without giving a route any
 /// real choice, so they are merged or left out.
 const LINE_MERGE: f64 = 4.0;
-/// Running beside another connector costs this much extra per unit of
-/// length: a lot within a lane of it, a little within two lanes.
-const CLOSE_RUN_COST: f64 = 2.0;
-const NEAR_RUN_COST: f64 = 0.2;
+/// Running alongside another connector closer than a lane costs this
+/// much, once however long the two run together: closely packed lines read
+/// as one band. Half as much 12px apart and nothing from 16px, where the
+/// lines already read as two.
+const CLOSE_RUN: Fade = Fade {
+    start: 8.0,
+    reach: 16.0,
+    full: 120.0,
+};
+/// Two segments overlapping less than this side by side only brush past
+/// each other, and cost that much less.
+const CLOSE_RUN_OVERLAP: f64 = 20.0;
 /// Crossing another connector costs as much as a detour of 300px: a route
 /// goes the long way round rather than cross when it can.
 const CROSSING_PENALTY: f64 = 300.0;
@@ -48,6 +56,17 @@ pub const CLEARANCE: f64 = 8.0;
 /// leaves the last bend under it; shorter stubs are the fallbacks when
 /// another node is in the way.
 pub const END_STUBS: [f64; 3] = [24.0, 16.0, CLEARANCE];
+/// An end segment shorter than this, or a crossing nearer the node than
+/// this, makes it hard to see the connector arrive.
+pub(crate) const SHORT_END: f64 = 20.0;
+/// What a route searched or a diagram arranged pays for an end segment
+/// that short: in full up to the shorter stub, half at a short end, nothing
+/// from the full stub on.
+pub(crate) const SHORT_END_FADE: Fade = Fade {
+    start: 16.0,
+    reach: 24.0,
+    full: 300.0,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Side {
@@ -181,14 +200,18 @@ fn stub_terminal(port: Point, bounds: &Bounds, length: f64, cost: f64) -> Termin
 }
 
 /// Ends at each stub length whose straight run to the port stays clear of
-/// the obstacles; every pixel of stub given up costs a pixel of route.
+/// the obstacles; every pixel of stub given up costs a pixel of route, and
+/// a stub too short to see the arrival costs a short end on top.
 fn end_terminals(port: Point, target: &Bounds, obstacles: &[Bounds]) -> Vec<Terminal> {
     END_STUBS
         .iter()
         .filter(|length| {
             **length == CLEARANCE || route_is_clear(&[port, outward(port, side_of(port, target), **length)], obstacles)
         })
-        .map(|length| stub_terminal(port, target, *length, END_STUBS[0] - length))
+        .map(|length| {
+            let short = SHORT_END_FADE.tuned("END").cost(*length);
+            stub_terminal(port, target, *length, END_STUBS[0] - length + short)
+        })
         .collect()
 }
 
@@ -368,23 +391,15 @@ pub fn search(
     drop(phase);
     let phase = tracing::info_span!("search_near_runs").entered();
     // Grid edges running parallel to another connector's segment, closer
-    // than two lanes, cost extra: closely packed lines read as one band.
+    // than two lanes, run alongside it: a route pays for that once, as it
+    // starts running alongside.
     let mut near_horizontal = vec![0.0f64; cells];
     let mut near_vertical = vec![0.0f64; cells];
-    let near_cost = |distance: f64| {
-        if distance <= 0.0 || distance >= 2.0 * LANE_SPACING {
-            0.0
-        } else if distance < LANE_SPACING {
-            CLOSE_RUN_COST
-        } else {
-            NEAR_RUN_COST
-        }
-    };
     for (from, to) in &occupied_segments {
         if from.y == to.y {
             let (first, last) = steps_covering(&xs, from.x, to.x);
             for (yi, y) in ys.iter().enumerate() {
-                let extra = near_cost((y - from.y).abs());
+                let extra = close_run_cost((y - from.y).abs());
                 for xi in (first as isize..=last).filter(|_| extra > 0.0) {
                     let index = key(xi as usize, yi);
                     near_horizontal[index] = near_horizontal[index].max(extra);
@@ -393,7 +408,7 @@ pub fn search(
         } else if from.x == to.x {
             let (first, last) = steps_covering(&ys, from.y, to.y);
             for (xi, x) in xs.iter().enumerate() {
-                let extra = near_cost((x - from.x).abs());
+                let extra = close_run_cost((x - from.x).abs());
                 for yi in (first as isize..=last).filter(|_| extra > 0.0) {
                     let index = key(xi, yi as usize);
                     near_vertical[index] = near_vertical[index].max(extra);
@@ -708,8 +723,25 @@ pub fn search(
             } else {
                 past_turn_horizontal[edge]
             };
+            // Running alongside another connector is paid once, on the step
+            // that starts it (or brings the route closer), not again on each
+            // step that keeps it going straight on.
+            let near_before = if turns == 0 {
+                previous[state].map_or(0.0, |before| {
+                    let before = cell_of_state(before);
+                    let edge = key(xi.min(before % width), yi.min(before / width));
+                    if vertical == 1 {
+                        near_vertical[edge]
+                    } else {
+                        near_horizontal[edge]
+                    }
+                })
+            } else {
+                0.0
+            };
             let next_cost = cost
-                + length * (if outline[edge] { 1.01 } else { 1.0 } + near)
+                + length * if outline[edge] { 1.01 } else { 1.0 }
+                + (near - near_before).max(0.0)
                 + bend
                 + if crossing { CROSSING_PENALTY } else { 0.0 }
                 + if beside || past { NEAR_MISS_PENALTY } else { 0.0 };
@@ -868,6 +900,109 @@ fn fewest_turns(here: Point, axis: usize, terminal: &Terminal) -> usize {
         + (terminal.point.y - here.y) * (terminal.port.y - terminal.point.y)
         >= 0.0;
     if on_line && towards_port { 0 } else { 2 }
+}
+
+/// A cost for something too short or too close, so a pixel either side of
+/// a threshold never swings it: `full` up to `start`, nothing from `reach`
+/// on, and in between a reversed smootherstep, flat where it leaves the
+/// full cost and where it reaches nothing.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Fade {
+    pub start: f64,
+    pub reach: f64,
+    pub full: f64,
+}
+
+impl Fade {
+    pub(crate) fn tuned(self, name: &str) -> Fade {
+        let get = |key: &str, default: f64| {
+            std::env::var(format!("{name}_{key}"))
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
+        };
+        Fade {
+            start: get("START", self.start),
+            reach: get("REACH", self.reach),
+            full: get("FULL", self.full),
+        }
+    }
+    pub(crate) fn cost(self, length: f64) -> f64 {
+        let t = ((length - self.start) / (self.reach - self.start)).clamp(0.0, 1.0);
+        self.full * (1.0 - t * t * t * (t * (6.0 * t - 15.0) + 10.0))
+    }
+}
+
+/// What running alongside another connector `distance` away costs. Running
+/// on it is an overlap, ruled out elsewhere.
+fn close_run_cost(distance: f64) -> f64 {
+    if distance <= 0.0 { 0.0 } else { CLOSE_RUN.cost(distance) }
+}
+
+/// What a drawn route costs on its own, priced as the search prices it:
+/// its length and its bends.
+pub(crate) fn route_cost(route: &[Point]) -> f64 {
+    let route = without_redundant_points(route);
+    let length: f64 = segments(&route)
+        .iter()
+        .map(|(a, b)| (a.x - b.x).abs() + (a.y - b.y).abs())
+        .sum();
+    let bends = route.len().saturating_sub(2);
+    length + (0..bends).map(|turned| turn_cost(turned, BEND_PENALTY)).sum::<f64>()
+}
+
+/// What two drawn routes cost each other, priced as the search prices a
+/// route against those already drawn: each crossing, each stretch running
+/// alongside within two lanes, and each turn just beside the other route.
+pub(crate) fn routes_cost(first: &[Point], second: &[Point]) -> f64 {
+    let (first_segments, second_segments) = (segments(first), segments(second));
+    let mut cost = 0.0;
+    for (a, b) in &first_segments {
+        for (c, d) in &second_segments {
+            if chords_cross(*a, *b, *c, *d) {
+                cost += CROSSING_PENALTY;
+            }
+            let (distance, (low, high), (other_low, other_high)) = if a.y == b.y && c.y == d.y {
+                (
+                    (a.y - c.y).abs(),
+                    (a.x.min(b.x), a.x.max(b.x)),
+                    (c.x.min(d.x), c.x.max(d.x)),
+                )
+            } else if a.x == b.x && c.x == d.x {
+                (
+                    (a.x - c.x).abs(),
+                    (a.y.min(b.y), a.y.max(b.y)),
+                    (c.y.min(d.y), c.y.max(d.y)),
+                )
+            } else {
+                continue;
+            };
+            let overlap = high.min(other_high) - low.max(other_low);
+            if overlap > 0.0 {
+                let brushing = Fade {
+                    start: 0.0,
+                    reach: CLOSE_RUN_OVERLAP,
+                    full: 1.0,
+                };
+                cost += close_run_cost(distance) * (1.0 - brushing.cost(overlap));
+            }
+        }
+    }
+    let turns_beside = |route: &[Point], others: &[(Point, Point)]| {
+        route[1..route.len().saturating_sub(1).max(1)]
+            .iter()
+            .filter(|corner| {
+                others
+                    .iter()
+                    .any(|(a, b)| distance_to_segment(**corner, *a, *b) < crate::inspect::NEAR_MISS_DISTANCE)
+            })
+            .count()
+    };
+    if first.len() >= 2 && second.len() >= 2 {
+        cost +=
+            (turns_beside(first, &second_segments) + turns_beside(second, &first_segments)) as f64 * NEAR_MISS_PENALTY;
+    }
+    cost
 }
 
 /// The cost of a route's next turn after it has turned `turned` times.
@@ -1657,6 +1792,110 @@ mod tests {
         assert!(lines.contains(&50.0));
         assert!(!lines.contains(&240.0), "{lines:?}");
         assert!(lines.contains(&270.0));
+    }
+
+    /// Given a cost that is full up to 10px and reaches nothing at 30px
+    /// When it is taken at lengths from 0 to past its reach
+    /// Then it stays full up to 10px, is half at 20px, falls without a jump
+    ///   or a kink (flat as it leaves the full cost and as it reaches
+    ///   nothing), and is nothing from 30px on
+    #[test]
+    fn fades_a_cost_smoothly_to_nothing_at_its_reach() {
+        let fade = Fade {
+            start: 10.0,
+            reach: 30.0,
+            full: 300.0,
+        };
+
+        assert_eq!(fade.cost(0.0), 300.0);
+        assert_eq!(fade.cost(10.0), 300.0);
+        assert!((fade.cost(20.0) - 150.0).abs() < 1e-9);
+        assert_eq!(fade.cost(30.0), 0.0);
+        assert_eq!(fade.cost(45.0), 0.0);
+        assert!(300.0 - fade.cost(10.1) < 0.01);
+        assert!(fade.cost(29.9) < 0.01);
+        assert!((11..=30).all(|length| fade.cost(f64::from(length)) < fade.cost(f64::from(length - 1))));
+    }
+
+    /// Given a port on a box's left side with room for every stub
+    /// When the ends a route may arrive at are offered
+    /// Then every stub shorter than a short end costs, on top of the length
+    ///   it gives up, what arranging charges for an end that short
+    #[test]
+    fn costs_a_stub_too_short_to_see_the_arrival_like_arranging_does() {
+        let target = Bounds {
+            x: 100.0,
+            y: 0.0,
+            width: 100.0,
+            height: 60.0,
+        };
+        let ends = end_terminals(point(100.0, 30.0), &target, &[]);
+
+        for end in &ends {
+            let length = 100.0 - end.point.x;
+            let expected = END_STUBS[0] - length + SHORT_END_FADE.cost(length);
+            assert!((end.cost - expected).abs() < 1e-9, "{end:?}");
+        }
+        assert!(
+            ends.iter()
+                .any(|end| 100.0 - end.point.x < SHORT_END_FADE.start && end.cost > 100.0)
+        );
+    }
+
+    /// Given routes with no bend up to four bends, all 300px long
+    /// When each is costed on its own
+    /// Then it costs its length plus its bends, each from the third on
+    ///   costing more than the first two, as the search prices them
+    #[test]
+    fn costs_a_drawn_route_by_its_length_and_bends() {
+        let straight = [point(0.0, 0.0), point(300.0, 0.0)];
+        let one_bend = [point(0.0, 0.0), point(200.0, 0.0), point(200.0, 100.0)];
+        let stairs = [
+            point(0.0, 0.0),
+            point(60.0, 0.0),
+            point(60.0, 60.0),
+            point(120.0, 60.0),
+            point(120.0, 120.0),
+            point(180.0, 120.0),
+        ];
+
+        assert_eq!(route_cost(&straight), 300.0);
+        assert_eq!(route_cost(&one_bend), 300.0 + BEND_PENALTY);
+        assert_eq!(
+            route_cost(&stairs),
+            300.0 + 2.0 * BEND_PENALTY + 2.0 * BEND_PENALTY * LATE_TURN_FACTOR
+        );
+    }
+
+    /// Given a pair of routes crossing once, pairs running alongside 5px
+    ///   apart for 100px and for 400px, a pair alongside for only 5px, a
+    ///   pair alongside 14px apart, a pair where one turns 3px beside the
+    ///   other, and a pair far apart
+    /// When each pair is costed
+    /// Then a crossing and a turn beside cost what the search charges for
+    ///   them, running alongside costs the same however long it lasts, less
+    ///   for a mere touch of overlap and less further apart, and the pair far
+    ///   apart costs nothing
+    #[test]
+    fn costs_two_drawn_routes_as_the_search_prices_them() {
+        let across = [point(50.0, -50.0), point(50.0, 50.0)];
+        let along = [point(0.0, 0.0), point(100.0, 0.0)];
+        let beside = [point(0.0, 5.0), point(100.0, 5.0)];
+        let long_along = [point(0.0, 0.0), point(400.0, 0.0)];
+        let long_beside = [point(0.0, 5.0), point(400.0, 5.0)];
+        let touching = [point(95.0, 5.0), point(200.0, 5.0)];
+        let wider = [point(0.0, 14.0), point(100.0, 14.0)];
+        let turning = [point(30.0, 30.0), point(30.0, 3.0), point(90.0, 3.0)];
+        let far = [point(0.0, 200.0), point(100.0, 200.0)];
+
+        assert_eq!(routes_cost(&along, &across), CROSSING_PENALTY);
+        assert_eq!(routes_cost(&along, &beside), CLOSE_RUN.full);
+        assert_eq!(routes_cost(&long_along, &long_beside), CLOSE_RUN.full);
+        assert!(routes_cost(&along, &touching) > 0.0 && routes_cost(&along, &touching) < CLOSE_RUN.full / 2.0);
+        assert!(routes_cost(&along, &wider) > 0.0 && routes_cost(&along, &wider) < CLOSE_RUN.full / 2.0);
+        assert!(routes_cost(&along, &turning) >= NEAR_MISS_PENALTY);
+        assert_eq!(routes_cost(&along, &far), 0.0);
+        assert_eq!(routes_cost(&across, &along), routes_cost(&along, &across));
     }
 
     #[test]
