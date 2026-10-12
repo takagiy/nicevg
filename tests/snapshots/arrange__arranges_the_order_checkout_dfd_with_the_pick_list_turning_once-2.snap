@@ -43,7 +43,7 @@ expression: result.svg.as_str()
     <rect x="1180" y="400" width="120" height="52" rx="6"/>
     <text x="1240" y="431" text-anchor="middle" font-size="13">Carrier</text>
   </g>
-  <g data-node="mail" class="entity" transform="translate(0 24)">
+  <g data-node="mail" class="entity" transform="translate(0 42)">
     <rect x="1180" y="560" width="130" height="52" rx="6"/>
     <text x="1245" y="591" text-anchor="middle" font-size="13">Email service</text>
   </g>

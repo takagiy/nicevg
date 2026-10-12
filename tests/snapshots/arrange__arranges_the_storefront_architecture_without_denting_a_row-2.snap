@@ -1,5 +1,6 @@
 ---
 source: tests/arrange.rs
+assertion_line: 383
 expression: result.svg.as_str()
 ---
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1470 700" width="1470" height="700">
@@ -30,7 +31,7 @@ expression: result.svg.as_str()
   <rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
   <text data-label="title" class="title" x="24" y="40" font-size="20">Storefront platform — system architecture</text>
   <text data-label="caption" class="caption" x="24" y="62" font-size="12">Clients, edge, services on Kubernetes, managed data stores and external providers</text>
-  <g data-node="customer" class="actor" transform="translate(0 -24)">
+  <g data-node="customer" class="actor" transform="translate(0 -36)">
     <circle cx="70" cy="170" r="44"/>
     <text x="70" y="175" text-anchor="middle" font-size="13">Customer</text>
   </g>
@@ -42,7 +43,7 @@ expression: result.svg.as_str()
     <rect x="148.5" y="110" width="131" height="48" rx="6"/>
     <text x="214" y="139" text-anchor="middle" font-size="13">Web storefront</text>
   </g>
-  <g data-node="mobile" class="client" transform="translate(0 40)">
+  <g data-node="mobile" class="client" transform="translate(0 50)">
     <rect x="150" y="220" width="128" height="48" rx="6"/>
     <text x="214" y="249" text-anchor="middle" font-size="13">Mobile app</text>
   </g>
@@ -122,11 +123,11 @@ expression: result.svg.as_str()
     <rect x="1290" y="430" width="140" height="48" rx="6"/>
     <text x="1360" y="459" text-anchor="middle" font-size="13">Email delivery</text>
   </g>
-  <path id="f1" class="flow" data-from="customer" data-to="web" fill="none" d="M 114 146 L 148.5 146"/>
-  <path id="f2" class="flow" data-from="customer" data-to="mobile" fill="none" d="M 70 190 L 70 284 L 150 284"/>
+  <path id="f1" class="flow" data-from="customer" data-to="web" fill="none" d="M 114 134 L 148.5 134"/>
+  <path id="f2" class="flow" data-from="customer" data-to="mobile" fill="none" d="M 70 178 L 70 294 L 150 294"/>
   <path id="f3" class="flow" data-from="staff" data-to="admin" fill="none" d="M 118 400 L 150 400"/>
   <path id="f4" class="flow" data-from="web" data-to="cdn" fill="none" d="M 279.5 134 L 340 134"/>
-  <path id="f5" class="flow" data-from="mobile" data-to="gateway" fill="none" d="M 278 284 L 340 284"/>
+  <path id="f5" class="flow" data-from="mobile" data-to="gateway" fill="none" d="M 278 294 L 340 294"/>
   <path id="f6" class="flow" data-from="cdn" data-to="gateway" fill="none" d="M 372 158 L 372 270"/>
   <path id="f7" class="flow" data-from="admin" data-to="gateway" fill="none" d="M 278 400 L 404 400 L 404 318"/>
   <path id="f8" class="flow" data-from="gateway" data-to="auth" fill="none" d="M 468 286 L 496 286 L 496 154 L 580 154"/>
@@ -135,7 +136,7 @@ expression: result.svg.as_str()
   <path id="f11" class="flow" data-from="gateway" data-to="order" fill="none" d="M 468 302 L 632 302"/>
   <path id="f12" class="flow" data-from="auth" data-to="idp" fill="none" d="M 644 130 L 644 106 L 1360 106 L 1360 130"/>
   <path id="f13" class="flow" data-from="catalog" data-to="search" fill="none" d="M 933.5 154 L 970 154 L 970 600"/>
-  <path id="f14" class="flow" data-from="catalog" data-to="postgres" fill="none" d="M 887 178 L 887 241 L 556 241 L 556 624 L 580 624"/>
+  <path id="f14" class="flow" data-from="catalog" data-to="postgres" fill="none" d="M 887 178 L 887 237 L 612 237 L 612 600"/>
   <path id="f15" class="flow" data-from="cart" data-to="redis" fill="none" d="M 1148 154 L 1204 154 L 1204 624 L 1180 624"/>
   <path id="f16" class="flow" data-from="order" data-to="postgres" fill="none" d="M 675 338 L 675 600"/>
   <path id="f17" class="flow" data-from="order" data-to="payment" fill="none" d="M 760 314 L 794.5 314"/>
@@ -146,13 +147,13 @@ expression: result.svg.as_str()
   <path id="f22" class="flow" data-from="kafka" data-to="notify" fill="none" d="M 815 600 L 815 478"/>
   <path id="f23" class="flow" data-from="notify" data-to="mail" fill="none" d="M 949 454 L 1290 454"/>
   <text data-label="f4-label" data-label-for="f4" class="flow-label" x="310" y="123" text-anchor="middle" font-size="11">HTTPS</text>
-  <text data-label="f5-label" data-label-for="f5" class="flow-label" x="309" y="273" text-anchor="middle" font-size="11">HTTPS</text>
+  <text data-label="f5-label" data-label-for="f5" class="flow-label" x="309" y="283" text-anchor="middle" font-size="11">HTTPS</text>
   <text data-label="f6-label" data-label-for="f6" class="flow-label" x="363" y="219" text-anchor="end" font-size="11">API calls</text>
   <text data-label="f7-label" data-label-for="f7" class="flow-label" x="341" y="389" text-anchor="middle" font-size="11">HTTPS</text>
   <text data-label="f8-label" data-label-for="f8" class="flow-label" x="487" y="179" text-anchor="end" font-size="11">token check</text>
   <text data-label="f9-label" data-label-for="f9" class="flow-label" x="732" y="191" text-anchor="middle" font-size="11">REST</text>
   <text data-label="f10-label" data-label-for="f10" class="flow-label" x="1019" y="207" text-anchor="middle" font-size="11">REST</text>
-  <text data-label="f11-label" data-label-for="f11" class="flow-label" x="599" y="291" text-anchor="middle" font-size="11">REST</text>
+  <text data-label="f11-label" data-label-for="f11" class="flow-label" x="558" y="291" text-anchor="middle" font-size="11">REST</text>
   <text data-label="f12-label" data-label-for="f12" class="flow-label" x="1002" y="95" text-anchor="middle" font-size="11">OIDC</text>
   <text data-label="f13-label" data-label-for="f13" class="flow-label" x="961" y="538" text-anchor="end" font-size="11">queries</text>
   <text data-label="f15-label" data-label-for="f15" class="flow-label" x="1213" y="535" text-anchor="start" font-size="11">sessions</text>

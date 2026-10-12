@@ -16,10 +16,10 @@ use crate::diagram::{
 use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, route_is_clear, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
-    CLEARANCE, CLOSE_RUN, CROSSING_PENALTY, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Pushable, Side,
-    Sides, choose_sides, connector_ports, crossings, end_on_shapes, is_on_outline, label_landmarks, overlap,
-    place_label, place_label_clear, route_connector, route_cost, routes_cost, runs_across, side_of, spread_ports,
-    turns,
+    CLEARANCE, CLOSE_RUN, CROSSING_PENALTY, END_STUBS, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports,
+    Pushable, Side, Sides, choose_sides, connector_ports, crossings, end_on_shapes, is_on_outline, label_landmarks,
+    overlap, place_label, place_label_clear, route_connector, route_cost, routes_cost, runs_across, side_of,
+    spread_ports, turns,
 };
 use crate::text::{label_text_index, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
@@ -1371,9 +1371,9 @@ fn improve_ports(
             Ports { end: p, ..ports }
         }
     };
-    // Whether an end can take the coordinate `value` along its side: away
-    // from the side's corners and a lane from every other port there.
-    // The stretch of a side its ports may take: away from the side's corners.
+    // The stretch of a side a port may move to: its middle half, as a port
+    // near a corner looks pushed aside, and one near a circle's tangent
+    // would meet it at a glancing angle.
     let usable = |index: usize, end: usize, side: Side| {
         let node = node_at(index, end);
         let (low, length) = if matches!(side, Side::Left | Side::Right) {
@@ -1381,13 +1381,13 @@ fn improve_ports(
         } else {
             (node.bounds.x, node.bounds.width)
         };
-        // A port near a circle's tangent would meet it at a glancing angle.
-        let margin = if node.shape.is_some() { length / 4.0 } else { 8.0 };
+        let margin = (length / 4.0).max(8.0);
         (low + margin, low + length - margin)
     };
-    let free = |ports: &[Ports], index: usize, end: usize, value: f64| {
+    // Whether an end can take the coordinate `value` along `side`: within
+    // its usable stretch and a lane from every other port there.
+    let free = |ports: &[Ports], index: usize, end: usize, side: Side, value: f64| {
         let node = node_at(index, end);
-        let side = side_of(port_at(&ports[index], end), &node.bounds);
         let along_y = matches!(side, Side::Left | Side::Right);
         let (low, high) = usable(index, end, side);
         let mut taken = fixed
@@ -1442,7 +1442,7 @@ fn improve_ports(
                 p.x
             }
         };
-        if facing && along(far) == along(old) && free(ports, index, opposite, along(new)) {
+        if facing && along(far) == along(old) && free(ports, index, opposite, far_side, along(new)) {
             with_port(moved, opposite, moved_to(far, far_side, along(new)))
         } else {
             moved
@@ -1468,14 +1468,18 @@ fn improve_ports(
             attempt((ports, routes), &changed)
         });
     let ends: Vec<(usize, usize)> = (0..reroutes.len()).flat_map(|index| [(index, 0), (index, 1)]).collect();
-    let (_, slid) = ends.into_iter().fold(traded, |(ports, routes), (index, end)| {
-        let port = port_at(&ports[index], end);
-        let side = side_of(port, &node_at(index, end).bounds);
-        let route: Vec<Point> = if end == 0 {
+    // A route with the end at `end` last.
+    let toward = |routes: &[Vec<Point>], index: usize, end: usize| -> Vec<Point> {
+        if end == 0 {
             routes[index].iter().rev().copied().collect()
         } else {
             routes[index].clone()
-        };
+        }
+    };
+    let slid = ends.iter().fold(traded, |(ports, routes), &(index, end)| {
+        let port = port_at(&ports[index], end);
+        let side = side_of(port, &node_at(index, end).bounds);
+        let route = toward(&routes, index, end);
         let Some(line) = stepped_end(&route) else {
             return (ports, routes);
         };
@@ -1484,13 +1488,56 @@ fn improve_ports(
         // may then run straight in.
         let (low, high) = usable(index, end, side);
         let line = line.clamp(low, high);
-        if moved_to(port, side, line) == port || !free(&ports, index, end, line) {
+        if moved_to(port, side, line) == port || !free(&ports, index, end, side, line) {
             return (ports, routes);
         }
         let changed = [(index, with_port(ports[index], end, moved_to(port, side, line)))];
         attempt((ports, routes), &changed)
     });
-    slid
+    // An end that turns onto a short last segment just before its node
+    // moves to the side the route was heading into, where the route may run
+    // straight in.
+    let (_, turned) = ends.iter().fold(slid, |(ports, routes), &(index, end)| {
+        let Some((side, line)) = turned_end(&toward(&routes, index, end)) else {
+            return (ports, routes);
+        };
+        let bounds = node_at(index, end).bounds;
+        let (low, high) = usable(index, end, side);
+        let line = line.clamp(low, high);
+        if side == side_of(port_at(&ports[index], end), &bounds) || !free(&ports, index, end, side, line) {
+            return (ports, routes);
+        }
+        let port = match side {
+            Side::Left => point(bounds.x, line),
+            Side::Right => point(bounds.right(), line),
+            Side::Top => point(line, bounds.y),
+            Side::Bottom => point(line, bounds.bottom()),
+        };
+        let changed = [(index, with_port(ports[index], end, port))];
+        attempt((ports, routes), &changed)
+    });
+    turned
+}
+
+/// Where a route turns onto a short last segment just before its last
+/// point: the side of the node it would enter by running on along the
+/// segment before the turn, and that segment's coordinate across it.
+fn turned_end(route: &[Point]) -> Option<(Side, f64)> {
+    let n = route.len();
+    if n < 3 {
+        return None;
+    }
+    let (b, c, d) = (route[n - 3], route[n - 2], route[n - 1]);
+    if (d.x - c.x).abs() + (d.y - c.y).abs() > END_STUBS[0] {
+        return None;
+    }
+    if b.y == c.y && c.x == d.x && b.x != c.x {
+        Some((if c.x < b.x { Side::Right } else { Side::Left }, c.y))
+    } else if b.x == c.x && c.y == d.y && b.y != c.y {
+        Some((if c.y < b.y { Side::Bottom } else { Side::Top }, c.x))
+    } else {
+        None
+    }
 }
 
 /// Where a route steps aside just before its last point: its last three

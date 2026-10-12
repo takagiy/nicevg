@@ -4,10 +4,10 @@ assertion_line: 503
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "bends": 24,
+  "bends": 25,
   "detachedLabels": 0,
   "diagonalSegments": 0,
   "lateBends": 2,
-  "parallelDensity": 18.15,
+  "parallelDensity": 18.39,
   "remainingIssues": 0
 }
