@@ -110,17 +110,20 @@ pub fn fix_with_passes(svg: &str, max_passes: usize) -> Result<FixResult, SvgInp
 /// follow them.
 #[tracing::instrument(skip_all, fields(moved = draft.moved_node_ids.len()))]
 pub(crate) fn fix_after_moves(draft: Draft, max_passes: usize) -> Draft {
-    fn refine(best: Draft, remaining: usize) -> Draft {
-        if remaining == 0 || best.report().issues.is_empty() {
-            return best;
-        }
-        let next = fix_once(best.moving(Vec::new()));
-        if next.report().issues.len() >= best.report().issues.len() {
-            return best;
-        }
-        refine(next, remaining - 1)
+    fix_further(fix_once(draft), max_passes.saturating_sub(1))
+}
+
+/// Runs up to `passes` more passes over a fixed draft, keeping each only
+/// while it leaves fewer issues.
+pub(crate) fn fix_further(best: Draft, passes: usize) -> Draft {
+    if passes == 0 || best.report().issues.is_empty() {
+        return best;
     }
-    refine(fix_once(draft), max_passes.saturating_sub(1))
+    let next = fix_once(best.moving(Vec::new()));
+    if next.report().issues.len() >= best.report().issues.len() {
+        return best;
+    }
+    fix_further(next, passes - 1)
 }
 
 #[tracing::instrument(skip_all)]

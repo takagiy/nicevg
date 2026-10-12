@@ -14,13 +14,16 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::diagram::{Diagram, DiagramConnector, DiagramNode, ancestor_ids, holds_end, node_group};
-use crate::fix::{Draft, FixChange, FixResult, fix_after_moves, spread_close_runs};
+use crate::fix::{Draft, FixChange, FixResult, fix_after_moves, fix_further, spread_close_runs};
 use crate::geometry::{
     Bounds, Point, format_number, hypot, intersection, parse_number, point, segment_intersects_interior, segments,
 };
 use crate::route::{Fade, SHORT_END, SHORT_END_FADE, chords_cross, crossings, route_cost, routes_cost, turns};
 use crate::xml::Element;
 use crate::{AnalysisReport, SvgInputError, parse};
+
+/// The passes of fixing each arrangement gets, as `fix` gives a diagram.
+const PASSES: usize = 5;
 
 /// How far a node may end up from where fixing left it, on each axis.
 const MAX_SHIFT: f64 = 60.0;
@@ -84,7 +87,7 @@ const LABEL_CLEARANCE: f64 = 4.0;
 /// bends, crossings and crowded lanes.
 #[tracing::instrument(skip_all)]
 pub fn arrange(svg: &str) -> Result<FixResult, SvgInputError> {
-    let fixed = fix_after_moves(Draft::new(parse(svg)?, Vec::new(), Vec::new()), 5);
+    let fixed = fix_after_moves(Draft::new(parse(svg)?, Vec::new(), Vec::new()), PASSES);
     let context = Context::new(fixed.report().diagram.clone());
     let start = State {
         score: context.score(fixed.report(), &HashMap::new()),
@@ -124,12 +127,26 @@ fn improve(context: &Context, state: State, steps: usize) -> State {
     }
     let candidates = candidates(context, &state);
     tracing::Span::current().record("candidates", candidates.len());
+    let keeps = |next: &State| {
+        next.result.report().issues.len() <= state.result.report().issues.len()
+            && total_jogs(&next.result.report().diagram) <= total_jogs(&state.result.report().diagram)
+    };
+    // Candidates are compared after one pass of fixing; only the best one
+    // gets the passes that follow.
     let best = evaluate_all(context, &state, &candidates)
         .into_iter()
         .flatten()
-        .filter(|next| next.result.report().issues.len() <= state.result.report().issues.len())
-        .filter(|next| total_jogs(&next.result.report().diagram) <= total_jogs(&state.result.report().diagram))
-        .reduce(|best, next| if next.score < best.score { next } else { best });
+        .filter(|next| keeps(next))
+        .reduce(|best, next| if next.score < best.score { next } else { best })
+        .map(|next| {
+            let result = fix_further(next.result, PASSES - 1);
+            State {
+                score: context.score(result.report(), &next.offsets),
+                result,
+                offsets: next.offsets,
+            }
+        })
+        .filter(|next| keeps(next));
     match best {
         Some(next) if next.score < state.score - 1e-9 => improve(context, next, steps - 1),
         _ => state,
@@ -164,9 +181,9 @@ fn evaluate_all(context: &Context, state: &State, candidates: &[(String, Move)])
     })
 }
 
-/// Moves `id` by `step` and fixes the result, rerouting the node's
-/// connectors. A zero step reroutes them in place, as the nodes around
-/// them may have moved since they were last routed.
+/// Moves `id` by `step` and gives the result one pass of fixing, rerouting
+/// the node's connectors. A zero step reroutes them in place, as the nodes
+/// around them may have moved since they were last routed.
 #[tracing::instrument(skip_all)]
 fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<State> {
     let in_place = step.dx == 0.0 && step.dy == 0.0;
@@ -211,7 +228,7 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
     } else {
         Draft::new(document, [state.result.changes.clone(), vec![change]].concat(), ids)
     };
-    let result = fix_after_moves(draft, 5);
+    let result = fix_after_moves(draft, 1);
     Some(State {
         score: context.score(result.report(), &offsets),
         result,
