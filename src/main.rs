@@ -2,12 +2,12 @@ use std::io::{Read, Write};
 use std::process::ExitCode;
 
 use clap::Parser;
-use mimalloc::MiMalloc;
 
 // Arranging allocates a lot on many threads at once, where the system
 // allocator spends much of the time contending for its heap.
+#[cfg(feature = "mimalloc")]
 #[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /// Repair mechanical layout errors in an SVG diagram read from stdin, move
 /// nodes a little so connectors bend, cross and crowd less, and write the
