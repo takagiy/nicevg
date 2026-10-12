@@ -2050,9 +2050,6 @@ fn find_label_spot(
 mod tests {
     use super::*;
 
-    /// Given a route that has turned zero to four times
-    /// When its next turn is costed
-    /// Then a third or later turn costs more than the first two
     /// Given two obstacles whose facing edges lie 4px apart
     /// When the grid lines along that axis are drawn
     /// Then the two edges share one line between them, each obstacle
@@ -2414,6 +2411,13 @@ mod tests {
         assert_eq!(found.path, vec![point(-20.0, 6.0), point(420.0, 6.0)]);
     }
 
+    /// Given an end stub 24px above its port, entered moving down, and a
+    ///   route moving down straight above it, moving down off to its left,
+    ///   moving across off to its left, and moving down past the stub's end
+    /// When the fewest turns left to reach the stub are counted
+    /// Then straight above it needs none, off to the side two moving the same
+    ///   way and one moving across, and past the stub's end two, as it has to
+    ///   come back round to enter from above
     #[test]
     fn counts_the_turns_a_route_cannot_avoid() {
         // A stub ending 24px above a port at (100, 100), arrived at moving down.
@@ -2430,6 +2434,9 @@ mod tests {
         assert_eq!(fewest_turns(point(100.0, 90.0), 1, &terminal), 2);
     }
 
+    /// Given a route that has turned zero to four times
+    /// When its next turn is costed
+    /// Then a third or later turn costs more than the first two
     #[test]
     fn costs_a_route_s_third_and_later_turns_more() {
         assert_eq!(turn_cost(0, BEND_PENALTY), turn_cost(1, BEND_PENALTY));
