@@ -72,10 +72,6 @@ const CROSSING_AT_END: Fade = Fade {
 /// gap between neighbours and to the side's corners; each even gap's worth
 /// of unevenness costs this much.
 const PORT_SPACING_COST: f64 = 80.0;
-/// What each connector end costs for each even gap it lies off the spot an
-/// even spread along its side would give it, so a lone end near a corner
-/// costs too.
-const PORT_OFFSET_COST: f64 = 200.0;
 /// How far connectors keep from nodes they pass.
 const CLEARANCE: f64 = 8.0;
 /// A moved node keeps this far from other nodes, its container's edges and
@@ -636,7 +632,6 @@ impl Context {
             + bent as f64 * BENT_COST
             + jog_cost(&report.diagram)
             + port_unevenness(&report.diagram) * PORT_SPACING_COST
-            + port_offset(&report.diagram) * PORT_OFFSET_COST
             + unclear_ends(connectors)
             + movement * MOVEMENT_COST
             + self.alignment_cost(&report.diagram)
@@ -828,24 +823,6 @@ fn port_unevenness(diagram: &Diagram) -> f64 {
             marks
                 .windows(2)
                 .map(|pair| (pair[1] - pair[0] - even).abs())
-                .sum::<f64>()
-                / even
-        })
-        .sum()
-}
-
-/// How far the connector ends lie off an even spread along their sides,
-/// one end or more: each end against its spot in order, in even gaps.
-fn port_offset(diagram: &Diagram) -> f64 {
-    side_ends(diagram)
-        .into_values()
-        .map(|(low, high, mut positions)| {
-            positions.sort_by(f64::total_cmp);
-            let even = (high - low) / (positions.len() + 1) as f64;
-            positions
-                .iter()
-                .enumerate()
-                .map(|(index, position)| (position - (low + even * (index + 1) as f64)).abs())
                 .sum::<f64>()
                 / even
         })

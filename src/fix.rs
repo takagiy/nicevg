@@ -727,6 +727,8 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
                     target_id: reroute.target.id.clone(),
                     source: reroute.source.bounds,
                     target: reroute.target.bounds,
+                    source_round: reroute.source.shape.is_some(),
+                    target_round: reroute.target.shape.is_some(),
                     sides: *chosen.get(reroute.connector.id.as_str())?,
                 })
             })

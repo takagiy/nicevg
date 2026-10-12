@@ -1417,6 +1417,10 @@ pub struct PortRequest {
     pub target_id: String,
     pub source: Bounds,
     pub target: Bounds,
+    /// Whether each end's node is round: its ports end on the circle, so
+    /// one near a corner of its box is no nearer the edge of the node.
+    pub source_round: bool,
+    pub target_round: bool,
     pub sides: Sides,
 }
 
@@ -1664,10 +1668,10 @@ fn spread_side(ports: HashMap<String, Ports>, key: &str, users: &[SideUser], fix
 }
 
 /// Straightens connectors between facing sides: when one end's coordinate
-/// also fits on the other end's side, away from its corners and at least a
-/// lane away from other ports there, both ends share it.
+/// also fits on the other end's side, in the middle half of a box's side or
+/// away from a circle's corners, and at least a lane away from other ports
+/// there, both ends share it.
 fn align_facing_ports(requests: &[PortRequest], ports: HashMap<String, Ports>) -> HashMap<String, Ports> {
-    let margin = 8.0;
     requests.iter().fold(ports, |mut ports, request| {
         let Some(port) = ports.get(&request.id).copied() else {
             return ports;
@@ -1689,12 +1693,16 @@ fn align_facing_ports(requests: &[PortRequest], ports: HashMap<String, Ports>) -
         if coordinate(port.start) == coordinate(port.end) {
             return ports;
         }
-        let fits = |bounds: &Bounds, value: f64| {
-            if along_y {
-                value >= bounds.y + margin && value <= bounds.bottom() - margin
+        // Within the middle half of a box's side, as a port moved near a
+        // corner looks pushed aside.
+        let fits = |bounds: &Bounds, round: bool, value: f64| {
+            let (low, length) = if along_y {
+                (bounds.y, bounds.height)
             } else {
-                value >= bounds.x + margin && value <= bounds.right() - margin
-            }
+                (bounds.x, bounds.width)
+            };
+            let margin = if round { 8.0 } else { (length / 4.0).max(8.0) };
+            value >= low + margin && value <= low + length - margin
         };
         let taken = |ports: &HashMap<String, Ports>, owner_id: &str, side: Side, value: f64| {
             requests.iter().filter(|other| other.id != request.id).any(|other| {
@@ -1722,7 +1730,9 @@ fn align_facing_ports(requests: &[PortRequest], ports: HashMap<String, Ports>) -
         };
         let moved = |p: Point, value: f64| if along_y { point(p.x, value) } else { point(value, p.y) };
         let (start_value, end_value) = (coordinate(port.start), coordinate(port.end));
-        if fits(&request.target, start_value) && !taken(&ports, &request.target_id, end_side, start_value) {
+        if fits(&request.target, request.target_round, start_value)
+            && !taken(&ports, &request.target_id, end_side, start_value)
+        {
             ports.insert(
                 request.id.clone(),
                 Ports {
@@ -1730,7 +1740,9 @@ fn align_facing_ports(requests: &[PortRequest], ports: HashMap<String, Ports>) -
                     ..port
                 },
             );
-        } else if fits(&request.source, end_value) && !taken(&ports, &request.source_id, start_side, end_value) {
+        } else if fits(&request.source, request.source_round, end_value)
+            && !taken(&ports, &request.source_id, start_side, end_value)
+        {
             ports.insert(
                 request.id.clone(),
                 Ports {

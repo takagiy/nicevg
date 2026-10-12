@@ -1,5 +1,6 @@
 ---
 source: tests/fix.rs
+assertion_line: 676
 expression: result.svg.as_str()
 ---
 
@@ -16,6 +17,6 @@ expression: result.svg.as_str()
           <rect x="240" y="136" width="100" height="56"/>
           <text x="290" y="169" text-anchor="middle" font-size="14">Lower</text>
         </g>
-        <path id="to-upper" data-from="hub" data-to="upper" fill="none" d="M 118 107 L 240 107"/>
+        <path id="to-upper" data-from="hub" data-to="upper" fill="none" d="M 104 88 L 240 88"/>
         <path id="to-lower" data-from="hub" data-to="lower" fill="none" d="M 118 133 L 172 133 L 172 164 L 240 164"/>
       </svg>

@@ -1,5 +1,6 @@
 ---
 source: tests/fix.rs
+assertion_line: 676
 expression: "support :: quality_of(& result.report)"
 ---
 {
@@ -7,6 +8,6 @@ expression: "support :: quality_of(& result.report)"
   "detachedLabels": 0,
   "diagonalSegments": 0,
   "lateBends": 0,
-  "parallelDensity": 1.79,
+  "parallelDensity": 0.67,
   "remainingIssues": 0
 }

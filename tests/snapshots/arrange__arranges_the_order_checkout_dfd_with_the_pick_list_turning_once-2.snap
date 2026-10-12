@@ -43,7 +43,7 @@ expression: result.svg.as_str()
     <rect x="1180" y="400" width="120" height="52" rx="6"/>
     <text x="1240" y="431" text-anchor="middle" font-size="13">Carrier</text>
   </g>
-  <g data-node="mail" class="entity" transform="translate(0 42)">
+  <g data-node="mail" class="entity" transform="translate(0 40)">
     <rect x="1180" y="560" width="130" height="52" rx="6"/>
     <text x="1245" y="591" text-anchor="middle" font-size="13">Email service</text>
   </g>
@@ -63,11 +63,11 @@ expression: result.svg.as_str()
     <circle cx="860" cy="150" r="58"/>
     <text x="860" y="155" text-anchor="middle" font-size="13">4 Authorize</text>
   </g>
-  <g data-node="allocate" class="process">
+  <g data-node="allocate" class="process" transform="translate(0 35)">
     <circle cx="860" cy="430" r="58"/>
     <text x="860" y="435" text-anchor="middle" font-size="13">5 Allocate</text>
   </g>
-  <g data-node="ship" class="process" transform="translate(0 40)">
+  <g data-node="ship" class="process" transform="translate(0 60)">
     <circle cx="1010" cy="300" r="50"/>
     <text x="1010" y="305" text-anchor="middle" font-size="13">6 Ship</text>
   </g>
@@ -83,7 +83,7 @@ expression: result.svg.as_str()
     <rect x="440" y="600" width="120" height="40" rx="6"/>
     <text x="500" y="625" text-anchor="middle" font-size="13">D2 Carts</text>
   </g>
-  <g data-node="orders" class="datastore">
+  <g data-node="orders" class="datastore" transform="translate(-20 -55)">
     <rect x="560" y="520" width="120" height="40" rx="6"/>
     <text x="620" y="545" text-anchor="middle" font-size="13">D3 Orders</text>
   </g>
@@ -91,7 +91,7 @@ expression: result.svg.as_str()
     <rect x="640" y="60" width="130" height="40" rx="6"/>
     <text x="705" y="85" text-anchor="middle" font-size="13">D4 Payments</text>
   </g>
-  <g data-node="stock" class="datastore">
+  <g data-node="stock" class="datastore" transform="translate(0 -35)">
     <rect x="1040" y="500" width="110" height="40" rx="6"/>
     <text x="1095" y="525" text-anchor="middle" font-size="13">D5 Stock</text>
   </g>
@@ -100,21 +100,21 @@ expression: result.svg.as_str()
   <path id="f3" class="flow" data-from="products" data-to="browse" fill="none" d="M 160 627 L 72 627 L 72 111 L 247 111"/>
   <path id="f4" class="flow" data-from="browse" data-to="customer" fill="none" d="M 319 183 L 319 229 L 180 229 L 180 260"/>
   <path id="f5" class="flow" data-from="customer" data-to="cart" fill="none" d="M 160 312 L 160 420 L 237 420"/>
-  <path id="f6" class="flow" data-from="cart" data-to="carts" fill="none" d="M 300 483 L 300 620 L 440 620"/>
-  <path id="f7" class="flow" data-from="carts" data-to="checkout" fill="none" d="M 540 600 L 540 347"/>
+  <path id="f6" class="flow" data-from="cart" data-to="carts" fill="none" d="M 363 420 L 480 420 L 480 600"/>
+  <path id="f7" class="flow" data-from="carts" data-to="checkout" fill="none" d="M 520 600 L 520 335"/>
   <path id="f8" class="flow" data-from="customer" data-to="checkout" fill="none" d="M 220 277 L 501 277"/>
   <path id="f9" class="flow" data-from="checkout" data-to="authorize" fill="none" d="M 617 270 L 841 270 L 841 185"/>
   <path id="f10" class="flow" data-from="authorize" data-to="psp" fill="none" d="M 918 137 L 1180 137"/>
   <path id="f11" class="flow" data-from="psp" data-to="authorize" fill="none" d="M 1180 155 L 912 155"/>
   <path id="f12" class="flow" data-from="authorize" data-to="payments" fill="none" d="M 802 130 L 705 130 L 705 100"/>
   <path id="f13" class="flow" data-from="authorize" data-to="checkout" fill="none" d="M 879 185 L 879 310 L 617 310"/>
-  <path id="f14" class="flow" data-from="checkout" data-to="orders" fill="none" d="M 580 347 L 580 520"/>
-  <path id="f15" class="flow" data-from="orders" data-to="allocate" fill="none" d="M 680 540 L 841 540 L 841 485"/>
-  <path id="f16" class="flow" data-from="allocate" data-to="stock" fill="none" d="M 879 485 L 879 520 L 1040 520"/>
-  <path id="f17" class="flow" data-from="allocate" data-to="ship" fill="none" d="M 860 372 L 860 340 L 960 340"/>
-  <path id="f18" class="flow" data-from="ship" data-to="carrier" fill="none" d="M 1057 323 L 1260 323 L 1260 400"/>
-  <path id="f19" class="flow" data-from="carrier" data-to="ship" fill="none" d="M 1220 400 L 1220 357 L 1057 357"/>
-  <path id="f20" class="flow" data-from="ship" data-to="notify" fill="none" d="M 1010 390 L 1010 592 L 911 592"/>
+  <path id="f14" class="flow" data-from="checkout" data-to="orders" fill="none" d="M 580 347 L 580 465"/>
+  <path id="f15" class="flow" data-from="orders" data-to="allocate" fill="none" d="M 660 485 L 806 485"/>
+  <path id="f16" class="flow" data-from="allocate" data-to="stock" fill="none" d="M 914 485 L 1040 485"/>
+  <path id="f17" class="flow" data-from="allocate" data-to="ship" fill="none" d="M 860 407 L 860 360 L 960 360"/>
+  <path id="f18" class="flow" data-from="ship" data-to="carrier" fill="none" d="M 1057 343 L 1260 343 L 1260 400"/>
+  <path id="f19" class="flow" data-from="carrier" data-to="ship" fill="none" d="M 1220 400 L 1220 377 L 1057 377"/>
+  <path id="f20" class="flow" data-from="ship" data-to="notify" fill="none" d="M 1010 410 L 1010 592 L 911 592"/>
   <path id="f21" class="flow" data-from="notify" data-to="mail" fill="none" d="M 911 628 L 1180 628"/>
   <path id="f22" class="flow" data-from="checkout" data-to="customer" fill="none" d="M 500 295 L 220 295"/>
   <text data-label="f1-label" data-label-for="f1" class="flow-label" x="196" y="199" text-anchor="middle" font-size="11">search terms</text>
@@ -122,21 +122,21 @@ expression: result.svg.as_str()
   <text data-label="f3-label" data-label-for="f3" class="flow-label" x="63" y="374" text-anchor="end" font-size="11">product details</text>
   <text data-label="f4-label" data-label-for="f4" class="flow-label" x="250" y="249" text-anchor="middle" font-size="11">listings</text>
   <text data-label="f5-label" data-label-for="f5" class="flow-label" x="169" y="371" text-anchor="start" font-size="11">items</text>
-  <text data-label="f6-label" data-label-for="f6" class="flow-label" x="309" y="557" text-anchor="start" font-size="11">cart lines</text>
-  <text data-label="f7-label" data-label-for="f7" class="flow-label" x="531" y="479" text-anchor="end" font-size="11">cart</text>
+  <text data-label="f6-label" data-label-for="f6" class="flow-label" x="471" y="515" text-anchor="end" font-size="11">cart lines</text>
+  <text data-label="f7-label" data-label-for="f7" class="flow-label" x="529" y="459" text-anchor="start" font-size="11">cart</text>
   <text data-label="f8-label" data-label-for="f8" class="flow-label" x="361" y="266" text-anchor="middle" font-size="11">address, card token</text>
   <text data-label="f9-label" data-label-for="f9" class="flow-label" x="729" y="259" text-anchor="middle" font-size="11">payment request</text>
   <text data-label="f10-label" data-label-for="f10" class="flow-label" x="1049" y="126" text-anchor="middle" font-size="11">charge</text>
   <text data-label="f11-label" data-label-for="f11" class="flow-label" x="1046" y="175" text-anchor="middle" font-size="11">authorization</text>
   <text data-label="f12-label" data-label-for="f12" class="flow-label" x="696" y="120" text-anchor="end" font-size="11">payment record</text>
   <text data-label="f13-label" data-label-for="f13" class="flow-label" x="748" y="330" text-anchor="middle" font-size="11">approval</text>
-  <text data-label="f14-label" data-label-for="f14" class="flow-label" x="589" y="439" text-anchor="start" font-size="11">order</text>
-  <text data-label="f15-label" data-label-for="f15" class="flow-label" x="761" y="529" text-anchor="middle" font-size="11">confirmed order</text>
-  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="943" y="509" text-anchor="middle" font-size="11">reservation</text>
-  <text data-label="f17-label" data-label-for="f17" class="flow-label" x="910" y="360" text-anchor="middle" font-size="11">pick list</text>
-  <text data-label="f18-label" data-label-for="f18" class="flow-label" x="1159" y="312" text-anchor="middle" font-size="11">shipment</text>
-  <text data-label="f19-label" data-label-for="f19" class="flow-label" x="1139" y="377" text-anchor="middle" font-size="11">tracking number</text>
-  <text data-label="f20-label" data-label-for="f20" class="flow-label" x="1019" y="456" text-anchor="start" font-size="11">dispatch notice</text>
+  <text data-label="f14-label" data-label-for="f14" class="flow-label" x="589" y="399" text-anchor="start" font-size="11">order</text>
+  <text data-label="f15-label" data-label-for="f15" class="flow-label" x="733" y="474" text-anchor="middle" font-size="11">confirmed order</text>
+  <text data-label="f16-label" data-label-for="f16" class="flow-label" x="958" y="474" text-anchor="middle" font-size="11">reservation</text>
+  <text data-label="f17-label" data-label-for="f17" class="flow-label" x="910" y="380" text-anchor="middle" font-size="11">pick list</text>
+  <text data-label="f18-label" data-label-for="f18" class="flow-label" x="1159" y="332" text-anchor="middle" font-size="11">shipment</text>
+  <text data-label="f19-label" data-label-for="f19" class="flow-label" x="1122" y="397" text-anchor="middle" font-size="11">tracking number</text>
+  <text data-label="f20-label" data-label-for="f20" class="flow-label" x="1019" y="542" text-anchor="start" font-size="11">dispatch notice</text>
   <text data-label="f21-label" data-label-for="f21" class="flow-label" x="1046" y="648" text-anchor="middle" font-size="11">email</text>
   <text data-label="f22-label" data-label-for="f22" class="flow-label" x="360" y="315" text-anchor="middle" font-size="11">confirmation</text>
 </svg>
