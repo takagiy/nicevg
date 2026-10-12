@@ -1,7 +1,7 @@
 //! Orthogonal routing: choosing node sides and ports, searching a sparse
 //! grid for the cheapest route, and finding label slots beside routes.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, HashMap};
 
@@ -68,7 +68,7 @@ pub const CLEARANCE: f64 = 8.0;
 /// when it cannot move.
 pub type Pushable<'a> = (Bounds, &'a dyn Fn() -> Option<f64>);
 /// No pushable box on a step.
-const NO_BOX: u32 = u32::MAX;
+const NO_BOX: u16 = u16::MAX;
 /// How far a route runs straight into its target before the last bend,
 /// longest first. An arrowhead is about 10px long, so the clearance alone
 /// leaves the last bend under it; shorter stubs are the fallbacks when
@@ -274,43 +274,37 @@ fn lines_inside(lines: &[f64], low: f64, high: f64) -> std::ops::Range<usize> {
     lines.partition_point(|line| *line <= low)..lines.partition_point(|line| *line < high)
 }
 
-/// A queued state: its priority (cost so far plus estimate), the state and
-/// its cost so far when queued.
-#[derive(PartialEq)]
-struct Entry(f64, usize, f64);
-
-impl Eq for Entry {}
-
-impl Ord for Entry {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.0.total_cmp(&other.0).then(self.1.cmp(&other.1))
-    }
+/// A queued state as one integer, so the queue moves and compares
+/// integers: its priority (cost so far plus estimate) on top, its bits
+/// mapped to order like `f64::total_cmp`, then the state, so of equal
+/// priorities the lowest state comes first, then how many times the state
+/// had been queued, which tells whether a cheaper way to it came later.
+fn entry(priority: f64, state: usize, queued: u16) -> Reverse<u128> {
+    let bits = priority.to_bits();
+    let ordered = if bits >> 63 == 1 { !bits } else { bits | 1 << 63 };
+    Reverse((u128::from(ordered) << 64) | ((state as u128) << 16) | u128::from(queued))
 }
 
-impl PartialOrd for Entry {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+fn entry_state(entry: u128) -> (usize, u16) {
+    (((entry >> 16) as u64 & 0xffff_ffff_ffff) as usize, entry as u16)
 }
 
 /// The cheapest cost found to each search state and the state it was
-/// reached from. Kept between searches on a thread so that a search neither
-/// allocates nor clears it: a state's entry counts only when it is stamped
-/// with the current search.
+/// reached from. Kept between searches on a thread so that a search
+/// neither allocates nor clears all of it: between searches every distance
+/// is infinite, and a search puts back only those it set. Costs and where
+/// each came from sit apart, so checking a cost reads only costs.
 #[derive(Default)]
 struct Visits {
-    search: u32,
-    states: Vec<Visit>,
+    /// The queue of states to look at, kept for its room.
+    queue: BinaryHeap<Reverse<u128>>,
+    distance: Vec<f64>,
+    from: Vec<u32>,
+    queued: Vec<u16>,
+    reached: Vec<u32>,
 }
 
-#[derive(Clone, Copy, Default)]
-struct Visit {
-    search: u32,
-    from: u32,
-    distance: f64,
-}
-
-/// `Visit::from` of a state the search started at.
+/// `Visits::from` of a state the search started at.
 const NO_STATE: u32 = u32::MAX;
 
 thread_local! {
@@ -318,40 +312,106 @@ thread_local! {
 }
 
 impl Visits {
-    /// Forgets the last search and makes room for `states` states.
+    /// Makes room for `states` states.
     fn begin(&mut self, states: usize) {
-        if self.states.len() < states {
-            self.states.resize(states, Visit::default());
-        }
-        self.search = self.search.wrapping_add(1);
-        if self.search == 0 {
-            self.states.fill(Visit::default());
-            self.search = 1;
+        if self.distance.len() < states {
+            self.distance.resize(states, f64::INFINITY);
+            self.from.resize(states, NO_STATE);
+            self.queued.resize(states, 0);
         }
     }
 
-    fn visit(&self, state: usize) -> Option<&Visit> {
-        Some(&self.states[state]).filter(|visit| visit.search == self.search)
+    /// Forgets the search, ready for the next one.
+    fn end(&mut self) {
+        for state in self.reached.drain(..) {
+            self.distance[state as usize] = f64::INFINITY;
+        }
     }
 
     fn distance(&self, state: usize) -> f64 {
-        self.visit(state).map_or(f64::INFINITY, |visit| visit.distance)
+        self.distance[state]
     }
 
     fn previous(&self, state: usize) -> Option<usize> {
-        self.visit(state)
-            .filter(|visit| visit.from != NO_STATE)
-            .map(|visit| visit.from as usize)
+        (self.distance[state] != f64::INFINITY && self.from[state] != NO_STATE).then(|| self.from[state] as usize)
     }
 
-    fn reach(&mut self, state: usize, distance: f64, from: Option<usize>) {
-        self.states[state] = Visit {
-            search: self.search,
-            from: from.map_or(NO_STATE, |from| {
-                u32::try_from(from).expect("fewer search states than u32::MAX")
-            }),
-            distance,
-        };
+    /// Records a cheaper way to `state` and returns how many times it has
+    /// been queued, counting the queuing this way is about to have. The
+    /// count wraps, which is harmless: a search queues a state a handful
+    /// of times, never 65536.
+    fn reach(&mut self, state: usize, distance: f64, from: Option<usize>) -> u16 {
+        let index = u32::try_from(state).expect("fewer search states than u32::MAX");
+        if self.distance[state] == f64::INFINITY {
+            self.reached.push(index);
+        }
+        self.distance[state] = distance;
+        self.from[state] = from.map_or(NO_STATE, |from| {
+            u32::try_from(from).expect("fewer search states than u32::MAX")
+        });
+        self.queued[state] = self.queued[state].wrapping_add(1);
+        self.queued[state]
+    }
+
+    fn queued(&self, state: usize) -> u16 {
+        self.queued[state]
+    }
+}
+
+thread_local! {
+    /// Arrays of grids searched on this thread and dropped, to fill again
+    /// rather than allocate for every search.
+    static SPARE_BOOLS: RefCell<Vec<Vec<bool>>> = const { RefCell::new(Vec::new()) };
+    static SPARE_U16S: RefCell<Vec<Vec<u16>>> = const { RefCell::new(Vec::new()) };
+}
+
+fn bools(len: usize) -> Vec<bool> {
+    let mut spare = SPARE_BOOLS.with_borrow_mut(Vec::pop).unwrap_or_default();
+    spare.clear();
+    spare.resize(len, false);
+    spare
+}
+
+fn u16s(len: usize, value: u16) -> Vec<u16> {
+    let mut spare = SPARE_U16S.with_borrow_mut(Vec::pop).unwrap_or_default();
+    spare.clear();
+    spare.resize(len, value);
+    spare
+}
+
+impl Drop for Grid {
+    fn drop(&mut self) {
+        SPARE_BOOLS.with_borrow_mut(|spare| {
+            for bools in [
+                &mut self.blocked_cell,
+                &mut self.blocked_horizontal,
+                &mut self.blocked_vertical,
+                &mut self.outline_horizontal,
+                &mut self.outline_vertical,
+                &mut self.pushable_cell,
+                &mut self.crossing_horizontal,
+                &mut self.crossing_vertical,
+                &mut self.turn_beside,
+                &mut self.past_turn_horizontal,
+                &mut self.past_turn_vertical,
+            ] {
+                spare.push(std::mem::take(bools));
+            }
+        });
+        SPARE_U16S.with_borrow_mut(|spare| {
+            for u16s in [
+                &mut self.pushable_horizontal,
+                &mut self.pushable_vertical,
+                &mut self.near_horizontal,
+                &mut self.near_vertical,
+                &mut self.row_blocked,
+                &mut self.row_crossing,
+                &mut self.column_blocked,
+                &mut self.column_crossing,
+            ] {
+                spare.push(std::mem::take(u16s));
+            }
+        });
     }
 }
 
@@ -372,11 +432,14 @@ struct Grid {
     /// Points inside a box the route may push aside, such as another
     /// connector's label, and the box each step enters, if any.
     pushable_cell: Vec<bool>,
-    pushable_horizontal: Vec<u32>,
-    pushable_vertical: Vec<u32>,
-    /// What running alongside another connector costs on each step.
-    near_horizontal: Vec<f64>,
-    near_vertical: Vec<f64>,
+    pushable_horizontal: Vec<u16>,
+    pushable_vertical: Vec<u16>,
+    /// What running alongside another connector costs on each step, as an
+    /// index into `near_costs`: a grid has few distinct costs, and small
+    /// indices keep the grid small enough to stay in the cache.
+    near_horizontal: Vec<u16>,
+    near_vertical: Vec<u16>,
+    near_costs: Vec<f64>,
     /// Steps crossing another connector.
     crossing_horizontal: Vec<bool>,
     crossing_vertical: Vec<bool>,
@@ -387,10 +450,22 @@ struct Grid {
     past_turn_vertical: Vec<bool>,
     /// Running counts of blocked and crossing steps, at each point's index:
     /// of the steps before it along its row, and above it in its column.
-    row_blocked: Vec<u32>,
-    row_crossing: Vec<u32>,
-    column_blocked: Vec<u32>,
-    column_crossing: Vec<u32>,
+    row_blocked: Vec<u16>,
+    row_crossing: Vec<u16>,
+    column_blocked: Vec<u16>,
+    column_crossing: Vec<u16>,
+}
+
+/// The index of `cost` in `costs`, added if it is new.
+fn cost_level(costs: &mut Vec<f64>, cost: f64) -> u16 {
+    let level = costs
+        .iter()
+        .position(|known| known.to_bits() == cost.to_bits())
+        .unwrap_or_else(|| {
+            costs.push(cost);
+            costs.len() - 1
+        });
+    u16::try_from(level).expect("fewer distinct costs than u16::MAX")
 }
 
 /// Which lines a grid draws.
@@ -439,10 +514,15 @@ fn grid(
         })
     };
     let clipped: Vec<Bounds> = obstacles.iter().filter_map(clip).collect();
-    let (pushed_boxes, box_indices): (Vec<Bounds>, Vec<u32>) = pushable
+    let (pushed_boxes, box_indices): (Vec<Bounds>, Vec<u16>) = pushable
         .iter()
         .enumerate()
-        .filter_map(|(index, (b, _))| Some((clip(b)?, index as u32)))
+        .filter_map(|(index, (b, _))| {
+            Some((
+                clip(b)?,
+                u16::try_from(index).expect("fewer pushable boxes than u16::MAX"),
+            ))
+        })
         .unzip();
     // Pushable boxes get their own lines like obstacles, after them.
     let all = [clipped.as_slice(), pushed_boxes.as_slice()].concat();
@@ -502,18 +582,18 @@ fn grid(
     let phase = tracing::info_span!("search_obstacles").entered();
     // Grid lines include every obstacle edge, so an edge between neighbouring
     // grid points enters an obstacle exactly when its midpoint is inside it.
-    let mut blocked_cell = vec![false; cells];
-    let mut blocked_horizontal = vec![false; cells];
-    let mut blocked_vertical = vec![false; cells];
+    let mut blocked_cell = bools(cells);
+    let mut blocked_horizontal = bools(cells);
+    let mut blocked_vertical = bools(cells);
     // Edges on an obstacle's clearance outline carry a tiny extra cost that
     // only breaks ties, so equal detours run mid-channel instead of skirting
     // a node.
-    let mut outline_horizontal = vec![false; cells];
-    let mut outline_vertical = vec![false; cells];
+    let mut outline_horizontal = bools(cells);
+    let mut outline_vertical = bools(cells);
     // Points and steps inside a box the route may push aside.
-    let mut pushable_cell = vec![false; cells];
-    let mut pushable_horizontal = vec![NO_BOX; cells];
-    let mut pushable_vertical = vec![NO_BOX; cells];
+    let mut pushable_cell = bools(cells);
+    let mut pushable_horizontal = u16s(cells, NO_BOX);
+    let mut pushable_vertical = u16s(cells, NO_BOX);
     for (bounds, box_index) in pushable.iter().zip(&box_indices) {
         let (Some(left), Some(right), Some(top), Some(bottom)) = (
             index_of(&xs, bounds.x),
@@ -583,8 +663,9 @@ fn grid(
     // Grid edges running parallel to another connector's segment, closer
     // than two lanes, run alongside it: a route pays for that once, as it
     // starts running alongside.
-    let mut near_horizontal = vec![0.0f64; cells];
-    let mut near_vertical = vec![0.0f64; cells];
+    let mut near_horizontal = u16s(cells, 0);
+    let mut near_vertical = u16s(cells, 0);
+    let mut near_costs = vec![0.0f64];
     // Only lines closer than the reach of running alongside cost anything.
     let reach = CLOSE_RUN.reach;
     for (from, to) in &occupied_segments {
@@ -592,18 +673,24 @@ fn grid(
             let steps = steps_covering(&xs, from.x, to.x);
             for yi in lines_inside(&ys, from.y - reach, from.y + reach) {
                 let extra = close_run_cost((ys[yi] - from.y).abs());
+                let level = cost_level(&mut near_costs, extra);
                 for xi in steps.clone() {
                     let index = key(xi, yi);
-                    near_horizontal[index] = near_horizontal[index].max(extra);
+                    if extra > near_costs[usize::from(near_horizontal[index])] {
+                        near_horizontal[index] = level;
+                    }
                 }
             }
         } else if from.x == to.x {
             let steps = steps_covering(&ys, from.y, to.y);
             for xi in lines_inside(&xs, from.x - reach, from.x + reach) {
                 let extra = close_run_cost((xs[xi] - from.x).abs());
+                let level = cost_level(&mut near_costs, extra);
                 for yi in steps.clone() {
                     let index = key(xi, yi);
-                    near_vertical[index] = near_vertical[index].max(extra);
+                    if extra > near_costs[usize::from(near_vertical[index])] {
+                        near_vertical[index] = level;
+                    }
                 }
             }
         }
@@ -614,8 +701,8 @@ fn grid(
     // Grid edges that cross another connector's segment, or reach a point
     // inside it, cost a crossing. An edge ending on the segment counts, the
     // one leaving it does not, so passing straight through counts once.
-    let mut crossing_horizontal = vec![false; cells];
-    let mut crossing_vertical = vec![false; cells];
+    let mut crossing_horizontal = bools(cells);
+    let mut crossing_vertical = bools(cells);
     // The step that reaches a value: the one from the last line below it.
     let step_reaching = |lines: &[f64], value: f64| {
         let next = lines.partition_point(|line| *line < value);
@@ -645,7 +732,7 @@ fn grid(
     let lines_near = |lines: &[f64], low: f64, high: f64| {
         lines.partition_point(|line| *line <= low - reach)..lines.partition_point(|line| *line < high + reach)
     };
-    let mut turn_beside = vec![false; cells];
+    let mut turn_beside = bools(cells);
     for (from, to) in &crossed_segments {
         for yi in lines_near(&ys, from.y.min(to.y), from.y.max(to.y)) {
             for xi in lines_near(&xs, from.x.min(to.x), from.x.max(to.x)) {
@@ -655,8 +742,8 @@ fn grid(
             }
         }
     }
-    let mut past_turn_horizontal = vec![false; cells];
-    let mut past_turn_vertical = vec![false; cells];
+    let mut past_turn_horizontal = bools(cells);
+    let mut past_turn_vertical = bools(cells);
     for corner in occupied
         .iter()
         .flat_map(|route| route.iter().skip(1).take(route.len().saturating_sub(2)))
@@ -684,7 +771,7 @@ fn grid(
     // are laid out like the grid points: the count up to point (xi, yi) is
     // at its index, and a column's counts are summed a whole row at a time.
     let along_rows = |edges: &[bool]| {
-        let mut counts = vec![0u32; cells];
+        let mut counts = u16s(cells, 0);
         // (An empty grid has no rows to sum.)
         for (counts, edges) in counts
             .chunks_exact_mut(width.max(1))
@@ -692,20 +779,20 @@ fn grid(
         {
             let mut sum = 0;
             for (count, edge) in counts[1..].iter_mut().zip(edges) {
-                sum += u32::from(*edge);
+                sum += u16::from(*edge);
                 *count = sum;
             }
         }
         counts
     };
     let down_columns = |edges: &[bool]| {
-        let mut counts = vec![0u32; cells];
+        let mut counts = u16s(cells, 0);
         for yi in 1..rows {
             let (above, row) = counts.split_at_mut(yi * width);
             let above = &above[(yi - 1) * width..];
             let edges = &edges[(yi - 1) * width..yi * width];
             for ((count, above), edge) in row[..width].iter_mut().zip(above).zip(edges) {
-                *count = above + u32::from(*edge);
+                *count = above + u16::from(*edge);
             }
         }
         counts
@@ -730,6 +817,7 @@ fn grid(
         pushable_vertical,
         near_horizontal,
         near_vertical,
+        near_costs,
         crossing_horizontal,
         crossing_vertical,
         turn_beside,
@@ -844,6 +932,7 @@ fn astar(
         pushable_vertical,
         near_horizontal,
         near_vertical,
+        near_costs,
         crossing_horizontal,
         crossing_vertical,
         turn_beside,
@@ -874,7 +963,10 @@ fn astar(
                 key(from.0, from.1.max(to.1)),
             )
         };
-        (blocked[high] - blocked[low], crossing[high] - crossing[low])
+        (
+            u32::from(blocked[high] - blocked[low]),
+            u32::from(crossing[high] - crossing[low]),
+        )
     };
     let end_indices: Vec<Option<(usize, usize)>> = ends
         .iter()
@@ -891,7 +983,7 @@ fn astar(
         .collect();
     // Checked on every step, where a hash lookup would cost more than the
     // step's own arithmetic.
-    let mut is_end = vec![false; cells];
+    let mut is_end = bools(cells);
     for cell in end_cells.keys() {
         is_end[*cell] = true;
     }
@@ -911,14 +1003,12 @@ fn astar(
     // cost, the Manhattan distance and those turns are one. When the fewest
     // turns leave a single way in, the route also pays either for what
     // blocks or crosses that way or for two more turns to leave it.
-    let estimate = |state: usize| {
+    let estimate = |state: usize, xi: usize, yi: usize| {
         // An end reached is paid for in full, its stub and any turn onto it.
-        if is_end[cell_of_state(state)] {
+        if is_end[key(xi, yi)] {
             return 0.0;
         }
-        let cell = cell_of_state(state);
-        let here = point_of(cell);
-        let (xi, yi) = (cell % width, cell / width);
+        let here = point(xs[xi], ys[yi]);
         let (axis, turned) = (axis_of(state), turned_of(state));
         if ends.len() > MAX_ENDS {
             return ends
@@ -926,26 +1016,17 @@ fn astar(
                 .map(|terminal| (terminal.point.x - here.x).abs() + (terminal.point.y - here.y).abs())
                 .fold(f64::INFINITY, f64::min);
         }
-        // The cheap part first; an end whose cheap part already reaches the
-        // best total cannot win, so its way in is not looked at.
-        let mut cheap = [(f64::INFINITY, 0usize, 0usize); MAX_ENDS];
-        for (index, terminal) in ends.iter().enumerate().take(MAX_ENDS) {
+        // The best total over the ends is their least one, whatever order
+        // they come in; an end whose cheap part already reaches the best
+        // total so far cannot lower it, so its way in is not looked at.
+        let mut best = f64::INFINITY;
+        for (index, terminal) in ends.iter().enumerate() {
             let fewest = fewest_turns(here, axis, terminal);
             let turns: f64 = (0..fewest).map(|turn| turn_cost(turned + turn, bend_penalty)).sum();
-            cheap[index] = (
-                terminal.cost + (terminal.point.x - here.x).abs() + (terminal.point.y - here.y).abs() + turns,
-                index,
-                fewest,
-            );
-        }
-        let cheap = &mut cheap[..ends.len().min(MAX_ENDS)];
-        cheap.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
-        let mut best = f64::INFINITY;
-        for &(cost, index, fewest) in cheap.iter() {
+            let cost = terminal.cost + (terminal.point.x - here.x).abs() + (terminal.point.y - here.y).abs() + turns;
             if cost >= best {
-                break;
+                continue;
             }
-            let terminal = &ends[index];
             // With no turn or one to spare, the route has one way in: straight
             // on, or straight to the corner and then straight in. Leaving it,
             // the route turns twice more; keeping to it, it crosses what lies
@@ -988,32 +1069,48 @@ fn astar(
     // this one runs gets a table of its own.
     let mut visits = VISITS.take();
     visits.begin(cells * 2 * levels);
-    let mut queue = BinaryHeap::new();
+    let mut queue = std::mem::take(&mut visits.queue);
+    queue.clear();
     for terminal in starts {
-        let Some(cell) = cell_of(&terminal.point) else { continue };
+        let (Some(xi), Some(yi)) = (index_of(xs, terminal.point.x), index_of(ys, terminal.point.y)) else {
+            continue;
+        };
+        let cell = key(xi, yi);
         let state = state_of(cell, terminal.axis, 0);
         if blocked_cell[cell] || terminal.cost >= visits.distance(state) {
             continue;
         }
-        visits.reach(state, terminal.cost, None);
-        queue.push(Reverse(Entry(terminal.cost + estimate(state), state, terminal.cost)));
+        let queued = visits.reach(state, terminal.cost, None);
+        queue.push(entry(terminal.cost + estimate(state, xi, yi), state, queued));
     }
     let mut reached = None;
     let mut visited = 0usize;
-    while let Some(Reverse(Entry(_, state, reached_at))) = queue.pop() {
+    while let Some(Reverse(queued)) = queue.pop() {
         visited += 1;
-        let cell = cell_of_state(state);
-        let cost = visits.distance(state);
+        let (state, queued) = entry_state(queued);
         // A cheaper way here was found after this entry was queued.
-        if reached_at > cost {
+        if queued != visits.queued(state) {
             continue;
         }
+        let cell = cell_of_state(state);
+        let cost = visits.distance(state);
         if is_end[cell] {
             reached = Some(state);
             break;
         }
-        let here = point_of(cell);
         let (xi, yi) = (cell % width, cell / width);
+        let here = point(xs[xi], ys[yi]);
+        // How close the step that brought the route here ran alongside
+        // another connector.
+        let near_here = visits.previous(state).map_or(0.0, |before| {
+            let before = cell_of_state(before);
+            let edge = key(xi.min(before % width), yi.min(before / width));
+            near_costs[usize::from(if axis_of(state) == 1 {
+                near_vertical[edge]
+            } else {
+                near_horizontal[edge]
+            })]
+        });
         let neighbours = [
             (xi.checked_sub(1), Some(yi)),
             (Some(xi + 1), Some(yi)),
@@ -1030,7 +1127,7 @@ fn astar(
             if end.is_none() && blocked_cell[next_cell] {
                 continue;
             }
-            let next = point_of(next_cell);
+            let next = point(xs[nxi], ys[nyi]);
             let inside = |area: &Bounds| {
                 area.x <= next.x && next.x <= area.right() && area.y <= next.y && next.y <= area.bottom()
             };
@@ -1073,11 +1170,11 @@ fn astar(
             } else {
                 &outline_horizontal
             };
-            let near = if vertical == 1 {
+            let near = near_costs[usize::from(if vertical == 1 {
                 near_vertical[edge]
             } else {
                 near_horizontal[edge]
-            };
+            })];
             let crossing = if vertical == 1 {
                 crossing_vertical[edge]
             } else {
@@ -1095,19 +1192,7 @@ fn astar(
             // Running alongside another connector is paid once, on the step
             // that starts it (or brings the route closer), not again on each
             // step that keeps it going straight on.
-            let near_before = if turns == 0 {
-                visits.previous(state).map_or(0.0, |before| {
-                    let before = cell_of_state(before);
-                    let edge = key(xi.min(before % width), yi.min(before / width));
-                    if vertical == 1 {
-                        near_vertical[edge]
-                    } else {
-                        near_horizontal[edge]
-                    }
-                })
-            } else {
-                0.0
-            };
+            let near_before = if turns == 0 { near_here } else { 0.0 };
             let entered = if vertical == 1 {
                 pushable_vertical[edge]
             } else {
@@ -1131,8 +1216,8 @@ fn astar(
             if next_cost >= visits.distance(next_state) {
                 continue;
             }
-            visits.reach(next_state, next_cost, Some(state));
-            queue.push(Reverse(Entry(next_cost + estimate(next_state), next_state, next_cost)));
+            let queued = visits.reach(next_state, next_cost, Some(state));
+            queue.push(entry(next_cost + estimate(next_state, nxi, nyi), next_state, queued));
         }
     }
     phase.record("visited", visited);
@@ -1146,6 +1231,8 @@ fn astar(
             .collect();
         (reached, path)
     });
+    visits.end();
+    visits.queue = queue;
     VISITS.set(visits);
     let (reached, path) = found?;
     let first = path.first().copied();
@@ -2460,7 +2547,9 @@ mod tests {
             &[],
             Lines::All,
         );
-        let step = |y: f64| built.near_horizontal[index_of(&built.ys, y).unwrap() * built.xs.len()];
+        let step = |y: f64| {
+            built.near_costs[usize::from(built.near_horizontal[index_of(&built.ys, y).unwrap() * built.xs.len()])]
+        };
 
         assert_eq!(step(6.0), CLOSE_RUN.full);
         assert_eq!(step(20.0), 0.0);

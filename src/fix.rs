@@ -39,11 +39,56 @@ pub struct FixResult {
     pub report: AnalysisReport,
 }
 
+/// The changes made to a draft, newest first, each sharing those before it
+/// with the drafts it was made from: adding one copies none of them.
+#[derive(Clone, Default)]
+pub(crate) struct Changes(Option<Arc<ChangeLink>>);
+
+struct ChangeLink {
+    change: FixChange,
+    before: Changes,
+}
+
+impl Changes {
+    pub(crate) fn with(&self, change: FixChange) -> Changes {
+        Changes(Some(Arc::new(ChangeLink {
+            change,
+            before: self.clone(),
+        })))
+    }
+
+    /// Oldest first.
+    fn to_vec(&self) -> Vec<FixChange> {
+        let mut changes = Vec::new();
+        let mut link = self.0.as_deref();
+        while let Some(current) = link {
+            changes.push(current.change.clone());
+            link = current.before.0.as_deref();
+        }
+        changes.reverse();
+        changes
+    }
+}
+
+impl Drop for ChangeLink {
+    /// Unlinks the changes before one at a time, so a long list does not
+    /// drop recursively.
+    fn drop(&mut self) {
+        let mut before = self.before.0.take();
+        while let Some(link) = before {
+            match Arc::try_unwrap(link) {
+                Ok(mut link) => before = link.before.0.take(),
+                Err(_) => break,
+            }
+        }
+    }
+}
+
 /// A document being repaired, with the changes made so far.
 #[derive(Clone)]
 pub(crate) struct Draft {
     pub(crate) document: Document,
-    pub(crate) changes: Vec<FixChange>,
+    pub(crate) changes: Changes,
     /// Nodes just moved, whose connectors are rerouted to follow.
     moved_node_ids: Vec<String>,
     /// The report of `document`, read once; a changed draft starts without.
@@ -51,7 +96,7 @@ pub(crate) struct Draft {
 }
 
 impl Draft {
-    pub(crate) fn new(document: Document, changes: Vec<FixChange>, moved_node_ids: Vec<String>) -> Draft {
+    pub(crate) fn new(document: Document, changes: Changes, moved_node_ids: Vec<String>) -> Draft {
         Draft {
             document,
             changes,
@@ -78,7 +123,7 @@ impl Draft {
     pub(crate) fn written(&self) -> FixResult {
         FixResult {
             svg: serialize(&self.document),
-            changes: self.changes.clone(),
+            changes: self.changes.to_vec(),
             report: AnalysisReport::clone(self.report()),
         }
     }
@@ -89,7 +134,7 @@ impl Draft {
             message,
             elements: elements.iter().map(|element| (*element).to_owned()).collect(),
         };
-        Draft::new(document, [self.changes, vec![change]].concat(), self.moved_node_ids)
+        Draft::new(document, self.changes.with(change), self.moved_node_ids)
     }
 }
 
@@ -112,7 +157,7 @@ pub(crate) const PASSES: usize = 5;
 /// placed late, and labels left without a slot get another try. A pass is
 /// kept only while it reduces the issues.
 pub fn fix_with_passes(svg: &str, max_passes: usize) -> Result<FixResult, SvgInputError> {
-    let draft = Draft::new(parse(svg)?, Vec::new(), Vec::new());
+    let draft = Draft::new(parse(svg)?, Changes::default(), Vec::new());
     Ok(fix_after_moves(draft, max_passes).written())
 }
 
@@ -1760,7 +1805,8 @@ mod tests {
         let (before_p, before_q) = (points(&fixed, "p"), points(&fixed, "q"));
         assert_eq!(before_q[1].x - before_p[1].x, 8.0);
 
-        let spread = spread_close_runs(Draft::new(parse(&fixed.svg).unwrap(), Vec::new(), Vec::new())).written();
+        let spread =
+            spread_close_runs(Draft::new(parse(&fixed.svg).unwrap(), Changes::default(), Vec::new())).written();
 
         let (p, q) = (points(&spread, "p"), points(&spread, "q"));
         assert!((q[1].x - p[1].x).abs() >= 16.0, "{p:?} {q:?}");
@@ -1793,7 +1839,8 @@ mod tests {
         let x = |result: &FixResult, id: &str| result.report.diagram.connector(id).unwrap().points[1].x;
         assert_eq!((x(&fixed, "p"), x(&fixed, "q"), x(&fixed, "r")), (210.0, 202.0, 192.0));
 
-        let spread = spread_close_runs(Draft::new(parse(&fixed.svg).unwrap(), Vec::new(), Vec::new())).written();
+        let spread =
+            spread_close_runs(Draft::new(parse(&fixed.svg).unwrap(), Changes::default(), Vec::new())).written();
 
         let (p, q, r) = (x(&spread, "p"), x(&spread, "q"), x(&spread, "r"));
         assert!(

@@ -16,7 +16,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use regex::Regex;
 
 use crate::diagram::{Diagram, DiagramConnector, DiagramNode, ancestor_ids, holds_end, node_group};
-use crate::fix::{Draft, FixChange, FixResult, PASSES, fix_after_moves, fix_further, spread_close_runs};
+use crate::fix::{Changes, Draft, FixChange, FixResult, PASSES, fix_after_moves, fix_further, spread_close_runs};
 use crate::geometry::{
     Bounds, Point, format_number, hypot, intersection, parse_number, point, segment_intersects_interior, segments,
 };
@@ -86,7 +86,7 @@ const LABEL_CLEARANCE: f64 = 4.0;
 /// bends, crossings and crowded lanes.
 #[tracing::instrument(skip_all)]
 pub fn arrange(svg: &str) -> Result<FixResult, SvgInputError> {
-    let fixed = fix_after_moves(Draft::new(parse(svg)?, Vec::new(), Vec::new()), PASSES);
+    let fixed = fix_after_moves(Draft::new(parse(svg)?, Changes::default(), Vec::new()), PASSES);
     let context = Context::new(fixed.report().diagram.clone());
     let start = State {
         score: context.score(fixed.report(), &HashMap::new()),
@@ -133,14 +133,14 @@ fn improve(context: &Context, state: State, steps: usize) -> State {
     // Candidates are compared after one pass of fixing; the passes that
     // follow go to the best one, and to the next ones only while those
     // passes leave it no better than now.
-    let mut compared: Vec<State> = evaluate_all(context, &state, &candidates)
+    let (mut compared, dropped): (Vec<State>, Vec<State>) = evaluate_all(context, &state, &candidates)
         .into_iter()
         .flatten()
-        .filter(|next| keeps(next))
-        .collect();
+        .partition(|next| keeps(next));
     compared.sort_by(|a, b| a.score.total_cmp(&b.score));
+    let mut compared = compared.into_iter();
     let best = compared
-        .into_iter()
+        .by_ref()
         .map(|next| {
             let result = fix_further(next.result, PASSES - 1);
             State {
@@ -150,6 +150,9 @@ fn improve(context: &Context, state: State, steps: usize) -> State {
             }
         })
         .find(|next| keeps(next) && next.score < state.score - 1e-9);
+    // The candidates not taken are many documents to free: let another
+    // thread free them while the next step goes on.
+    std::thread::spawn(move || drop((compared, dropped)));
     match best {
         Some(next) => improve(context, next, steps - 1),
         None => state,
@@ -163,20 +166,32 @@ fn improve(context: &Context, state: State, steps: usize) -> State {
 #[tracing::instrument(skip_all)]
 fn evaluate_all(context: &Context, state: &State, candidates: &[(String, Move)]) -> Vec<Option<State>> {
     let threads = std::thread::available_parallelism().map_or(1, |count| count.get());
+    // The likely longest first, so no thread is left with a long one at
+    // the end: a move reroutes the connectors of the nodes it moves.
+    let diagram = &state.result.report().diagram;
+    let work = |(id, _): &(String, Move)| {
+        let ids: HashSet<&str> = id.split(TOGETHER).collect();
+        diagram
+            .connectors
+            .iter()
+            .filter(|c| ids.contains(c.from.as_str()) || ids.contains(c.to.as_str()))
+            .count()
+    };
+    let mut order: Vec<usize> = (0..candidates.len()).collect();
+    order.sort_by_key(|index| std::cmp::Reverse(work(&candidates[*index])));
     let next = AtomicUsize::new(0);
     let parent = tracing::Span::current();
     let mut evaluated: Vec<(usize, Option<State>)> = std::thread::scope(|scope| {
         let handles: Vec<_> = (0..threads.min(candidates.len()))
             .map(|_| {
-                let (parent, next) = (parent.clone(), &next);
+                let (parent, next, order) = (parent.clone(), &next, &order);
                 scope.spawn(move || {
                     let thread =
                         tracing::info_span!(parent: &parent, "evaluate_thread", candidates = tracing::field::Empty)
                             .entered();
                     let mut evaluated = Vec::new();
-                    loop {
-                        let index = next.fetch_add(1, Relaxed);
-                        let Some((id, step)) = candidates.get(index) else { break };
+                    while let Some(&index) = order.get(next.fetch_add(1, Relaxed)) {
+                        let (id, step) = &candidates[index];
                         evaluated.push((index, evaluate(context, state, id, *step)));
                     }
                     thread.record("candidates", evaluated.len());
@@ -238,7 +253,7 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
     let draft = if in_place {
         state.result.moving(ids)
     } else {
-        Draft::new(document, [state.result.changes.clone(), vec![change]].concat(), ids)
+        Draft::new(document, state.result.changes.with(change), ids)
     };
     let result = fix_after_moves(draft, 1);
     Some(State {
