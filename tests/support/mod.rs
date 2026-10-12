@@ -446,28 +446,94 @@ pub fn distance_from_circle(target: Point, box_: &Bounds) -> f64 {
     ((target.x - (box_.x + box_.width / 2.0)).hypot(target.y - (box_.y + box_.height / 2.0)) - box_.width / 2.0).abs()
 }
 
+/// The length below which a step between two runs is a jog, an end
+/// segment before a turn is short, and a crossing is near a connector's
+/// end: shorter reads as a mistake rather than a choice.
+pub const CLEAR_LENGTH: f64 = 20.0;
+
+/// How far apart two connectors can run side by side and still read as
+/// running together, so that crossing each other tangles them.
+pub const ALONGSIDE: f64 = 40.0;
+
+/// How a fixed diagram reads, each measure larger when it reads worse: a
+/// count of bad things, or a sum of how bad each one is, so one more of
+/// them never makes a measure smaller. Lengths are in px, rounded to
+/// hundredths.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Quality {
     pub bends: usize,
+    /// Connectors with any bend, however many.
+    pub bent_connectors: usize,
+    /// How far ends sit into the corners of their box sides: for each end,
+    /// how much closer to the nearer corner it is than half the gap the
+    /// side's ends would leave spread evenly.
+    pub corner_shortfall: f64,
+    /// Places where segments of two connectors pass over each other.
+    pub crossings: usize,
+    /// Crossings within the clear length of either connector's end, where
+    /// it is hard to see which way each enters its node.
+    pub crossings_near_ends: usize,
     pub detached_labels: usize,
+    /// Length run beyond the shortest orthogonal route between each
+    /// connector's ends, summed.
+    pub detour: f64,
     pub diagonal_segments: usize,
+    /// Steps shorter than the clear length between two runs of a route
+    /// heading the same way.
+    pub jogs: usize,
+    /// How far each jog's step falls short of the clear length, summed: a
+    /// shorter step reads worse, and each further jog adds to it.
+    pub jog_shortfall: f64,
     /// Bends past each connector's second, which make a route harder to
     /// follow than its first two.
     pub late_bends: usize,
     /// How crowded connectors running side by side are: 1000 / d² summed
     /// over each pair of parallel segments, from different connectors, that
-    /// run alongside each other for a stretch d apart. Rounded to hundredths.
+    /// run alongside each other for a stretch d apart.
     pub parallel_density: f64,
     pub remaining_issues: usize,
+    /// End segments shorter than the clear length before the route turns.
+    pub short_ends: usize,
+    /// How far each short end falls short of the clear length, summed.
+    pub short_end_shortfall: f64,
+    /// Crossings between two connectors that also run alongside each other
+    /// for a stretch, which reads as a tangle rather than a clean crossing.
+    pub tangled_crossings: usize,
 }
 
 /// Quality of a fixed diagram, for snapshot assertions that catch
 /// regressions the per-test expectations do not pin down.
 pub fn quality_of(report: &AnalysisReport) -> Quality {
     let connectors = &report.diagram.connectors;
+    // (Adding 0 turns an empty sum's -0 into 0.)
+    let hundredths = |value: f64| (value * 100.0).round() / 100.0 + 0.0;
+    let jog_steps: Vec<f64> = connectors
+        .iter()
+        .flat_map(|connector| jog_steps(&connector.points))
+        .collect();
+    let short_ends: Vec<f64> = connectors
+        .iter()
+        .filter(|connector| bend_count(&connector.points) > 0)
+        .flat_map(|connector| {
+            let points = &connector.points;
+            [
+                segment_length(&(points[0], points[1])),
+                segment_length(&(points[points.len() - 2], points[points.len() - 1])),
+            ]
+        })
+        .filter(|length| *length < CLEAR_LENGTH)
+        .collect();
+    let crossings = crossing_points(report);
     Quality {
         bends: connectors.iter().map(|connector| bend_count(&connector.points)).sum(),
+        bent_connectors: connectors
+            .iter()
+            .filter(|connector| bend_count(&connector.points) > 0)
+            .count(),
+        corner_shortfall: hundredths(corner_shortfall(report)),
+        crossings: crossings.len(),
+        crossings_near_ends: crossings.iter().filter(|crossing| crossing.near_end).count(),
         detached_labels: report
             .diagram
             .labels
@@ -479,6 +545,17 @@ pub fn quality_of(report: &AnalysisReport) -> Quality {
                     .is_some_and(|connector| distance_to_route(&label.bounds, &connector.points) > 16.0)
             })
             .count(),
+        detour: hundredths(
+            connectors
+                .iter()
+                .filter(|connector| connector.points.len() >= 2)
+                .map(|connector| {
+                    let points = &connector.points;
+                    let length: f64 = segments(points).iter().map(segment_length).sum();
+                    length - segment_length(&(points[0], points[points.len() - 1]))
+                })
+                .sum(),
+        ),
         diagonal_segments: connectors
             .iter()
             .map(|connector| {
@@ -488,30 +565,94 @@ pub fn quality_of(report: &AnalysisReport) -> Quality {
                     .count()
             })
             .sum(),
+        jogs: jog_steps.len(),
+        jog_shortfall: hundredths(jog_steps.iter().map(|step| CLEAR_LENGTH - step).sum()),
         late_bends: connectors
             .iter()
             .map(|connector| bend_count(&connector.points).saturating_sub(2))
             .sum(),
-        parallel_density: (parallel_density(report) * 100.0).round() / 100.0,
+        parallel_density: hundredths(parallel_density(report)),
         remaining_issues: report.issues.len(),
+        short_ends: short_ends.len(),
+        short_end_shortfall: hundredths(short_ends.iter().map(|length| CLEAR_LENGTH - length).sum()),
+        tangled_crossings: crossings.iter().filter(|crossing| crossing.tangled).count(),
     }
 }
 
-/// 1000 / d² summed over each pair of parallel segments from different
-/// connectors whose spans along their direction overlap for a stretch,
-/// d apart. Segments on one line (d = 0) are overlaps, reported as issues.
-pub fn parallel_density(report: &AnalysisReport) -> f64 {
-    let connectors = &report.diagram.connectors;
-    connectors
-        .iter()
-        .enumerate()
-        .flat_map(|(index, first)| connectors[index + 1..].iter().map(move |second| (first, second)))
-        .flat_map(|(first, second)| {
-            let others = segments(&second.points);
-            segments(&first.points)
-                .into_iter()
-                .flat_map(move |(a, b)| others.clone().into_iter().map(move |(c, d)| (a, b, c, d)))
+/// The steps of a route's jogs: segments shorter than the clear length
+/// between two runs heading the same way. A short segment where the route
+/// turns back is no jog.
+pub fn jog_steps(points: &[Point]) -> Vec<f64> {
+    points
+        .windows(4)
+        .filter(|run| {
+            (run[1].x - run[0].x) * (run[3].x - run[2].x) + (run[1].y - run[0].y) * (run[3].y - run[2].y) > 0.0
         })
+        .map(|run| segment_length(&(run[1], run[2])))
+        .filter(|step| *step < CLEAR_LENGTH)
+        .collect()
+}
+
+pub struct Crossing {
+    pub at: Point,
+    /// Within the clear length of either connector's end.
+    pub near_end: bool,
+    /// Between connectors that also run alongside each other.
+    pub tangled: bool,
+}
+
+/// Each point where an orthogonal segment of one connector passes through
+/// the inside of another's; touching at an end is no crossing.
+pub fn crossing_points(report: &AnalysisReport) -> Vec<Crossing> {
+    let connectors: Vec<&Vec<Point>> = report
+        .diagram
+        .connectors
+        .iter()
+        .map(|connector| &connector.points)
+        .filter(|points| points.len() >= 2)
+        .collect();
+    let inside = |value: f64, p: f64, q: f64| p.min(q) < value && value < p.max(q);
+    let mut found = Vec::new();
+    for (index, first) in connectors.iter().enumerate() {
+        for second in &connectors[index + 1..] {
+            let tangled = runs_alongside(first, second);
+            for (a, b) in segments(first) {
+                for (c, d) in segments(second) {
+                    let (horizontal, vertical) = if a.y == b.y && c.x == d.x {
+                        ((a, b), (c, d))
+                    } else if a.x == b.x && c.y == d.y {
+                        ((c, d), (a, b))
+                    } else {
+                        continue;
+                    };
+                    let at = point(vertical.0.x, horizontal.0.y);
+                    if inside(at.x, horizontal.0.x, horizontal.1.x) && inside(at.y, vertical.0.y, vertical.1.y) {
+                        let near_end = [first[0], first[first.len() - 1], second[0], second[second.len() - 1]]
+                            .iter()
+                            .any(|end| (end.x - at.x).hypot(end.y - at.y) < CLEAR_LENGTH);
+                        found.push(Crossing { at, near_end, tangled });
+                    }
+                }
+            }
+        }
+    }
+    found
+}
+
+/// Whether two routes run beside each other for a stretch, apart but no
+/// further than `ALONGSIDE`.
+pub fn runs_alongside(first: &[Point], second: &[Point]) -> bool {
+    alongside_distances(first, second).any(|distance| distance <= ALONGSIDE)
+}
+
+/// How far apart each pair of parallel segments of two routes is, of the
+/// pairs whose spans along their direction overlap for a stretch. Segments
+/// on one line (0 apart) are overlaps, reported as issues, and left out.
+pub fn alongside_distances<'a>(first: &'a [Point], second: &'a [Point]) -> impl Iterator<Item = f64> + 'a {
+    let others = segments(second);
+    segments(first)
+        .into_iter()
+        .flat_map(move |(a, b)| others.clone().into_iter().map(move |(c, d)| (a, b, c, d)))
         .filter_map(|(a, b, c, d)| {
             let span = |p: f64, q: f64| (p.min(q), p.max(q));
             let (distance, (low, high), (other_low, other_high)) =
@@ -522,8 +663,78 @@ pub fn parallel_density(report: &AnalysisReport) -> f64 {
                 } else {
                     return None;
                 };
-            (distance > 0.0 && high.min(other_high) > low.max(other_low)).then(|| 1000.0 / (distance * distance))
+            (distance > 0.0 && high.min(other_high) > low.max(other_low)).then_some(distance)
         })
+}
+
+/// For each connector end on a box node's side, how much closer it is to
+/// the side's nearer corner than half the gap the side's ends would leave
+/// spread evenly, summed. Ends on round nodes, or off their node's
+/// outline, are left out.
+pub fn corner_shortfall(report: &AnalysisReport) -> f64 {
+    let diagram = &report.diagram;
+    /// A node side's span and the positions of the ends along it.
+    struct Side {
+        low: f64,
+        high: f64,
+        ends: Vec<f64>,
+    }
+    let mut sides: HashMap<(&str, usize), Side> = HashMap::new();
+    for connector in &diagram.connectors {
+        let Some((first, last)) = connector.points.first().zip(connector.points.last()) else {
+            continue;
+        };
+        for (id, end) in [(&connector.from, first), (&connector.to, last)] {
+            let Some(node) = diagram.nodes.iter().find(|node| &node.id == id && !node.is_circle()) else {
+                continue;
+            };
+            let Bounds { x, y, width, height } = node.bounds;
+            let (right, bottom) = (x + width, y + height);
+            let on = |value: f64, line: f64| (value - line).abs() <= 0.5;
+            let within = |value: f64, low: f64, high: f64| low - 0.5 <= value && value <= high + 0.5;
+            let (side, position, span) = if on(end.y, y) && within(end.x, x, right) {
+                (0, end.x, (x, right))
+            } else if on(end.x, right) && within(end.y, y, bottom) {
+                (1, end.y, (y, bottom))
+            } else if on(end.y, bottom) && within(end.x, x, right) {
+                (2, end.x, (x, right))
+            } else if on(end.x, x) && within(end.y, y, bottom) {
+                (3, end.y, (y, bottom))
+            } else {
+                continue;
+            };
+            let (low, high) = span;
+            sides
+                .entry((id.as_str(), side))
+                .or_insert(Side {
+                    low,
+                    high,
+                    ends: Vec::new(),
+                })
+                .ends
+                .push(position);
+        }
+    }
+    sides
+        .values()
+        .flat_map(|Side { low, high, ends }| {
+            let half_gap = (high - low) / (ends.len() + 1) as f64 / 2.0;
+            ends.iter()
+                .map(move |end| (half_gap - (end - low).min(high - end)).max(0.0))
+        })
+        .sum()
+}
+
+/// 1000 / d² summed over each pair of parallel segments from different
+/// connectors that run alongside each other for a stretch, d apart.
+pub fn parallel_density(report: &AnalysisReport) -> f64 {
+    let connectors = &report.diagram.connectors;
+    connectors
+        .iter()
+        .enumerate()
+        .flat_map(|(index, first)| connectors[index + 1..].iter().map(move |second| (first, second)))
+        .flat_map(|(first, second)| alongside_distances(&first.points, &second.points))
+        .map(|distance| 1000.0 / (distance * distance))
         .sum()
 }
 

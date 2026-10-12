@@ -1,13 +1,22 @@
 ---
 source: tests/arrange.rs
-assertion_line: 503
 expression: "support :: quality_of(& result.report)"
 ---
 {
   "bends": 25,
+  "bentConnectors": 15,
+  "cornerShortfall": 0.0,
+  "crossings": 4,
+  "crossingsNearEnds": 0,
   "detachedLabels": 0,
+  "detour": 268.0,
   "diagonalSegments": 0,
+  "jogs": 0,
+  "jogShortfall": 0.0,
   "lateBends": 3,
   "parallelDensity": 15.98,
-  "remainingIssues": 0
+  "remainingIssues": 0,
+  "shortEnds": 1,
+  "shortEndShortfall": 12.0,
+  "tangledCrossings": 0
 }

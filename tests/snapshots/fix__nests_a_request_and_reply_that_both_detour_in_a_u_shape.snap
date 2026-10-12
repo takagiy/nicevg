@@ -4,9 +4,19 @@ expression: "support :: quality_of(& result.report)"
 ---
 {
   "bends": 4,
+  "bentConnectors": 2,
+  "cornerShortfall": 0.0,
+  "crossings": 0,
+  "crossingsNearEnds": 0,
   "detachedLabels": 0,
+  "detour": 64.0,
   "diagonalSegments": 0,
+  "jogs": 0,
+  "jogShortfall": 0.0,
   "lateBends": 0,
   "parallelDensity": 10.71,
-  "remainingIssues": 0
+  "remainingIssues": 0,
+  "shortEnds": 1,
+  "shortEndShortfall": 12.0,
+  "tangledCrossings": 0
 }
