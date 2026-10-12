@@ -10,6 +10,8 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::Relaxed;
 
 use regex::Regex;
 
@@ -154,24 +156,31 @@ fn improve(context: &Context, state: State, steps: usize) -> State {
     }
 }
 
-/// Evaluates the candidates on as many threads as are available; the
-/// outcome does not depend on how they are split.
+/// Evaluates the candidates on as many threads as are available, each
+/// taking the next candidate left as soon as it is free, since some take
+/// many times longer than others; the outcome does not depend on which
+/// thread evaluates which.
 #[tracing::instrument(skip_all)]
 fn evaluate_all(context: &Context, state: &State, candidates: &[(String, Move)]) -> Vec<Option<State>> {
     let threads = std::thread::available_parallelism().map_or(1, |count| count.get());
-    let chunk = candidates.len().div_ceil(threads).max(1);
+    let next = AtomicUsize::new(0);
     let parent = tracing::Span::current();
-    std::thread::scope(|scope| {
-        let handles: Vec<_> = candidates
-            .chunks(chunk)
-            .map(|part| {
-                let parent = parent.clone();
+    let mut evaluated: Vec<(usize, Option<State>)> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..threads.min(candidates.len()))
+            .map(|_| {
+                let (parent, next) = (parent.clone(), &next);
                 scope.spawn(move || {
-                    let _thread =
-                        tracing::info_span!(parent: &parent, "evaluate_thread", candidates = part.len()).entered();
-                    part.iter()
-                        .map(|(id, step)| evaluate(context, state, id, *step))
-                        .collect::<Vec<_>>()
+                    let thread =
+                        tracing::info_span!(parent: &parent, "evaluate_thread", candidates = tracing::field::Empty)
+                            .entered();
+                    let mut evaluated = Vec::new();
+                    loop {
+                        let index = next.fetch_add(1, Relaxed);
+                        let Some((id, step)) = candidates.get(index) else { break };
+                        evaluated.push((index, evaluate(context, state, id, *step)));
+                    }
+                    thread.record("candidates", evaluated.len());
+                    evaluated
                 })
             })
             .collect();
@@ -179,7 +188,9 @@ fn evaluate_all(context: &Context, state: &State, candidates: &[(String, Move)])
             .into_iter()
             .flat_map(|handle| handle.join().expect("an evaluation thread finishes"))
             .collect()
-    })
+    });
+    evaluated.sort_unstable_by_key(|(index, _)| *index);
+    evaluated.into_iter().map(|(_, evaluated)| evaluated).collect()
 }
 
 /// Moves `id` by `step` and gives the result one pass of fixing, rerouting
