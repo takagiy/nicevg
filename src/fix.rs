@@ -9,13 +9,13 @@ use serde::Serialize;
 
 use crate::arrow::{drawn_connectors, moved_head, shaft_route};
 use crate::diagram::{
-    Diagram, DiagramConnector, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, holds_end, is_node_shape,
-    node_group, number_attribute, rect_bounds, translation,
+    Diagram, DiagramConnector, DiagramLabel, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, holds_end,
+    is_node_shape, node_group, number_attribute, rect_bounds, translation,
 };
 use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, route_is_clear, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
-    CLEARANCE, CLOSE_RUN, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Side, Sides, choose_sides,
+    CLEARANCE, CLOSE_RUN, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Pushable, Side, Sides, choose_sides,
     connector_ports, crossings, end_on_shapes, is_on_outline, label_landmarks, overlap, place_label, place_label_clear,
     route_connector, route_cost, routes_cost, runs_across, side_of, spread_ports, turns,
 };
@@ -90,6 +90,11 @@ impl Draft {
         Draft::new(document, [self.changes, vec![change]].concat(), self.moved_node_ids)
     }
 }
+
+/// What pushing a label aside costs for each pixel its new spot lies nearer
+/// another connector than a label keeps clear of them: touching one costs
+/// what crossing it does.
+const CROWDED_PUSH_COST: f64 = 300.0 / LABEL_CLEAR_OF_OTHERS;
 
 /// Repairs what can be repaired, repeating passes while they leave fewer
 /// issues (at most five).
@@ -558,6 +563,45 @@ fn reroute_connectors(draft: Draft) -> Draft {
             })
             .collect()
     };
+    // A connector's own label moves beside its new route, and so may the
+    // labels of the connectors that stay: a route can push one aside to
+    // another spot beside its connector, for free when that spot is clear
+    // of every other connector and for what crowding them there costs when
+    // it is not.
+    let all_routes: Vec<Vec<Point>> = diagram.connectors.iter().map(|c| c.points.clone()).collect();
+    let push_cost = |label: &DiagramLabel| -> Option<f64> {
+        let connector = diagram.connector(label.connector.as_deref()?)?;
+        let blocked: Vec<Bounds> = diagram
+            .labels
+            .iter()
+            .filter(|other| other.id != label.id)
+            .map(|other| other.bounds)
+            .chain(label_blockers(diagram, &connector.id))
+            .chain([label.bounds.inflate(CLEARANCE)])
+            .collect();
+        let containers = label_containers(diagram, &connector.id);
+        let (width, height) = (label.bounds.width, label.bounds.height);
+        if place_label_clear(width, height, &connector.points, &all_routes, &blocked, &containers).is_some() {
+            return Some(0.0);
+        }
+        let spot = place_label(width, height, &connector.points, &all_routes, &blocked, &containers)?;
+        let crowding: f64 = diagram
+            .connectors
+            .iter()
+            .filter(|other| other.id != connector.id)
+            .map(|other| (LABEL_CLEAR_OF_OTHERS - distance_to_route(&spot.bounds, &other.points)).max(0.0))
+            .sum();
+        Some(crowding * CROWDED_PUSH_COST)
+    };
+    let pushable_labels: Vec<(&DiagramLabel, f64)> = diagram
+        .labels
+        .iter()
+        .filter(|label| {
+            !detached_ids.contains(label.id.as_str())
+                && label.connector.as_deref().is_some_and(|id| !rerouted_ids.contains(id))
+        })
+        .filter_map(|label| Some((label, push_cost(label)?)))
+        .collect();
     let obstacles_for = |connector: &DiagramConnector| -> Vec<Bounds> {
         diagram
             .nodes
@@ -568,16 +612,23 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 diagram
                     .labels
                     .iter()
-                    // A connector's own label moves beside its new route.
                     .filter(|label| {
                         !detached_ids.contains(label.id.as_str())
                             && label
                                 .connector
                                 .as_deref()
                                 .is_none_or(|id| !rerouted_ids.contains(id) && id != connector.id)
+                            && !pushable_labels.iter().any(|(pushable, _)| pushable.id == label.id)
                     })
                     .map(|label| label.bounds),
             )
+            .collect()
+    };
+    let pushable_for = |connector: &DiagramConnector| -> Vec<Pushable> {
+        pushable_labels
+            .iter()
+            .filter(|(label, _)| label.connector.as_deref() != Some(connector.id.as_str()))
+            .map(|(label, cost)| (label.bounds, *cost))
             .collect()
     };
 
@@ -632,6 +683,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                     &reroute.source.bounds,
                     &reroute.target.bounds,
                     &obstacles_for(reroute.connector),
+                    &pushable_for(reroute.connector),
                     &settled,
                     &rails_for(reroute.connector),
                     &load_of,
@@ -665,6 +717,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 &reroute.source.bounds,
                 &reroute.target.bounds,
                 &obstacles_for(reroute.connector),
+                &pushable_for(reroute.connector),
                 ports,
                 occupied,
                 &rails_for(reroute.connector),
@@ -783,6 +836,17 @@ fn reroute_connectors(draft: Draft) -> Draft {
         })
         .unzip();
 
+    // Labels a new route runs over move out of its way.
+    let pushed: HashSet<&str> = pushable_labels
+        .iter()
+        .map(|(label, _)| label)
+        .filter(|label| {
+            final_routes
+                .iter()
+                .any(|route| distance_to_route(&label.bounds, route) < crate::inspect::CLEARANCE)
+        })
+        .map(|label| label.id.as_str())
+        .collect();
     let routed = write_routes(&draft, diagram, &reroutes, final_routes);
 
     let moving: Vec<_> = diagram
@@ -791,6 +855,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
         .enumerate()
         .filter(|(_, label)| {
             detached_ids.contains(label.id.as_str())
+                || pushed.contains(label.id.as_str())
                 || label.connector.as_deref().is_some_and(|id| rerouted_ids.contains(id))
         })
         .collect();
@@ -819,14 +884,17 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 return (draft, obstacles);
             };
             let blocked = [obstacles.clone(), label_blockers(diagram, &connector_id)].concat();
-            let Some(placement) = place_label(
-                label.bounds.width,
-                label.bounds.height,
-                route,
-                &all_final,
-                &blocked,
-                &label_containers(diagram, &connector_id),
-            ) else {
+            let containers = label_containers(diagram, &connector_id);
+            let (width, height) = (label.bounds.width, label.bounds.height);
+            // A pushed label takes a spot clear of the other connectors when
+            // there is one.
+            let clear = pushed
+                .contains(label.id.as_str())
+                .then(|| place_label_clear(width, height, route, &all_final, &blocked, &containers))
+                .flatten();
+            let Some(placement) =
+                clear.or_else(|| place_label(width, height, route, &all_final, &blocked, &containers))
+            else {
                 return (draft, obstacles);
             };
             let updated = move_label(

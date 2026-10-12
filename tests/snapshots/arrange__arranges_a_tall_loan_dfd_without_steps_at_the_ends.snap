@@ -1,12 +1,13 @@
 ---
 source: tests/arrange.rs
+assertion_line: 541
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "bends": 22,
+  "bends": 24,
   "detachedLabels": 0,
   "diagonalSegments": 0,
-  "lateBends": 1,
-  "parallelDensity": 46.86,
+  "lateBends": 3,
+  "parallelDensity": 44.63,
   "remainingIssues": 0
 }
