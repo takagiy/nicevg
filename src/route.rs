@@ -862,7 +862,7 @@ fn astar(
             if end.is_none() && corridor.is_some_and(|corridor| !corridor.iter().any(inside)) {
                 continue;
             }
-            if end.is_some_and(|(_, terminal)| arrives_backwards(here, point_of(next_cell), terminal)) {
+            if end.is_some_and(|(_, terminal)| arrives_backwards(here, next, terminal)) {
                 continue;
             }
             let vertical = usize::from(nxi == xi);
@@ -2091,6 +2091,49 @@ mod tests {
         assert!(routes_cost(&along, &turning) >= NEAR_MISS_PENALTY);
         assert_eq!(routes_cost(&along, &far), 0.0);
         assert_eq!(routes_cost(&across, &along), routes_cost(&along, &across));
+    }
+
+    /// Given a box reaching across the left and lower edges of an area, and
+    ///   a terminal on the area's lower edge
+    /// When the grid for a search is built over that area only
+    /// Then the points on that edge inside the box cannot be passed, so a
+    ///   route kept to the area cannot slip through the box along its edge
+    #[test]
+    fn keeps_a_box_cut_by_the_area_s_edge_blocked_on_that_edge() {
+        let terminal = |x: f64, y: f64| Terminal {
+            point: point(x, y),
+            axis: 0,
+            port: point(x + 24.0, y),
+            cost: 0.0,
+        };
+        let area = Bounds {
+            x: 50.0,
+            y: -50.0,
+            width: 200.0,
+            height: 100.0,
+        };
+        let boxed = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+        };
+        let built = grid(
+            &[terminal(200.0, 50.0)],
+            &[terminal(200.0, -40.0)],
+            &[boxed],
+            &[],
+            &[],
+            false,
+            Some(area),
+        );
+        let row = index_of(&built.ys, 50.0).unwrap();
+        let inside: Vec<usize> = (0..built.xs.len())
+            .filter(|xi| area.x <= built.xs[*xi] && built.xs[*xi] < boxed.right())
+            .collect();
+
+        assert!(!inside.is_empty(), "{:?}", built.xs);
+        assert!(inside.iter().all(|xi| built.blocked_cell[row * built.xs.len() + xi]));
     }
 
     /// Given a connector drawn along y = 0 and terminals on y = 6
