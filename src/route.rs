@@ -1,6 +1,7 @@
 //! Orthogonal routing: choosing node sides and ports, searching a sparse
 //! grid for the cheapest route, and finding label slots beside routes.
 
+use std::cell::Cell;
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, HashMap};
 
@@ -292,6 +293,68 @@ impl PartialOrd for Entry {
     }
 }
 
+/// The cheapest cost found to each search state and the state it was
+/// reached from. Kept between searches on a thread so that a search neither
+/// allocates nor clears it: a state's entry counts only when it is stamped
+/// with the current search.
+#[derive(Default)]
+struct Visits {
+    search: u32,
+    states: Vec<Visit>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct Visit {
+    search: u32,
+    from: u32,
+    distance: f64,
+}
+
+/// `Visit::from` of a state the search started at.
+const NO_STATE: u32 = u32::MAX;
+
+thread_local! {
+    static VISITS: Cell<Visits> = Cell::default();
+}
+
+impl Visits {
+    /// Forgets the last search and makes room for `states` states.
+    fn begin(&mut self, states: usize) {
+        if self.states.len() < states {
+            self.states.resize(states, Visit::default());
+        }
+        self.search = self.search.wrapping_add(1);
+        if self.search == 0 {
+            self.states.fill(Visit::default());
+            self.search = 1;
+        }
+    }
+
+    fn visit(&self, state: usize) -> Option<&Visit> {
+        Some(&self.states[state]).filter(|visit| visit.search == self.search)
+    }
+
+    fn distance(&self, state: usize) -> f64 {
+        self.visit(state).map_or(f64::INFINITY, |visit| visit.distance)
+    }
+
+    fn previous(&self, state: usize) -> Option<usize> {
+        self.visit(state)
+            .filter(|visit| visit.from != NO_STATE)
+            .map(|visit| visit.from as usize)
+    }
+
+    fn reach(&mut self, state: usize, distance: f64, from: Option<usize>) {
+        self.states[state] = Visit {
+            search: self.search,
+            from: from.map_or(NO_STATE, |from| {
+                u32::try_from(from).expect("fewer search states than u32::MAX")
+            }),
+            distance,
+        };
+    }
+}
+
 /// The grid a route is searched on and what each of its points and steps
 /// costs. A point (xi, yi) is at `yi * xs.len() + xi`, and a step at the
 /// index of its left or upper point.
@@ -322,8 +385,8 @@ struct Grid {
     /// Steps passing within the near-miss distance of another's turn.
     past_turn_horizontal: Vec<bool>,
     past_turn_vertical: Vec<bool>,
-    /// Running counts of blocked and crossing steps along each row and
-    /// each column.
+    /// Running counts of blocked and crossing steps, at each point's index:
+    /// of the steps before it along its row, and above it in its column.
     row_blocked: Vec<u32>,
     row_crossing: Vec<u32>,
     column_blocked: Vec<u32>,
@@ -615,24 +678,44 @@ fn grid(
             }
         }
     }
-    // Running counts along each row of the horizontal edges (and along each
+    // Running counts along each row of the horizontal edges (and down each
     // column of the vertical ones) that cannot be taken or that cross a
-    // connector, so a straight run's count is a difference of two.
-    let running = |edges: &[bool], along_rows: bool| {
-        let (lines, steps) = if along_rows { (rows, width) } else { (width, rows) };
-        let mut counts = vec![0u32; lines * (steps + 1)];
-        for line in 0..lines {
-            for step in 0..steps.saturating_sub(1) {
-                let edge = if along_rows { key(step, line) } else { key(line, step) };
-                counts[line * (steps + 1) + step + 1] = counts[line * (steps + 1) + step] + u32::from(edges[edge]);
+    // connector, so a straight run's count is a difference of two. Both
+    // are laid out like the grid points: the count up to point (xi, yi) is
+    // at its index, and a column's counts are summed a whole row at a time.
+    let along_rows = |edges: &[bool]| {
+        let mut counts = vec![0u32; cells];
+        // (An empty grid has no rows to sum.)
+        for (counts, edges) in counts
+            .chunks_exact_mut(width.max(1))
+            .zip(edges.chunks_exact(width.max(1)))
+        {
+            let mut sum = 0;
+            for (count, edge) in counts[1..].iter_mut().zip(edges) {
+                sum += u32::from(*edge);
+                *count = sum;
             }
         }
         counts
     };
-    let row_blocked = running(&blocked_horizontal, true);
-    let row_crossing = running(&crossing_horizontal, true);
-    let column_blocked = running(&blocked_vertical, false);
-    let column_crossing = running(&crossing_vertical, false);
+    let down_columns = |edges: &[bool]| {
+        let mut counts = vec![0u32; cells];
+        for yi in 1..rows {
+            let (above, row) = counts.split_at_mut(yi * width);
+            let above = &above[(yi - 1) * width..];
+            let edges = &edges[(yi - 1) * width..yi * width];
+            for ((count, above), edge) in row[..width].iter_mut().zip(above).zip(edges) {
+                *count = above + u32::from(*edge);
+            }
+        }
+        counts
+    };
+    drop(phase);
+    let phase = tracing::info_span!("search_run_counts").entered();
+    let row_blocked = along_rows(&blocked_horizontal);
+    let row_crossing = along_rows(&crossing_horizontal);
+    let column_blocked = down_columns(&blocked_vertical);
+    let column_crossing = down_columns(&crossing_vertical);
     drop(phase);
     Grid {
         xs,
@@ -778,21 +861,20 @@ fn astar(
     // Edges taken and crossings on the straight run between two grid points
     // on one row or one column.
     let run_counts = |from: (usize, usize), to: (usize, usize)| -> (u32, u32) {
-        if from.1 == to.1 {
-            let (low, high) = (from.0.min(to.0), from.0.max(to.0));
-            let base = from.1 * (width + 1);
+        let ((blocked, crossing), low, high) = if from.1 == to.1 {
             (
-                row_blocked[base + high] - row_blocked[base + low],
-                row_crossing[base + high] - row_crossing[base + low],
+                (row_blocked, row_crossing),
+                key(from.0.min(to.0), from.1),
+                key(from.0.max(to.0), from.1),
             )
         } else {
-            let (low, high) = (from.1.min(to.1), from.1.max(to.1));
-            let base = from.0 * (rows + 1);
             (
-                column_blocked[base + high] - column_blocked[base + low],
-                column_crossing[base + high] - column_crossing[base + low],
+                (column_blocked, column_crossing),
+                key(from.0, from.1.min(to.1)),
+                key(from.0, from.1.max(to.1)),
             )
-        }
+        };
+        (blocked[high] - blocked[low], crossing[high] - crossing[low])
     };
     let end_indices: Vec<Option<(usize, usize)>> = ends
         .iter()
@@ -807,6 +889,13 @@ fn astar(
         .enumerate()
         .filter_map(|(index, terminal)| Some((cell_of(&terminal.point)?, (index, *terminal))))
         .collect();
+    // Checked on every step, where a hash lookup would cost more than the
+    // step's own arithmetic.
+    let mut is_end = vec![false; cells];
+    for cell in end_cells.keys() {
+        is_end[*cell] = true;
+    }
+    let end_at = |cell: usize| if is_end[cell] { end_cells.get(&cell) } else { None };
     let point_of = |cell: usize| point(xs[cell % width], ys[cell / width]);
     // A state is a cell, the axis the route arrived along (0: horizontally,
     // 1: vertically) and how many times it has turned, counting up to the
@@ -824,7 +913,7 @@ fn astar(
     // blocks or crosses that way or for two more turns to leave it.
     let estimate = |state: usize| {
         // An end reached is paid for in full, its stub and any turn onto it.
-        if end_cells.contains_key(&cell_of_state(state)) {
+        if is_end[cell_of_state(state)] {
             return 0.0;
         }
         let cell = cell_of_state(state);
@@ -895,16 +984,18 @@ fn astar(
         best
     };
 
-    let mut distance = vec![f64::INFINITY; cells * 2 * levels];
-    let mut previous: Vec<Option<usize>> = vec![None; cells * 2 * levels];
+    // Taken for the search and put back after, so a search started while
+    // this one runs gets a table of its own.
+    let mut visits = VISITS.take();
+    visits.begin(cells * 2 * levels);
     let mut queue = BinaryHeap::new();
     for terminal in starts {
         let Some(cell) = cell_of(&terminal.point) else { continue };
         let state = state_of(cell, terminal.axis, 0);
-        if blocked_cell[cell] || terminal.cost >= distance[state] {
+        if blocked_cell[cell] || terminal.cost >= visits.distance(state) {
             continue;
         }
-        distance[state] = terminal.cost;
+        visits.reach(state, terminal.cost, None);
         queue.push(Reverse(Entry(terminal.cost + estimate(state), state, terminal.cost)));
     }
     let mut reached = None;
@@ -912,12 +1003,12 @@ fn astar(
     while let Some(Reverse(Entry(_, state, reached_at))) = queue.pop() {
         visited += 1;
         let cell = cell_of_state(state);
-        let cost = distance[state];
+        let cost = visits.distance(state);
         // A cheaper way here was found after this entry was queued.
         if reached_at > cost {
             continue;
         }
-        if end_cells.contains_key(&cell) {
+        if is_end[cell] {
             reached = Some(state);
             break;
         }
@@ -935,7 +1026,7 @@ fn astar(
                 continue;
             }
             let next_cell = key(nxi, nyi);
-            let end = end_cells.get(&next_cell);
+            let end = end_at(next_cell);
             if end.is_none() && blocked_cell[next_cell] {
                 continue;
             }
@@ -1005,7 +1096,7 @@ fn astar(
             // that starts it (or brings the route closer), not again on each
             // step that keeps it going straight on.
             let near_before = if turns == 0 {
-                previous[state].map_or(0.0, |before| {
+                visits.previous(state).map_or(0.0, |before| {
                     let before = cell_of_state(before);
                     let edge = key(xi.min(before % width), yi.min(before / width));
                     if vertical == 1 {
@@ -1037,23 +1128,26 @@ fn astar(
                 + bend
                 + if crossing { CROSSING_PENALTY } else { 0.0 }
                 + if beside || past { NEAR_MISS_PENALTY } else { 0.0 };
-            if next_cost >= distance[next_state] {
+            if next_cost >= visits.distance(next_state) {
                 continue;
             }
-            distance[next_state] = next_cost;
-            previous[next_state] = Some(state);
+            visits.reach(next_state, next_cost, Some(state));
             queue.push(Reverse(Entry(next_cost + estimate(next_state), next_state, next_cost)));
         }
     }
     phase.record("visited", visited);
     drop(phase);
-    let reached = reached?;
-    let path: Vec<Point> = std::iter::successors(Some(reached), |state| previous[*state])
-        .map(|state| point_of(cell_of_state(state)))
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
+    let found = reached.map(|reached| {
+        let path: Vec<Point> = std::iter::successors(Some(reached), |state| visits.previous(*state))
+            .map(|state| point_of(cell_of_state(state)))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        (reached, path)
+    });
+    VISITS.set(visits);
+    let (reached, path) = found?;
     let first = path.first().copied();
     Some(Found {
         start: starts.iter().position(|terminal| Some(terminal.point) == first),
