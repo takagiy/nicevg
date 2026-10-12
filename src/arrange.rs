@@ -773,9 +773,10 @@ fn lies_on(point: Point, start: Point, end: Point) -> bool {
         && point.y <= start.y.max(end.y)
 }
 
-/// The connector ends on each node side: the side's stretch and where
-/// along it each end meets it, by node and side.
-fn side_ends(diagram: &Diagram) -> HashMap<(&str, u8), (f64, f64, Vec<f64>)> {
+/// How unevenly the connector ends on each node side are spread, summed
+/// over sides with two or more ends: the gaps between neighbours and to
+/// the corners against an even split, in even gaps.
+fn port_unevenness(diagram: &Diagram) -> f64 {
     let ends = diagram
         .connectors
         .iter()
@@ -807,13 +808,6 @@ fn side_ends(diagram: &Diagram) -> HashMap<(&str, u8), (f64, f64, Vec<f64>)> {
         entry.2.push(position);
     }
     sides
-}
-
-/// How unevenly the connector ends on each node side are spread, summed
-/// over sides with two or more ends: the gaps between neighbours and to
-/// the corners against an even split, in even gaps.
-fn port_unevenness(diagram: &Diagram) -> f64 {
-    side_ends(diagram)
         .into_values()
         .filter(|(_, _, positions)| positions.len() >= 2)
         .map(|(low, high, mut positions)| {

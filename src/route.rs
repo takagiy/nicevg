@@ -2254,6 +2254,57 @@ mod tests {
         assert_eq!(routes_cost(&along, &apart), CROSSING_PENALTY);
     }
 
+    /// Given a connector leaving a box's bottom 20px in from the left end of the
+    ///   box below's top side, once with a box below and once with a circle
+    /// When the ports of facing sides are lined up
+    /// Then the box keeps its port in the middle of its side and the line
+    ///   stays bent, while the circle, whose port ends on the circle, lines
+    ///   up and runs straight
+    #[test]
+    fn lines_up_facing_ports_only_in_the_middle_half_of_a_box_side() {
+        let source = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 200.0,
+            height: 60.0,
+        };
+        let target = Bounds {
+            x: 150.0,
+            y: 200.0,
+            width: 200.0,
+            height: 200.0,
+        };
+        let aligned = |target_round: bool| {
+            let request = PortRequest {
+                id: "c".to_owned(),
+                source_id: "a".to_owned(),
+                target_id: "b".to_owned(),
+                source,
+                target,
+                source_round: false,
+                target_round,
+                sides: Sides {
+                    start: Side::Bottom,
+                    end: Side::Top,
+                },
+            };
+            let ports = HashMap::from([(
+                "c".to_owned(),
+                Ports {
+                    start: point(170.0, 60.0),
+                    end: point(250.0, 200.0),
+                },
+            )]);
+            align_facing_ports(&[request], ports)["c"]
+        };
+
+        let boxed = aligned(false);
+        let round = aligned(true);
+
+        assert_eq!((boxed.start.x, boxed.end.x), (170.0, 250.0));
+        assert_eq!((round.start.x, round.end.x), (170.0, 170.0));
+    }
+
     /// Given a box reaching across the left and lower edges of an area, and
     ///   a terminal on the area's lower edge
     /// When the grid for a search is built over that area only
