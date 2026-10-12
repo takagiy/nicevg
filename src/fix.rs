@@ -1720,6 +1720,24 @@ mod tests {
     use super::*;
     use crate::analyze;
 
+    /// Given routes ending on a node: one running left and then turning up
+    ///   onto a 23px last segment, one doing the same onto a 30px segment,
+    ///   and one running up and then turning right onto a 20px segment
+    /// When the turn just before each end is looked for
+    /// Then the first would run straight into the node's right side at the
+    ///   height it came along, the third into its bottom side at the line
+    ///   it came along, and the second, turning well before its node, is
+    ///   left as it is
+    #[test]
+    fn finds_a_route_turning_onto_a_short_last_segment() {
+        let turning_up = |rise: f64| vec![point(400.0, 350.0), point(100.0, 350.0), point(100.0, 350.0 - rise)];
+        let turning_right = vec![point(100.0, 400.0), point(100.0, 100.0), point(120.0, 100.0)];
+
+        assert_eq!(turned_end(&turning_up(23.0)), Some((Side::Right, 350.0)));
+        assert_eq!(turned_end(&turning_up(30.0)), None);
+        assert_eq!(turned_end(&turning_right), Some((Side::Bottom, 100.0)));
+    }
+
     /// Given two connectors whose middle segments run down side by side 8px
     ///   apart, with room on either side
     /// When their close runs are spread once the layout is settled
