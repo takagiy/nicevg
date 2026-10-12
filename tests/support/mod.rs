@@ -455,6 +455,26 @@ pub const CLEAR_LENGTH: f64 = 20.0;
 /// running together, so that crossing each other tangles them.
 pub const ALONGSIDE: f64 = 40.0;
 
+/// How much each measure adds to `Quality::badness`, in points: 100 points
+/// is one step on the scale people answered with ("hardly any difference",
+/// "rather", "clearly"), fitted to 192 paired comparisons of routes nicevg
+/// can really draw (data/ratings/realistic2-128, docs/idea/quality-weights.md).
+/// Measures missing here (bends up to each connector's second, short ends
+/// counted apart from their shortfall) made no difference people saw.
+pub const BADNESS_WEIGHTS: [(&str, f64); 11] = [
+    ("jogs", 120.0),
+    ("jogShortfall", 9.0),
+    ("lateBends", 60.0),
+    ("bentConnectors", 60.0),
+    ("crossings", 46.0),
+    ("tangledCrossings", 8.0),
+    ("crossingsNearEnds", 7.0),
+    ("cornerShortfall", 4.0),
+    ("shortEndShortfall", 3.0),
+    ("parallelDensity", 1.0),
+    ("detour", 0.16),
+];
+
 /// How a fixed diagram reads, each measure larger when it reads worse: a
 /// count of bad things, or a sum of how bad each one is, so one more of
 /// them never makes a measure smaller. Lengths are in px, rounded to
@@ -462,6 +482,10 @@ pub const ALONGSIDE: f64 = 40.0;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Quality {
+    /// The measures below weighed by `BADNESS_WEIGHTS` and summed: how bad
+    /// the routes read as a whole. Issues, diagonal segments and detached
+    /// labels stay out of it; they are checked on their own.
+    pub badness: f64,
     pub bends: usize,
     /// Connectors with any bend, however many.
     pub bent_connectors: usize,
@@ -525,7 +549,8 @@ pub fn quality_of(report: &AnalysisReport) -> Quality {
         .filter(|length| *length < CLEAR_LENGTH)
         .collect();
     let crossings = crossing_points(report);
-    Quality {
+    let mut quality = Quality {
+        badness: 0.0,
         bends: connectors.iter().map(|connector| bend_count(&connector.points)).sum(),
         bent_connectors: connectors
             .iter()
@@ -576,7 +601,15 @@ pub fn quality_of(report: &AnalysisReport) -> Quality {
         short_ends: short_ends.len(),
         short_end_shortfall: hundredths(short_ends.iter().map(|length| CLEAR_LENGTH - length).sum()),
         tangled_crossings: crossings.iter().filter(|crossing| crossing.tangled).count(),
-    }
+    };
+    let measures = serde_json::to_value(&quality).expect("serializable quality");
+    quality.badness = hundredths(
+        BADNESS_WEIGHTS
+            .iter()
+            .map(|(name, weight)| weight * measures[name].as_f64().expect("a weighed measure"))
+            .sum(),
+    );
+    quality
 }
 
 /// The steps of a route's jogs: segments shorter than the clear length

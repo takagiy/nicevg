@@ -3,6 +3,7 @@ source: tests/arrange.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
+  "badness": 1358.86,
   "bends": 25,
   "bentConnectors": 15,
   "cornerShortfall": 0.0,

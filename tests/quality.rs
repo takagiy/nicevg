@@ -243,3 +243,68 @@ fn counts_a_crossing_between_connectors_running_alongside_as_tangled() {
     assert_eq!((tangled.crossings, tangled.tangled_crossings), (1, 1));
     assert_eq!((plain.crossings, plain.tangled_crossings), (1, 0));
 }
+
+/// Given a straight connector that gains a 10px jog, and the same connector detouring 60px around nothing
+/// When their quality is measured
+/// Then the jog reads worse, as people judged the paired comparisons
+#[test]
+fn rates_a_small_jog_worse_than_a_detour_around_nothing() {
+    let jogged = diagram(&TWO_BOXES, &[("f", "a", "b", "M 100 40 L 250 40 L 250 50 L 400 50")]);
+    let detoured = diagram(
+        &TWO_BOXES,
+        &[("f", "a", "b", "M 100 40 L 200 40 L 200 100 L 300 100 L 300 40 L 400 40")],
+    );
+
+    assert!(quality(&jogged).badness > quality(&detoured).badness);
+}
+
+/// Given a straight connector crossing another, and the same straight connector clear of it
+/// When their quality is measured
+/// Then the crossing raises the badness
+#[test]
+fn counts_a_crossing_in_the_badness() {
+    let line = ("h", "a", "b", "M 100 160 L 400 160");
+    let nodes = |x: f64| {
+        [
+            ("a", 20.0, 140.0, 80.0, 40.0),
+            ("b", 400.0, 140.0, 80.0, 40.0),
+            ("c", x, 20.0, 80.0, 40.0),
+            ("d", x, 300.0, 80.0, 40.0),
+        ]
+    };
+    let crossing = diagram(&nodes(210.0), &[line, ("v", "c", "d", "M 250 60 L 250 300")]);
+    let clear = diagram(&nodes(500.0), &[line, ("v", "c", "d", "M 540 60 L 540 300")]);
+
+    let (crossing, clear) = (quality(&crossing), quality(&clear));
+    assert_eq!((crossing.crossings, clear.crossings), (1, 0));
+    assert!(crossing.badness > clear.badness);
+}
+
+/// Given a connector turning twice, and one reaching the same ends with four turns at the same length
+/// When their quality is measured
+/// Then the turns past the second raise the badness
+#[test]
+fn rates_turns_past_the_second_worse() {
+    let nodes = [("a", 20.0, 20.0, 80.0, 40.0), ("b", 400.0, 120.0, 80.0, 40.0)];
+    let twice = diagram(&nodes, &[("f", "a", "b", "M 100 40 L 250 40 L 250 140 L 400 140")]);
+    let four = diagram(
+        &nodes,
+        &[("f", "a", "b", "M 100 40 L 200 40 L 200 90 L 300 90 L 300 140 L 400 140")],
+    );
+
+    assert!(quality(&four).badness > quality(&twice).badness);
+}
+
+/// Given one connector with a 10px jog, and the same connector with a second 10px jog
+/// When their quality is measured
+/// Then the second jog raises the badness
+#[test]
+fn counts_each_further_jog_in_the_badness() {
+    let one = diagram(&TWO_BOXES, &[("f", "a", "b", "M 100 40 L 250 40 L 250 50 L 400 50")]);
+    let two = diagram(
+        &TWO_BOXES,
+        &[("f", "a", "b", "M 100 40 L 200 40 L 200 50 L 300 50 L 300 40 L 400 40")],
+    );
+
+    assert!(quality(&two).badness > quality(&one).badness);
+}

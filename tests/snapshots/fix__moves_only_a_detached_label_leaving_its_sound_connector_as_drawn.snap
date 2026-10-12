@@ -3,6 +3,7 @@ source: tests/fix.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
+  "badness": 60.0,
   "bends": 2,
   "bentConnectors": 1,
   "cornerShortfall": 0.0,
