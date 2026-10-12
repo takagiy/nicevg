@@ -16,9 +16,10 @@ use crate::diagram::{
 use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, route_is_clear, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
-    CLEARANCE, CLOSE_RUN, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Pushable, Side, Sides, choose_sides,
-    connector_ports, crossings, end_on_shapes, is_on_outline, label_landmarks, overlap, place_label, place_label_clear,
-    route_connector, route_cost, routes_cost, runs_across, side_of, spread_ports, turns,
+    CLEARANCE, CLOSE_RUN, CROSSING_PENALTY, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports, Pushable, Side,
+    Sides, choose_sides, connector_ports, crossings, end_on_shapes, is_on_outline, label_landmarks, overlap,
+    place_label, place_label_clear, route_connector, route_cost, routes_cost, runs_across, side_of, spread_ports,
+    turns,
 };
 use crate::text::{label_text_index, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
@@ -95,7 +96,7 @@ impl Draft {
 /// What pushing a label aside costs for each pixel its new spot lies nearer
 /// another connector than a label keeps clear of them: touching one costs
 /// what crossing it does.
-const CROWDED_PUSH_COST: f64 = 300.0 / LABEL_CLEAR_OF_OTHERS;
+const CROWDED_PUSH_COST: f64 = CROSSING_PENALTY / LABEL_CLEAR_OF_OTHERS;
 
 /// Repairs what can be repaired, repeating passes while they leave fewer
 /// issues (at most five).
@@ -529,6 +530,20 @@ fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_ro
 /// connectors and of labels that drifted from their connector.
 #[tracing::instrument(skip_all, fields(reroutes = tracing::field::Empty, partners = tracing::field::Empty))]
 fn reroute_connectors(draft: Draft) -> Draft {
+    // A pushed label is sure of a spot only among the routes as they were;
+    // one that finds none among the new routes stands as a wall instead.
+    let (rerouted, stuck) = reroute_around(draft.clone(), &HashSet::new());
+    if stuck.is_empty() {
+        rerouted
+    } else {
+        reroute_around(draft, &stuck).0
+    }
+}
+
+/// Reroutes as `reroute_connectors` does, with the labels named in `walls`
+/// standing in the way instead of moving aside; also gives the labels it
+/// pushed aside but found no spot for.
+fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<String>) {
     let report = draft.report().clone();
     let diagram = &report.diagram;
 
@@ -599,6 +614,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
         .iter()
         .filter(|label| {
             !detached_ids.contains(label.id.as_str())
+                && !walls.contains(&label.id)
                 && label.connector.as_deref().is_some_and(|id| !rerouted_ids.contains(id))
         })
         .collect();
@@ -622,7 +638,10 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 diagram
                     .labels
                     .iter()
-                    .filter(|label| !detached_ids.contains(label.id.as_str()) && label.connector.is_none())
+                    .filter(|label| {
+                        !detached_ids.contains(label.id.as_str())
+                            && (label.connector.is_none() || walls.contains(&label.id))
+                    })
                     .map(|label| label.bounds),
             )
             .collect()
@@ -873,9 +892,9 @@ fn reroute_connectors(draft: Draft) -> Draft {
     let all_final: Vec<Vec<Point>> = routed.routes.iter().map(|(_, route)| route.clone()).collect();
     // Moving a label rewrites positions only, so every text keeps its path.
     let label_texts = label_text_index(&routed.draft.document);
-    let (placed, _) = moving
-        .iter()
-        .fold((routed.draft, still), |(draft, obstacles), (_, label)| {
+    let (placed, _, stuck) = moving.iter().fold(
+        (routed.draft, still, HashSet::new()),
+        |(draft, obstacles, mut stuck), (_, label)| {
             let connector_id = label.connector.clone().unwrap_or_default();
             let route = routed
                 .routes
@@ -884,7 +903,7 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 .map(|(_, route)| route);
             let texts = label_texts.get(&label.id).map_or(&[][..], Vec::as_slice);
             let (Some(route), false) = (route, texts.is_empty()) else {
-                return (draft, obstacles);
+                return (draft, obstacles, stuck);
             };
             let blocked = [obstacles.clone(), label_blockers(diagram, &connector_id)].concat();
             let containers = label_containers(diagram, &connector_id);
@@ -898,7 +917,10 @@ fn reroute_connectors(draft: Draft) -> Draft {
             let Some(placement) =
                 clear.or_else(|| place_label(width, height, route, &all_final, &blocked, &containers))
             else {
-                return (draft, obstacles);
+                if pushed.contains(label.id.as_str()) {
+                    stuck.insert(label.id.clone());
+                }
+                return (draft, obstacles, stuck);
             };
             let updated = move_label(
                 draft.document.clone(),
@@ -909,9 +931,10 @@ fn reroute_connectors(draft: Draft) -> Draft {
             );
             let message = format!("Moved label \"{}\" beside connector \"{connector_id}\".", label.id);
             let draft = draft.changed(updated, "move-label", message, &[&label.id, &connector_id]);
-            (draft, [obstacles, vec![placement.bounds]].concat())
-        });
-    placed
+            (draft, [obstacles, vec![placement.bounds]].concat(), stuck)
+        },
+    );
+    (placed, stuck)
 }
 
 /// Once the layout is settled, moves a middle segment of a connector that

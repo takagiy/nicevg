@@ -50,7 +50,7 @@ const BRUSHING: Fade = Fade {
 };
 /// Crossing another connector costs as much as a detour of 300px: a route
 /// goes the long way round rather than cross when it can.
-const CROSSING_PENALTY: f64 = 300.0;
+pub(crate) const CROSSING_PENALTY: f64 = 300.0;
 /// Turning on or just beside another connector, or running past its turn,
 /// makes the two read as one line turning: worse than a crossing.
 const NEAR_MISS_PENALTY: f64 = 2.0 * CROSSING_PENALTY;

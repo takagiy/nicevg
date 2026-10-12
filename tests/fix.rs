@@ -1953,3 +1953,37 @@ fn reroutes_with_several_bends_when_one_detour_cannot_clear_the_obstacles() {
 
     assert_fix_snapshots!(result);
 }
+
+/// Given a straight line from A to B passing just under the label of
+///   another connector, a label with room on the far side of its own line
+/// When the diagram is fixed
+/// Then the line stays straight and the label moves aside, above its own
+///   line, leaving nothing reported
+#[test]
+fn pushes_another_connector_s_label_aside_to_keep_a_line_straight() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 260">
+        <g data-node="a"><rect x="20" y="150" width="100" height="60" /></g>
+        <g data-node="b"><rect x="420" y="150" width="100" height="60" /></g>
+        <g data-node="c"><rect x="160" y="20" width="80" height="50" /></g>
+        <g data-node="d"><rect x="300" y="20" width="80" height="50" /></g>
+        <line id="ab" data-from="a" data-to="b" x1="120" y1="180" x2="420" y2="180" />
+        <path id="cd" data-from="c" data-to="d" fill="none" d="M 200 70 L 200 150 L 340 150 L 340 70" />
+        <text data-label="events" data-label-for="cd" x="270" y="171" text-anchor="middle"
+          font-size="12">events</text>
+      </svg>
+    "#;
+    let before = analyze(svg);
+    assert!(
+        has_issue(&before, "connector-label-clearance"),
+        "{:?}",
+        issue_codes(&before)
+    );
+
+    let result = fix(svg);
+    let label = label_bounds(&result.report, "events");
+
+    assert_eq!(bend_count(&connector_points(&result.report, "ab")), 0);
+    assert!(label.bottom() <= 150.0, "{label:?}");
+    assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
+}
