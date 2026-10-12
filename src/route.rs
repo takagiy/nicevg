@@ -6,8 +6,8 @@ use std::collections::{BinaryHeap, HashMap};
 
 use crate::diagram::DiagramNode;
 use crate::geometry::{
-    Bounds, Point, distance_to_route, distance_to_segment, hypot, intersection, point, round, route_is_clear,
-    routes_overlap, segment_intersects_interior, segment_length, segments, without_redundant_points,
+    Bounds, Point, distance_to_route, distance_to_segment, enclosing, hypot, intersection, point, round,
+    route_is_clear, routes_overlap, segment_intersects_interior, segment_length, segments, without_redundant_points,
 };
 
 pub const BEND_PENALTY: f64 = 40.0;
@@ -313,31 +313,71 @@ struct Grid {
 }
 
 /// Builds the grid for a search from the obstacles, the connectors already
-/// drawn, the rails and the terminals.
+/// drawn, the rails and the terminals. A coarse grid draws no lines along
+/// the connectors and rails or through the middle of channels; with an
+/// `area`, only its lines inside the area are drawn.
 fn grid(
     starts: &[Terminal],
     ends: &[Terminal],
     obstacles: &[Bounds],
     occupied: &[Vec<Point>],
     rails: &[(Point, Point)],
+    coarse: bool,
+    area: Option<Bounds>,
 ) -> Grid {
     let phase = tracing::info_span!("search_grid_lines").entered();
+    // Inside an area, only the obstacles' parts within it count, kept one
+    // unit past its edges so the edge lines stay inside what they cut.
+    let area = area.map(|area| area.inflate(1.0));
+    let clipped: Vec<Bounds> = match area {
+        None => obstacles.to_vec(),
+        Some(area) => obstacles
+            .iter()
+            .filter(|b| b.x < area.right() && area.x < b.right() && b.y < area.bottom() && area.y < b.bottom())
+            .map(|b| {
+                let (left, top) = (b.x.max(area.x), b.y.max(area.y));
+                Bounds {
+                    x: left,
+                    y: top,
+                    width: b.right().min(area.right()) - left,
+                    height: b.bottom().min(area.bottom()) - top,
+                }
+            })
+            .collect(),
+    };
+    let obstacles = clipped.as_slice();
     let crossed_segments: Vec<(Point, Point)> = occupied.iter().flat_map(|route| segments(route)).collect();
     let occupied_segments: Vec<(Point, Point)> = crossed_segments.iter().chain(rails).copied().collect();
     let axis = |pick: fn(&Point) -> f64, low: fn(&Bounds) -> f64, high: fn(&Bounds) -> f64| {
         let spans: Vec<(f64, f64)> = obstacles.iter().map(|bounds| (low(bounds), high(bounds))).collect();
+        let bounds_of_area = area.map(|area| (low(&area), high(&area)));
+        let within = |value: f64| bounds_of_area.is_none_or(|(from, to)| from <= value && value <= to);
         let terminals: Vec<f64> = starts
             .iter()
             .chain(ends)
             .map(|terminal| pick(&terminal.point))
+            .chain(bounds_of_area.into_iter().flat_map(|(from, to)| [from, to]))
             .collect();
-        // Connectors (and rails) running along this axis' lines.
+        // Connectors (and rails) running along this axis' lines; a coarse
+        // grid leaves them out.
         let along: Vec<f64> = occupied_segments
             .iter()
-            .filter(|(from, to)| pick(from) == pick(to))
+            .filter(|(from, to)| !coarse && pick(from) == pick(to) && within(pick(from)))
             .map(|(from, _)| pick(from))
             .collect();
-        axis_lines(&spans, &terminals, &along, &along)
+        let (lines, spans) = axis_lines(&spans, &terminals, &along, &along, !coarse);
+        // Obstacles pushed out past the area stop at its edges, which are lines.
+        let spans = match bounds_of_area {
+            Some((from, to)) => spans
+                .into_iter()
+                .map(|(low, high)| (low.max(from), high.min(to)))
+                .collect(),
+            None => spans,
+        };
+        (
+            lines.into_iter().filter(|line| within(*line)).collect::<Vec<_>>(),
+            spans,
+        )
     };
     let (xs, x_spans) = axis(|p| p.x, |b| b.x, Bounds::right);
     let (ys, y_spans) = axis(|p| p.y, |b| b.y, Bounds::bottom);
@@ -565,6 +605,68 @@ pub fn search(
     rails: &[(Point, Point)],
     bend_penalty: f64,
 ) -> Option<Found> {
+    let grid = grid(starts, ends, obstacles, occupied, rails, false, None);
+    tracing::Span::current()
+        .record("columns", grid.xs.len())
+        .record("rows", grid.ys.len());
+    astar(&grid, starts, ends, bend_penalty, None)
+}
+
+/// Like `search`, but quicker and not always the cheapest: a coarse grid,
+/// without the lines along other connectors or through the middle of
+/// channels, finds the way round, and the fine grid is built and searched
+/// only along the channels that way passes. Picking node sides needs only
+/// where the route ends.
+#[tracing::instrument(skip_all)]
+fn search_along_rough_route(
+    starts: &[Terminal],
+    ends: &[Terminal],
+    obstacles: &[Bounds],
+    occupied: &[Vec<Point>],
+    rails: &[(Point, Point)],
+    bend_penalty: f64,
+) -> Option<Found> {
+    let coarse = grid(starts, ends, obstacles, occupied, rails, true, None);
+    let corridor =
+        astar(&coarse, starts, ends, bend_penalty, None).map(|rough| corridor(&rough.path, &coarse.xs, &coarse.ys));
+    corridor
+        .and_then(|corridor| {
+            let fine = grid(starts, ends, obstacles, occupied, rails, false, enclosing(&corridor));
+            astar(&fine, starts, ends, bend_penalty, Some(&corridor))
+        })
+        .or_else(|| search(starts, ends, obstacles, occupied, rails, bend_penalty))
+}
+
+/// The channels a route on a grid runs along: each segment widened to the
+/// grid lines on either side of it.
+fn corridor(path: &[Point], xs: &[f64], ys: &[f64]) -> Vec<Bounds> {
+    let span = |lines: &[f64], a: f64, b: f64| {
+        let low = lines[lines.partition_point(|line| *line < a.min(b)).saturating_sub(1)];
+        let high = lines[lines.partition_point(|line| *line <= a.max(b)).min(lines.len() - 1)];
+        (low, high)
+    };
+    path.windows(2)
+        .map(|pair| {
+            let ((left, right), (top, bottom)) = (span(xs, pair[0].x, pair[1].x), span(ys, pair[0].y, pair[1].y));
+            Bounds {
+                x: left,
+                y: top,
+                width: right - left,
+                height: bottom - top,
+            }
+        })
+        .collect()
+}
+
+/// A* over a grid, from whichever start to whichever end is cheapest,
+/// through the points inside `corridor` when one is given.
+fn astar(
+    grid: &Grid,
+    starts: &[Terminal],
+    ends: &[Terminal],
+    bend_penalty: f64,
+    corridor: Option<&[Bounds]>,
+) -> Option<Found> {
     let Grid {
         xs,
         ys,
@@ -584,10 +686,7 @@ pub fn search(
         row_crossing,
         column_blocked,
         column_crossing,
-    } = grid(starts, ends, obstacles, occupied, rails);
-    tracing::Span::current()
-        .record("columns", xs.len())
-        .record("rows", ys.len());
+    } = grid;
     let (width, rows) = (xs.len(), ys.len());
     let cells = width * rows;
     let key = |xi: usize, yi: usize| yi * width + xi;
@@ -613,12 +712,12 @@ pub fn search(
     };
     let end_indices: Vec<Option<(usize, usize)>> = ends
         .iter()
-        .map(|terminal| Some((index_of(&xs, terminal.point.x)?, index_of(&ys, terminal.point.y)?)))
+        .map(|terminal| Some((index_of(xs, terminal.point.x)?, index_of(ys, terminal.point.y)?)))
         .collect();
     drop(phase);
     let phase = tracing::info_span!("search_astar", visited = tracing::field::Empty).entered();
 
-    let cell_of = |target: &Point| Some(key(index_of(&xs, target.x)?, index_of(&ys, target.y)?));
+    let cell_of = |target: &Point| Some(key(index_of(xs, target.x)?, index_of(ys, target.y)?));
     let end_cells: HashMap<usize, (usize, Terminal)> = ends
         .iter()
         .enumerate()
@@ -756,6 +855,13 @@ pub fn search(
             if end.is_none() && blocked_cell[next_cell] {
                 continue;
             }
+            let next = point_of(next_cell);
+            let inside = |area: &Bounds| {
+                area.x <= next.x && next.x <= area.right() && area.y <= next.y && next.y <= area.bottom()
+            };
+            if end.is_none() && corridor.is_some_and(|corridor| !corridor.iter().any(inside)) {
+                continue;
+            }
             if end.is_some_and(|(_, terminal)| arrives_backwards(here, point_of(next_cell), terminal)) {
                 continue;
             }
@@ -786,7 +892,6 @@ pub fn search(
                     }
             });
             let next_state = state_of(next_cell, vertical, turned + turns);
-            let next = point_of(next_cell);
             let length = (next.x - here.x).abs() + (next.y - here.y).abs();
             let outline = if vertical == 1 {
                 &outline_vertical
@@ -871,6 +976,7 @@ fn axis_lines(
     terminals: &[f64],
     occupied: &[f64],
     lanes_beside: &[f64],
+    midlines: bool,
 ) -> (Vec<f64>, Vec<(f64, f64)>) {
     let fixed = sorted_distinct(terminals.iter().chain(occupied).copied());
     // A push from `from` to `to` that would carry a fixed line inside the
@@ -944,7 +1050,7 @@ fn axis_lines(
     // both, rounded to whole units.
     let channels = base
         .windows(2)
-        .filter(|pair| pair[1] - pair[0] > 2.0 * LINE_MERGE)
+        .filter(|pair| midlines && pair[1] - pair[0] > 2.0 * LINE_MERGE)
         .map(|pair| round((pair[0] + pair[1]) / 2.0));
     let mut lines = sorted_distinct(base.iter().copied().chain(channels).chain(occupied.iter().copied()));
     // Lanes one and two lanes beside connectors already drawn let new routes
@@ -1167,7 +1273,7 @@ pub fn choose_sides(
         .map(|bounds| bounds.inflate(CLEARANCE))
         .chain([source.inflate(CLEARANCE), target.inflate(CLEARANCE)])
         .collect();
-    let found = search(
+    let found = search_along_rough_route(
         &terminals(source, fallback.start),
         &terminals(target, fallback.end),
         &obstacles,
@@ -1823,7 +1929,7 @@ mod tests {
     ///   distance of another
     #[test]
     fn draws_one_line_for_obstacle_edges_close_together() {
-        let (lines, spans) = axis_lines(&[(300.0, 388.0), (392.0, 500.0)], &[], &[], &[]);
+        let (lines, spans) = axis_lines(&[(300.0, 388.0), (392.0, 500.0)], &[], &[], &[], true);
 
         assert_eq!(spans[0].1, spans[1].0);
         assert!(spans[0].1 >= 388.0 && spans[1].0 <= 392.0);
@@ -1838,7 +1944,7 @@ mod tests {
     ///   so the terminal never ends up inside an obstacle
     #[test]
     fn keeps_a_terminal_line_and_merges_edges_onto_it() {
-        let (lines, spans) = axis_lines(&[(60.0, 140.0), (142.0, 206.0)], &[142.0], &[], &[]);
+        let (lines, spans) = axis_lines(&[(60.0, 140.0), (142.0, 206.0)], &[142.0], &[], &[], true);
 
         assert!(lines.contains(&142.0));
         assert_eq!(spans[0].1, 142.0);
@@ -1851,7 +1957,7 @@ mod tests {
     /// Then the edge on the terminal's line is not pushed past the terminal
     #[test]
     fn does_not_push_an_edge_past_a_terminal() {
-        let (_, spans) = axis_lines(&[(140.0, 300.0), (142.0, 206.0)], &[142.0], &[], &[]);
+        let (_, spans) = axis_lines(&[(140.0, 300.0), (142.0, 206.0)], &[142.0], &[], &[], true);
 
         assert_eq!(spans[1].0, 142.0);
     }
@@ -1863,7 +1969,13 @@ mod tests {
     ///   edge is left out, and lanes clear of other lines are kept
     #[test]
     fn leaves_out_lines_crowding_others() {
-        let (lines, _) = axis_lines(&[(0.0, 100.0), (105.0, 200.0), (241.0, 260.0)], &[], &[250.0], &[250.0]);
+        let (lines, _) = axis_lines(
+            &[(0.0, 100.0), (105.0, 200.0), (241.0, 260.0)],
+            &[],
+            &[250.0],
+            &[250.0],
+            true,
+        );
 
         assert!(!lines.contains(&102.0) && !lines.contains(&103.0), "{lines:?}");
         assert!(lines.contains(&50.0));
@@ -1999,6 +2111,8 @@ mod tests {
             &[],
             &[vec![point(0.0, 0.0), point(100.0, 0.0)]],
             &[],
+            false,
+            None,
         );
         let step = |y: f64| built.near_horizontal[index_of(&built.ys, y).unwrap() * built.xs.len()];
 
