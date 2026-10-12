@@ -41,6 +41,13 @@ pub(crate) const CLOSE_RUN: Fade = Fade {
     reach: 16.0,
     full: 120.0,
 };
+/// How much more crossing a route costs by how near it runs alongside the
+/// other somewhere: in full within 20px, fading out by 40px.
+const TANGLED: Fade = Fade {
+    start: 20.0,
+    reach: 40.0,
+    full: 1.6,
+};
 /// How much of running alongside two segments pay by how far they overlap:
 /// overlapping less than 20px they only brush past each other.
 const BRUSHING: Fade = Fade {
@@ -1228,13 +1235,16 @@ pub(crate) fn route_cost(route: &[Point]) -> f64 {
 /// What two drawn routes cost each other, priced as the search prices a
 /// route against those already drawn: each crossing, each stretch running
 /// alongside within two lanes, and each turn just beside the other route.
+/// Crossing a route that also runs alongside costs more, up to 2.6 times as
+/// much the nearer they run, as the two are then hard to tell apart.
 pub(crate) fn routes_cost(first: &[Point], second: &[Point]) -> f64 {
     let (first_segments, second_segments) = (segments(first), segments(second));
     let mut cost = 0.0;
+    let (mut crossed, mut closest) = (0usize, 0.0f64);
     for (a, b) in &first_segments {
         for (c, d) in &second_segments {
             if chords_cross(*a, *b, *c, *d) {
-                cost += CROSSING_PENALTY;
+                crossed += 1;
             }
             let distance = if a.y == b.y && c.y == d.y {
                 (a.y - c.y).abs()
@@ -1245,13 +1255,18 @@ pub(crate) fn routes_cost(first: &[Point], second: &[Point]) -> f64 {
             };
             let overlap = overlap((*a, *b), (*c, *d));
             if overlap > 0.0 {
-                cost += close_run_cost(distance) * (1.0 - BRUSHING.cost(overlap));
+                let shared = 1.0 - BRUSHING.cost(overlap);
+                cost += close_run_cost(distance) * shared;
+                if distance > 0.0 {
+                    closest = closest.max(TANGLED.cost(distance) * shared);
+                }
             }
         }
     }
-    cost + (crate::inspect::turns_beside(first, &second_segments)
-        + crate::inspect::turns_beside(second, &first_segments)) as f64
-        * NEAR_MISS_PENALTY
+    cost + crossed as f64 * CROSSING_PENALTY * (1.0 + closest)
+        + (crate::inspect::turns_beside(first, &second_segments)
+            + crate::inspect::turns_beside(second, &first_segments)) as f64
+            * NEAR_MISS_PENALTY
 }
 
 /// How far two parallel segments run alongside each other: the length of
@@ -2175,6 +2190,36 @@ mod tests {
     ///   them, running alongside costs the same however long it lasts, less
     ///   for a mere touch of overlap and less further apart, and the pair far
     ///   apart costs nothing
+    /// Given a route crossing one it runs 8px beside for 80px first, one
+    ///   crossing it after running 30px beside, and one crossing it without
+    ///   running beside it
+    /// When each pair is costed
+    /// Then crossing the route it ran right beside costs 2.6 crossings,
+    ///   crossing after running further off costs between one and that,
+    ///   and crossing alone costs one
+    #[test]
+    fn prices_crossing_a_route_running_alongside_higher() {
+        let along = [point(0.0, 0.0), point(200.0, 0.0)];
+        let after_running_at = |gap: f64| {
+            [
+                point(0.0, gap),
+                point(80.0, gap),
+                point(80.0, 40.0),
+                point(120.0, 40.0),
+                point(120.0, -40.0),
+            ]
+        };
+        let apart = [point(0.0, 80.0), point(120.0, 80.0), point(120.0, -40.0)];
+        let wider = routes_cost(&along, &after_running_at(30.0));
+
+        assert_eq!(
+            routes_cost(&along, &after_running_at(8.0)),
+            CLOSE_RUN.full + 2.6 * CROSSING_PENALTY
+        );
+        assert!(wider > CROSSING_PENALTY && wider < 2.6 * CROSSING_PENALTY, "{wider}");
+        assert_eq!(routes_cost(&along, &apart), CROSSING_PENALTY);
+    }
+
     #[test]
     fn costs_two_drawn_routes_as_the_search_prices_them() {
         let across = [point(50.0, -50.0), point(50.0, 50.0)];
