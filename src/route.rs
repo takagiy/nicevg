@@ -55,9 +55,12 @@ const CROSSING_PENALTY: f64 = 300.0;
 /// makes the two read as one line turning: worse than a crossing.
 const NEAR_MISS_PENALTY: f64 = 2.0 * CROSSING_PENALTY;
 pub const CLEARANCE: f64 = 8.0;
-/// What a box a route may push aside costs to push, such as another
-/// connector's label with the cost of moving it out of the way.
-pub type Pushable = (Bounds, f64);
+/// A box a route may push aside, such as another connector's label, and
+/// what pushing it costs, worked out only once a route reaches it: `None`
+/// when it cannot move.
+pub type Pushable<'a> = (Bounds, &'a dyn Fn() -> Option<f64>);
+/// No pushable box on a step.
+const NO_BOX: u32 = u32::MAX;
 /// How far a route runs straight into its target before the last bend,
 /// longest first. An arrowhead is about 10px long, so the clearance alone
 /// leaves the last bend under it; shorter stubs are the fallbacks when
@@ -297,10 +300,10 @@ struct Grid {
     outline_horizontal: Vec<bool>,
     outline_vertical: Vec<bool>,
     /// Points inside a box the route may push aside, such as another
-    /// connector's label, and what entering one along each step costs.
+    /// connector's label, and the box each step enters, if any.
     pushable_cell: Vec<bool>,
-    pushable_horizontal: Vec<f64>,
-    pushable_vertical: Vec<f64>,
+    pushable_horizontal: Vec<u32>,
+    pushable_vertical: Vec<u32>,
     /// What running alongside another connector costs on each step.
     near_horizontal: Vec<f64>,
     near_vertical: Vec<f64>,
@@ -320,21 +323,35 @@ struct Grid {
     column_crossing: Vec<u32>,
 }
 
+/// Which lines a grid draws.
+#[derive(Clone, Copy)]
+enum Lines {
+    /// Every line.
+    All,
+    /// No lines along the connectors and rails or through the middle of
+    /// channels.
+    Coarse,
+    /// Only the lines inside an area.
+    Inside(Bounds),
+}
+
 /// Builds the grid for a search from the obstacles, the connectors already
-/// drawn, the rails and the terminals. A coarse grid draws no lines along
-/// the connectors and rails or through the middle of channels; with an
-/// `area`, only its lines inside the area are drawn.
+/// drawn, the rails and the terminals, drawing the `lines` asked for.
 fn grid(
     starts: &[Terminal],
     ends: &[Terminal],
     obstacles: &[Bounds],
-    pushable: &[Pushable],
+    pushable: &[Pushable<'_>],
     occupied: &[Vec<Point>],
     rails: &[(Point, Point)],
-    coarse: bool,
-    area: Option<Bounds>,
+    lines: Lines,
 ) -> Grid {
     let phase = tracing::info_span!("search_grid_lines").entered();
+    let coarse = matches!(lines, Lines::Coarse);
+    let area = match lines {
+        Lines::Inside(area) => Some(area),
+        Lines::All | Lines::Coarse => None,
+    };
     // Inside an area, only the obstacles' parts within it count, kept one
     // unit past its edges so the edge lines stay inside what they cut.
     let area = area.map(|area| area.inflate(1.0));
@@ -352,8 +369,11 @@ fn grid(
         })
     };
     let clipped: Vec<Bounds> = obstacles.iter().filter_map(clip).collect();
-    let (pushed_boxes, push_costs): (Vec<Bounds>, Vec<f64>) =
-        pushable.iter().filter_map(|(b, cost)| Some((clip(b)?, *cost))).unzip();
+    let (pushed_boxes, box_indices): (Vec<Bounds>, Vec<u32>) = pushable
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (b, _))| Some((clip(b)?, index as u32)))
+        .unzip();
     // Pushable boxes get their own lines like obstacles, after them.
     let all = [clipped.as_slice(), pushed_boxes.as_slice()].concat();
     let obstacles = all.as_slice();
@@ -422,9 +442,9 @@ fn grid(
     let mut outline_vertical = vec![false; cells];
     // Points and steps inside a box the route may push aside.
     let mut pushable_cell = vec![false; cells];
-    let mut pushable_horizontal = vec![0.0f64; cells];
-    let mut pushable_vertical = vec![0.0f64; cells];
-    for (bounds, cost) in pushable.iter().zip(&push_costs) {
+    let mut pushable_horizontal = vec![NO_BOX; cells];
+    let mut pushable_vertical = vec![NO_BOX; cells];
+    for (bounds, box_index) in pushable.iter().zip(&box_indices) {
         let (Some(left), Some(right), Some(top), Some(bottom)) = (
             index_of(&xs, bounds.x),
             index_of(&xs, bounds.right()),
@@ -440,10 +460,10 @@ fn grid(
                 let inside_y = yi > top && yi < bottom;
                 pushable_cell[index] |= inside_x && inside_y;
                 if inside_y && xi < right {
-                    pushable_horizontal[index] = pushable_horizontal[index].max(*cost);
+                    pushable_horizontal[index] = *box_index;
                 }
                 if inside_x && yi < bottom {
-                    pushable_vertical[index] = pushable_vertical[index].max(*cost);
+                    pushable_vertical[index] = *box_index;
                 }
             }
         }
@@ -644,16 +664,16 @@ pub fn search(
     starts: &[Terminal],
     ends: &[Terminal],
     obstacles: &[Bounds],
-    pushable: &[Pushable],
+    pushable: &[Pushable<'_>],
     occupied: &[Vec<Point>],
     rails: &[(Point, Point)],
     bend_penalty: f64,
 ) -> Option<Found> {
-    let grid = grid(starts, ends, obstacles, pushable, occupied, rails, false, None);
+    let grid = grid(starts, ends, obstacles, pushable, occupied, rails, Lines::All);
     tracing::Span::current()
         .record("columns", grid.xs.len())
         .record("rows", grid.ys.len());
-    astar(&grid, starts, ends, bend_penalty, None)
+    astar(&grid, starts, ends, bend_penalty, None, pushable)
 }
 
 /// Like `search`, but quicker and not always the cheapest: a coarse grid,
@@ -666,14 +686,14 @@ fn search_along_rough_route(
     starts: &[Terminal],
     ends: &[Terminal],
     obstacles: &[Bounds],
-    pushable: &[Pushable],
+    pushable: &[Pushable<'_>],
     occupied: &[Vec<Point>],
     rails: &[(Point, Point)],
     bend_penalty: f64,
 ) -> Option<Found> {
-    let coarse = grid(starts, ends, obstacles, pushable, occupied, rails, true, None);
-    let corridor =
-        astar(&coarse, starts, ends, bend_penalty, None).map(|rough| corridor(&rough.path, &coarse.xs, &coarse.ys));
+    let coarse = grid(starts, ends, obstacles, pushable, occupied, rails, Lines::Coarse);
+    let corridor = astar(&coarse, starts, ends, bend_penalty, None, pushable)
+        .map(|rough| corridor(&rough.path, &coarse.xs, &coarse.ys));
     corridor
         .and_then(|corridor| {
             let fine = grid(
@@ -683,10 +703,9 @@ fn search_along_rough_route(
                 pushable,
                 occupied,
                 rails,
-                false,
-                enclosing(&corridor),
+                enclosing(&corridor).map_or(Lines::All, Lines::Inside),
             );
-            astar(&fine, starts, ends, bend_penalty, Some(&corridor))
+            astar(&fine, starts, ends, bend_penalty, Some(&corridor), pushable)
         })
         .or_else(|| search(starts, ends, obstacles, pushable, occupied, rails, bend_penalty))
 }
@@ -720,6 +739,7 @@ fn astar(
     ends: &[Terminal],
     bend_penalty: f64,
     corridor: Option<&[Bounds]>,
+    pushable: &[Pushable<'_>],
 ) -> Option<Found> {
     let Grid {
         xs,
@@ -990,12 +1010,18 @@ fn astar(
             } else {
                 0.0
             };
-            let pushes = if pushable_cell[cell] {
-                0.0
-            } else if vertical == 1 {
+            let entered = if vertical == 1 {
                 pushable_vertical[edge]
             } else {
                 pushable_horizontal[edge]
+            };
+            let pushes = if pushable_cell[cell] || entered == NO_BOX {
+                0.0
+            } else {
+                let Some(cost) = (pushable[entered as usize].1)() else {
+                    continue;
+                };
+                cost
             };
             let next_cost = cost
                 + pushes
@@ -1258,13 +1284,13 @@ pub fn route_connector(
     source: &Bounds,
     target: &Bounds,
     raw_obstacles: &[Bounds],
-    raw_pushable: &[Pushable],
+    raw_pushable: &[Pushable<'_>],
     ports: Ports,
     occupied: &[Vec<Point>],
     rails: &[(Point, Point)],
 ) -> Vec<Point> {
     let obstacles: Vec<Bounds> = raw_obstacles.iter().map(|bounds| bounds.inflate(CLEARANCE)).collect();
-    let pushable: Vec<Pushable> = raw_pushable
+    let pushable: Vec<Pushable<'_>> = raw_pushable
         .iter()
         .map(|(bounds, cost)| (bounds.inflate(CLEARANCE), *cost))
         .collect();
@@ -1322,7 +1348,7 @@ pub fn choose_sides(
     source: &Bounds,
     target: &Bounds,
     raw_obstacles: &[Bounds],
-    raw_pushable: &[Pushable],
+    raw_pushable: &[Pushable<'_>],
     occupied: &[Vec<Point>],
     rails: &[(Point, Point)],
     load: &dyn Fn(&Bounds, Side) -> f64,
@@ -1346,7 +1372,7 @@ pub fn choose_sides(
         .map(|bounds| bounds.inflate(CLEARANCE))
         .chain([source.inflate(CLEARANCE), target.inflate(CLEARANCE)])
         .collect();
-    let pushable: Vec<Pushable> = raw_pushable
+    let pushable: Vec<Pushable<'_>> = raw_pushable
         .iter()
         .map(|(bounds, cost)| (bounds.inflate(CLEARANCE), *cost))
         .collect();
@@ -2203,8 +2229,7 @@ mod tests {
             &[],
             &[],
             &[],
-            false,
-            Some(area),
+            Lines::Inside(area),
         );
         let row = index_of(&built.ys, 50.0).unwrap();
         let inside: Vec<usize> = (0..built.xs.len())
@@ -2234,8 +2259,7 @@ mod tests {
             &[],
             &[vec![point(0.0, 0.0), point(100.0, 0.0)]],
             &[],
-            false,
-            None,
+            Lines::All,
         );
         let step = |y: f64| built.near_horizontal[index_of(&built.ys, y).unwrap() * built.xs.len()];
 

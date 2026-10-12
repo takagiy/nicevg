@@ -2,6 +2,7 @@
 //! expand nodes around their labels, separate crowded nodes, reroute
 //! connectors and place their labels, then grow the viewBox.
 
+use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
@@ -593,14 +594,23 @@ fn reroute_connectors(draft: Draft) -> Draft {
             .sum();
         Some(crowding * CROWDED_PUSH_COST)
     };
-    let pushable_labels: Vec<(&DiagramLabel, f64)> = diagram
+    let pushable_labels: Vec<&DiagramLabel> = diagram
         .labels
         .iter()
         .filter(|label| {
             !detached_ids.contains(label.id.as_str())
                 && label.connector.as_deref().is_some_and(|id| !rerouted_ids.contains(id))
         })
-        .filter_map(|label| Some((label, push_cost(label)?)))
+        .collect();
+    // Each label's cost is worked out once, when a route first reaches it.
+    let push_costs: Vec<OnceCell<Option<f64>>> = pushable_labels.iter().map(|_| OnceCell::new()).collect();
+    let pricing: Vec<Box<dyn Fn() -> Option<f64> + '_>> = pushable_labels
+        .iter()
+        .zip(&push_costs)
+        .map(|(label, cost)| {
+            let push_cost = &push_cost;
+            Box::new(move || *cost.get_or_init(|| push_cost(label))) as Box<dyn Fn() -> Option<f64>>
+        })
         .collect();
     let obstacles_for = |connector: &DiagramConnector| -> Vec<Bounds> {
         diagram
@@ -612,23 +622,17 @@ fn reroute_connectors(draft: Draft) -> Draft {
                 diagram
                     .labels
                     .iter()
-                    .filter(|label| {
-                        !detached_ids.contains(label.id.as_str())
-                            && label
-                                .connector
-                                .as_deref()
-                                .is_none_or(|id| !rerouted_ids.contains(id) && id != connector.id)
-                            && !pushable_labels.iter().any(|(pushable, _)| pushable.id == label.id)
-                    })
+                    .filter(|label| !detached_ids.contains(label.id.as_str()) && label.connector.is_none())
                     .map(|label| label.bounds),
             )
             .collect()
     };
-    let pushable_for = |connector: &DiagramConnector| -> Vec<Pushable> {
+    let pushable_for = |connector: &DiagramConnector| -> Vec<Pushable<'_>> {
         pushable_labels
             .iter()
+            .zip(&pricing)
             .filter(|(label, _)| label.connector.as_deref() != Some(connector.id.as_str()))
-            .map(|(label, cost)| (label.bounds, *cost))
+            .map(|(label, cost)| (label.bounds, cost.as_ref()))
             .collect()
     };
 
@@ -839,7 +843,6 @@ fn reroute_connectors(draft: Draft) -> Draft {
     // Labels a new route runs over move out of its way.
     let pushed: HashSet<&str> = pushable_labels
         .iter()
-        .map(|(label, _)| label)
         .filter(|label| {
             final_routes
                 .iter()
