@@ -14,16 +14,13 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::diagram::{Diagram, DiagramConnector, DiagramNode, ancestor_ids, holds_end, node_group};
-use crate::fix::{Draft, FixChange, FixResult, fix_after_moves, fix_further, spread_close_runs};
+use crate::fix::{Draft, FixChange, FixResult, PASSES, fix_after_moves, fix_further, spread_close_runs};
 use crate::geometry::{
     Bounds, Point, format_number, hypot, intersection, parse_number, point, segment_intersects_interior, segments,
 };
 use crate::route::{Fade, SHORT_END, SHORT_END_FADE, chords_cross, crossings, route_cost, routes_cost, turns};
 use crate::xml::Element;
 use crate::{AnalysisReport, SvgInputError, parse};
-
-/// The passes of fixing each arrangement gets, as `fix` gives a diagram.
-const PASSES: usize = 5;
 
 /// How far a node may end up from where fixing left it, on each axis.
 const MAX_SHIFT: f64 = 60.0;
@@ -131,13 +128,17 @@ fn improve(context: &Context, state: State, steps: usize) -> State {
         next.result.report().issues.len() <= state.result.report().issues.len()
             && total_jogs(&next.result.report().diagram) <= total_jogs(&state.result.report().diagram)
     };
-    // Candidates are compared after one pass of fixing; only the best one
-    // gets the passes that follow.
-    let best = evaluate_all(context, &state, &candidates)
+    // Candidates are compared after one pass of fixing; the passes that
+    // follow go to the best one, and to the next ones only while those
+    // passes leave it no better than now.
+    let mut compared: Vec<State> = evaluate_all(context, &state, &candidates)
         .into_iter()
         .flatten()
         .filter(|next| keeps(next))
-        .reduce(|best, next| if next.score < best.score { next } else { best })
+        .collect();
+    compared.sort_by(|a, b| a.score.total_cmp(&b.score));
+    let best = compared
+        .into_iter()
         .map(|next| {
             let result = fix_further(next.result, PASSES - 1);
             State {
@@ -146,10 +147,10 @@ fn improve(context: &Context, state: State, steps: usize) -> State {
                 offsets: next.offsets,
             }
         })
-        .filter(|next| keeps(next));
+        .find(|next| keeps(next) && next.score < state.score - 1e-9);
     match best {
-        Some(next) if next.score < state.score - 1e-9 => improve(context, next, steps - 1),
-        _ => state,
+        Some(next) => improve(context, next, steps - 1),
+        None => state,
     }
 }
 

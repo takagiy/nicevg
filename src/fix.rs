@@ -95,8 +95,11 @@ impl Draft {
 /// issues (at most five).
 #[tracing::instrument(skip_all)]
 pub fn fix(svg: &str) -> Result<FixResult, SvgInputError> {
-    fix_with_passes(svg, 5)
+    fix_with_passes(svg, PASSES)
 }
+
+/// The passes `fix` gives a diagram, and arranging each arrangement.
+pub(crate) const PASSES: usize = 5;
 
 /// Later passes see earlier results: connectors routed early avoid labels
 /// placed late, and labels left without a slot get another try. A pass is
