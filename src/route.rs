@@ -2190,6 +2190,28 @@ mod tests {
     ///   them, running alongside costs the same however long it lasts, less
     ///   for a mere touch of overlap and less further apart, and the pair far
     ///   apart costs nothing
+    #[test]
+    fn costs_two_drawn_routes_as_the_search_prices_them() {
+        let across = [point(50.0, -50.0), point(50.0, 50.0)];
+        let along = [point(0.0, 0.0), point(100.0, 0.0)];
+        let beside = [point(0.0, 5.0), point(100.0, 5.0)];
+        let long_along = [point(0.0, 0.0), point(400.0, 0.0)];
+        let long_beside = [point(0.0, 5.0), point(400.0, 5.0)];
+        let touching = [point(95.0, 5.0), point(200.0, 5.0)];
+        let wider = [point(0.0, 14.0), point(100.0, 14.0)];
+        let turning = [point(30.0, 30.0), point(30.0, 3.0), point(90.0, 3.0)];
+        let far = [point(0.0, 200.0), point(100.0, 200.0)];
+
+        assert_eq!(routes_cost(&along, &across), CROSSING_PENALTY);
+        assert_eq!(routes_cost(&along, &beside), CLOSE_RUN.full);
+        assert_eq!(routes_cost(&long_along, &long_beside), CLOSE_RUN.full);
+        assert!(routes_cost(&along, &touching) > 0.0 && routes_cost(&along, &touching) < CLOSE_RUN.full / 2.0);
+        assert!(routes_cost(&along, &wider) > 0.0 && routes_cost(&along, &wider) < CLOSE_RUN.full / 2.0);
+        assert!(routes_cost(&along, &turning) >= NEAR_MISS_PENALTY);
+        assert_eq!(routes_cost(&along, &far), 0.0);
+        assert_eq!(routes_cost(&across, &along), routes_cost(&along, &across));
+    }
+
     /// Given a route crossing one it runs 8px beside for 80px first, one
     ///   crossing it after running 30px beside, and one crossing it without
     ///   running beside it
@@ -2218,28 +2240,6 @@ mod tests {
         );
         assert!(wider > CROSSING_PENALTY && wider < 2.6 * CROSSING_PENALTY, "{wider}");
         assert_eq!(routes_cost(&along, &apart), CROSSING_PENALTY);
-    }
-
-    #[test]
-    fn costs_two_drawn_routes_as_the_search_prices_them() {
-        let across = [point(50.0, -50.0), point(50.0, 50.0)];
-        let along = [point(0.0, 0.0), point(100.0, 0.0)];
-        let beside = [point(0.0, 5.0), point(100.0, 5.0)];
-        let long_along = [point(0.0, 0.0), point(400.0, 0.0)];
-        let long_beside = [point(0.0, 5.0), point(400.0, 5.0)];
-        let touching = [point(95.0, 5.0), point(200.0, 5.0)];
-        let wider = [point(0.0, 14.0), point(100.0, 14.0)];
-        let turning = [point(30.0, 30.0), point(30.0, 3.0), point(90.0, 3.0)];
-        let far = [point(0.0, 200.0), point(100.0, 200.0)];
-
-        assert_eq!(routes_cost(&along, &across), CROSSING_PENALTY);
-        assert_eq!(routes_cost(&along, &beside), CLOSE_RUN.full);
-        assert_eq!(routes_cost(&long_along, &long_beside), CLOSE_RUN.full);
-        assert!(routes_cost(&along, &touching) > 0.0 && routes_cost(&along, &touching) < CLOSE_RUN.full / 2.0);
-        assert!(routes_cost(&along, &wider) > 0.0 && routes_cost(&along, &wider) < CLOSE_RUN.full / 2.0);
-        assert!(routes_cost(&along, &turning) >= NEAR_MISS_PENALTY);
-        assert_eq!(routes_cost(&along, &far), 0.0);
-        assert_eq!(routes_cost(&across, &along), routes_cost(&along, &across));
     }
 
     /// Given a box reaching across the left and lower edges of an area, and
