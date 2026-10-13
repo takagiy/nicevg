@@ -144,7 +144,9 @@ Rust からも同じ形の図を `nicevg::Sketch` として渡し、`analyze_ske
 
 ## Development
 
-自然言語のテストリストは `docs/test-list/diagram.md` に置く。実装は Canon TDD の縦方向のサイクルで進める。
+自然言語のテストリストは `docs/test-list/diagram.md` に置く。
+
+CI（`.github/workflows/ci.yml`）は main への push とプルリクエストで、整形と lint と、Linux・macOS・Windows それぞれで Rust のテストと TypeScript ライブラリのビルドとテスト（Bun と Node）を回す。Rust のビルドは [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache) で、Bun の依存は `bun.lock` をキーにキャッシュし、キャッシュは main の実行でだけ保存する。実装は Canon TDD の縦方向のサイクルで進める。
 
 ```sh
 cargo test

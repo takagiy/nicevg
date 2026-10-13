@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to a branch or pull request cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Format and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      # Turns incremental compilation off, which only costs time in CI.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Pull requests restore main's cache but do not save their own, so
+          # they cannot push main's out of the repository's cache quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # Release: arranging the example diagrams in the tests takes seconds
+      # optimized and minutes not. It also builds the native library the
+      # TypeScript package below loads.
+      - run: cargo test --workspace --release --locked
+
+      - uses: oven-sh/setup-bun@v2
+      # Node 24 runs the TypeScript tests by stripping their types.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bindings/js/bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - name: Build and test the TypeScript package
+        working-directory: bindings/js
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+          bun run typecheck
+          bun run test
