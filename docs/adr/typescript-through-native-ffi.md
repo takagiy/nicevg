@@ -8,8 +8,8 @@ nicevg を TypeScript からライブラリとして呼びたい。速さは Rus
 
 ## 決定
 
-- Rust 側は `bindings/js` の cdylib（`nicevg_ffi`）で、C の関数 `nicevg_run(操作, 要求, 長さ, 返答の長さ)` と `nicevg_free` の 2 つを出す。要求と返答はどちらも JSON で、1 回の呼び出しで 1 回だけ受け渡す。
-- その関数を、Bun では `bun:ffi`、Node では koffi で呼ぶ。ネイティブライブラリは 1 つで、どちらから呼んでも同じ。どちらを使うかは実行時に決める（`src/native.ts`）。
+- Rust 側は `bindings/js` の cdylib（`nicevg_ffi`）で、C の関数 `nicevg_render(要求, 長さ, 返答の長さ)`（修正と配置調整をする）と `nicevg_free` の 2 つを出す。要求と返答はどちらも JSON で、1 回の呼び出しで 1 回だけ受け渡す。
+- その関数を、Bun では `bun:ffi`、Node では koffi で呼ぶ。ネイティブライブラリは 1 つで、どちらから呼んでも同じ。どちらを使うかは最初の呼び出しのときに決め、そのときに `bun:ffi` か koffi を読み込む（`src/native.ts`）。モジュールの最上位で待たない（トップレベル await を使わない）ので、CommonJS からも `require()` で読める。
 - オブジェクトや配列の入力（Sketch）は、Rust の中で SVG の約束どおりの SVG に組み立て、今の検査・修正・配置調整にかける（`src/sketch.rs`）。経路のないコネクタは両端をノードの中心に置き、修正がノードの辺から辺へ引き直す。
 - TypeScript の入口は `render()` 1 つにする。修正と配置調整をして、SVG を表す `Svg` クラスを返す。`Svg` は文字列にでき、ファイルに書け、読み直した図（ノードの範囲、コネクタの折れ点、ラベルの箱、残った問題）と、直したことの一覧を持つ。
 - ビルドは `tsc` で `src/` を `dist/` の JavaScript と型定義に書き出す。パッケージは Bun には `src/` を、Node には `dist/` を渡す。テストは Bun で `src/` を、Node でビルドした `dist/` を、どちらもパッケージ名で読み込んで確かめる。

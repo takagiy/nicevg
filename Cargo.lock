@@ -305,7 +305,6 @@ version = "0.15.0"
 dependencies = [
  "mimalloc",
  "nicevg",
- "serde",
  "serde_json",
  "serde_path_to_error",
 ]

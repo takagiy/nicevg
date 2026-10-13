@@ -5,8 +5,11 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
-/** Runs an operation on a JSON request, returning the JSON reply. */
-export type Run = (operation: number, request: Uint8Array) => string;
+import { open as openOnBun } from "./bun-ffi.ts";
+import { open as openOnNode } from "./node-ffi.ts";
+
+/** Fixes and arranges the diagram in a JSON request, returning the JSON reply. */
+export type Render = (request: Uint8Array) => string;
 
 const extension = process.platform === "win32" ? "dll" : process.platform === "darwin" ? "dylib" : "so";
 const libraryName = process.platform === "win32" ? `nicevg_ffi.${extension}` : `libnicevg_ffi.${extension}`;
@@ -27,11 +30,10 @@ function libraryPath(): string {
   return found;
 }
 
-const binding = typeof Bun === "undefined" ? await import("./node-ffi.ts") : await import("./bun-ffi.ts");
-let run: Run | undefined;
+let render: Render | undefined;
 
-/** Runs `operation` on `request`, opening the library on first use. */
-export function call(operation: number, request: Uint8Array): string {
-  run ??= binding.open(libraryPath());
-  return run(operation, request);
+/** Fixes and arranges the diagram in `request`, opening the library on first use. */
+export function call(request: Uint8Array): string {
+  render ??= (typeof Bun === "undefined" ? openOnNode : openOnBun)(libraryPath());
+  return render(request);
 }

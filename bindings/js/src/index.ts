@@ -165,18 +165,12 @@ export class NicevgError extends Error {
  * no points, and moves nodes a little where that reads better.
  */
 export function render(input: Input): Svg {
-  const result = call<{ svg: string; changes: Change[]; report: AnalysisReport }>(ARRANGE, input);
-  return new Svg(result.svg, result.changes, result.report);
-}
-
-/** The native library's operation that fixes and arranges. */
-const ARRANGE = 2;
-
-function call<T>(operation: number, input: Input): T {
   const request = new TextEncoder().encode(JSON.stringify(input instanceof Svg ? { svg: input.toString() } : input));
-  const parsed = JSON.parse(native(operation, request)) as { ok: T } | { error: string };
-  if ("error" in parsed) {
-    throw new NicevgError(parsed.error);
+  const reply = JSON.parse(native(request)) as
+    | { ok: { svg: string; changes: Change[]; report: AnalysisReport } }
+    | { error: string };
+  if ("error" in reply) {
+    throw new NicevgError(reply.error);
   }
-  return parsed.ok;
+  return new Svg(reply.ok.svg, reply.ok.changes, reply.ok.report);
 }

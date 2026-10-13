@@ -217,3 +217,4 @@ Bun からは `bun:ffi`、Node からは koffi で呼ぶ（`bindings/js/test/bun
 - [x] SVG の文字列を渡しても描ける
 - [x] 形の書き方が間違った入力や、存在しないノードをつなぐコネクタは、何が違うかを示す例外になる
 - [x] Node でも、ビルドしたパッケージから同じように描ける
+- [x] Node の CommonJS からも `require()` で読み込んで描ける
