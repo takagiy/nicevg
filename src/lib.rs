@@ -3,7 +3,8 @@
 //! [`analyze`] reads a diagram and reports mechanical layout errors;
 //! [`fix`] repairs the ones it can, and [`arrange`] also nudges nodes so
 //! connectors bend, cross and crowd less. All three are pure functions of the
-//! SVG text.
+//! SVG text. A diagram may also be given as a [`Sketch`], nodes and connectors
+//! as data, through [`analyze_sketch`], [`fix_sketch`] and [`arrange_sketch`].
 
 mod arrange;
 mod arrow;
@@ -13,6 +14,7 @@ mod geometry;
 mod inspect;
 mod pathdata;
 mod route;
+mod sketch;
 mod text;
 mod xml;
 
@@ -23,6 +25,10 @@ pub use diagram::{Diagram, DiagramConnector, DiagramLabel, DiagramNode, Shape, U
 pub use fix::{FixChange, FixResult, fix, fix_with_passes};
 pub use geometry::{Bounds, Point};
 pub use inspect::DiagramIssue;
+pub use sketch::{
+    Sketch, SketchConnector, SketchError, SketchNode, SketchShape, analyze_sketch, arrange_sketch, fix_sketch,
+    sketch_svg,
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]

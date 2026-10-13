@@ -1,10 +1,10 @@
 //! Geometry on diagram coordinates, with the number semantics of the
 //! ECMAScript reference implementation the snapshots were recorded with.
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use unicode_width::UnicodeWidthChar;
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Point {
     #[serde(serialize_with = "number")]
     pub x: f64,
