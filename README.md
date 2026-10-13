@@ -86,6 +86,25 @@ println!("{} {:?} {:?}", result.svg, result.changes, result.report);
 - `fix`: ノードの拡張 → ノードの分離 → コネクタの引き直しとラベルの移動 → `viewBox` の拡張、の各段階を下書きから新しい下書きへの関数として順に適用する
 - `arrange`: 修正結果を出発点に、ノードの小さな移動を候補ごとに修正して採点し、最も良い移動を採用することを繰り返す
 
+## TypeScript
+
+Bun と Node からは、ネイティブライブラリを FFI で呼ぶ TypeScript ライブラリが使える（`bindings/js`）。入口は `render()` 1 つで、ノードとコネクタの配列（または SVG の文字列）を受け取り、修正と配置調整をして SVG を表す `Svg` を返す。`Svg` は文字列にでき、ファイルに書け、ノードの範囲・コネクタの折れ点・ラベルの箱も読める。
+
+```ts
+import { render } from "nicevg";
+
+const svg = render({
+  nodes: [
+    { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+    { id: "bill", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
+  ],
+  connectors: [{ from: "order", to: "bill", label: "invoice" }],
+});
+await svg.write("diagram.svg");
+```
+
+Rust からも同じ形の図を `nicevg::Sketch` として渡し、`analyze_sketch`、`fix_sketch`、`arrange_sketch` で扱える。詳しくは [bindings/js/README.md](bindings/js/README.md)。
+
 ## SVG contract
 
 通常の `<g>` に直接 `<rect>` または `<circle>` と `<text>` が入っていればノードとして推定する。LLM から安定した SVG を受け取る場合は、次の属性で意味を明示する。

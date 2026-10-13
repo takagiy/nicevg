@@ -1,0 +1,19 @@
+[package]
+name = "nicevg-ffi"
+version = "0.15.0"
+edition = "2024"
+description = "A C interface to nicevg for runtimes that load native libraries, such as Bun."
+license = "MIT"
+publish = false
+
+[lib]
+name = "nicevg_ffi"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+nicevg = { path = "../..", default-features = false }
+mimalloc = "0.1.52"
+serde = "1.0.229"
+serde_json = "1.0.151"
+serde_path_to_error = "0.1"
