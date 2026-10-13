@@ -2,6 +2,20 @@
 
 nicevg で図を SVG に描く。TypeScript や JavaScript から、Bun では `bun:ffi`、Node では [koffi](https://koffi.dev/) でネイティブライブラリを呼ぶ。図はノードとコネクタの配列（Sketch）のほか、SVG の文字列でも渡せる。処理は Rust のネイティブコードで動くので、CLI と同じ速さで、出力も同じになる。
 
+## インストール
+
+```sh
+npm install nicevg   # または bun add nicevg
+```
+
+パッケージには、次の環境向けにビルド済みのネイティブライブラリが入っているので、インストール時にスクリプトは走らず、Rust も要らない。
+
+| 環境 | 対象 |
+|---|---|
+| Linux | x64、arm64（glibc 2.17 以降） |
+| macOS | arm64、x64 |
+| Windows | x64 |
+
 ## 使い方
 
 入口は `render()` 1 つ。図を受け取り、配置の問題を直し、ノードを少し動かして折れ・交差・混雑を減らして、SVG を表す `Svg` を返す。
@@ -66,4 +80,23 @@ bun run test        # Bun で src/ を、Node でビルドした dist/ をテス
 bun run typecheck
 ```
 
-パッケージは Bun には `src/` の TypeScript を、Node には `dist/` の JavaScript と型定義を渡す（`package.json` の `exports`）。ネイティブライブラリは `NICEVG_LIBRARY` 環境変数、`native/`、リポジトリの `target/release/` の順に探す。
+パッケージは Bun には `src/` の TypeScript を、Node には `dist/` の JavaScript と型定義を渡す（`package.json` の `exports`）。ネイティブライブラリは `NICEVG_LIBRARY` 環境変数、`native/<platform>-<arch>/`（`bun run build` が置く場所で、公開するパッケージでは全環境ぶん）、リポジトリの `target/release/` の順に探す。
+
+`v*` のタグを push すると、`.github/workflows/npm.yml` が各環境のネイティブライブラリを作ってパッケージに入れ、Bun と Node でテストしてから npm に公開する。タグの版と `package.json` の `version` が違えば止まるので、リリースのときは Rust の `Cargo.toml`（ルートと `bindings/js`）と一緒に `package.json` の版も上げる。手で実行すると、公開せずにビルドとパックだけを確かめられる。
+
+公開は npm の Trusted Publishing（GitHub Actions の OIDC）で、npm のトークンを使わず、配布元の証明（provenance）も自動で付く。
+
+Trusted Publisher はすでに npm にあるパッケージにしか登録できないので、最初の 1 回だけは手元から公開する。npm のアカウントで 2FA を有効にしたうえで、次のようにする。
+
+1. Actions の「Publish to npm」を手で実行する（`publish` は付けない）。全環境のライブラリを入れてテストしたパッケージが、成果物 `npm-package` に残る。
+2. それを手元に落として公開する（2FA のワンタイムコードを聞かれる）。手元からの公開なので、この版には配布元の証明が付かない。
+   ```sh
+   gh run download <run-id> -n npm-package
+   npm publish ./nicevg-<version>.tgz
+   ```
+3. このリポジトリと `npm.yml` を Trusted Publisher に登録する（npmjs.com のパッケージの設定か、次のコマンド。どちらも 2FA が要る）。
+   ```sh
+   npm trust github nicevg --file npm.yml --repo takagiy/nicevg --allow-publish
+   ```
+
+以後はタグの push だけで公開される。npm のトークンは作らない（2FA を回避するトークンは、npm が段階的に廃止している）。

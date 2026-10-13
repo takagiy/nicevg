@@ -2,8 +2,22 @@
   "name": "nicevg",
   "version": "0.15.0",
   "description": "Deterministic checks and repairs for diagrams, given as shapes or SVG, on Bun and Node through native FFI.",
+  "keywords": [
+    "diagram",
+    "svg",
+    "layout",
+    "routing",
+    "ffi"
+  ],
   "license": "MIT",
+  "homepage": "https://github.com/takagiy/nicevg#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/takagiy/nicevg.git",
+    "directory": "bindings/js"
+  },
   "type": "module",
+  "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
@@ -13,18 +27,16 @@
     }
   },
   "files": [
-    "src",
     "dist",
+    "src",
     "native"
   ],
   "engines": {
     "bun": ">=1.1",
     "node": ">=20"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/takagiy/nicevg.git",
-    "directory": "bindings/js"
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "bun run build:native && bun run build:js",
@@ -35,16 +47,12 @@
     "test:node": "node --test \"test/node/**/*.test.*\"",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "koffi": "3.3.3"
+  },
   "devDependencies": {
     "@types/bun": "1.3.14",
     "@types/node": "24.10.1",
     "typescript": "5.9.3"
-  },
-  "dependencies": {
-    "koffi": "3.3.3"
-  },
-  "trustedDependencies": [
-    "koffi"
-  ],
-  "main": "./dist/index.js"
+  }
 }

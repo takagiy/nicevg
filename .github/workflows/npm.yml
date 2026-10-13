@@ -1,0 +1,123 @@
+name: Publish to npm
+
+# Publishes bindings/js as the npm package `nicevg`, with the native library
+# prebuilt for each platform inside it, so installing runs no script.
+#
+# A `v*` tag publishes; running it by hand builds everything and packs the
+# package without publishing, unless `publish` is ticked. Either way the
+# packed package is kept as the run's `npm-package` artifact, for the first
+# publish, which has to be done by hand (see bindings/js/README.md).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish to npm (otherwise only build and pack)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Smaller libraries to ship: no symbols in them.
+  CARGO_PROFILE_RELEASE_STRIP: symbols
+
+jobs:
+  native:
+    name: Native library (${{ matrix.platform }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Linux builds go through zig for glibc 2.17, so they load on
+          # distributions far older than the runner.
+          - { platform: linux-x64, os: ubuntu-latest, target: x86_64-unknown-linux-gnu, zig: true, file: libnicevg_ffi.so }
+          - { platform: linux-arm64, os: ubuntu-latest, target: aarch64-unknown-linux-gnu, zig: true, file: libnicevg_ffi.so }
+          - { platform: darwin-arm64, os: macos-latest, target: aarch64-apple-darwin, file: libnicevg_ffi.dylib }
+          - { platform: darwin-x64, os: macos-latest, target: x86_64-apple-darwin, file: libnicevg_ffi.dylib }
+          - { platform: win32-x64, os: windows-latest, target: x86_64-pc-windows-msvc, file: nicevg_ffi.dll }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - if: matrix.zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.1
+      - if: matrix.zig
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+      - if: matrix.zig
+        run: cargo zigbuild --release --locked -p nicevg-ffi --target ${{ matrix.target }}.2.17
+      - if: ${{ !matrix.zig }}
+        run: cargo build --release --locked -p nicevg-ffi --target ${{ matrix.target }}
+      - name: Place the library where the package looks for it
+        shell: bash
+        run: |
+          mkdir -p "native/${{ matrix.platform }}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.file }}" "native/${{ matrix.platform }}/"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.platform }}
+          path: native/
+          if-no-files-found: error
+
+  publish:
+    name: Test and publish
+    needs: native
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Trusted publishing: npm takes the run's OIDC identity instead of a
+      # token, and adds provenance linking the package to this run.
+      id-token: write
+    defaults:
+      run:
+        working-directory: bindings/js
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      # npm 11.5.1 or later publishes through OIDC; Node 24 ships it.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: native-*
+          path: bindings/js/native
+          merge-multiple: true
+      - name: Check every platform's library is there
+        run: |
+          for file in linux-x64/libnicevg_ffi.so linux-arm64/libnicevg_ffi.so darwin-arm64/libnicevg_ffi.dylib \
+            darwin-x64/libnicevg_ffi.dylib win32-x64/nicevg_ffi.dll; do
+            test -f "native/$file" || { echo "missing native/$file"; exit 1; }
+          done
+          ls -lR native
+      - name: Check the tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: test "v$(node -p 'require("./package.json").version')" = "${GITHUB_REF_NAME}"
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun run build:js
+      - run: bun run typecheck
+      # On Bun and Node, with the Linux library from the package.
+      - run: bun run test
+      - run: npm pack
+      - uses: actions/upload-artifact@v7
+        with:
+          name: npm-package
+          path: bindings/js/nicevg-*.tgz
+          if-no-files-found: error
+      # The package just packed and tested, published with no token.
+      - if: startsWith(github.ref, 'refs/tags/') || inputs.publish
+        run: npm publish ./nicevg-*.tgz

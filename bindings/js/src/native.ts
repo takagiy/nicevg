@@ -16,16 +16,21 @@ const libraryName = process.platform === "win32" ? `nicevg_ffi.${extension}` : `
 /** The package's root: this file sits in `src/`, or compiled in `dist/`. */
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-/** Where the native library may be: as set, packaged in the package, or built in this repository. */
+/**
+ * Where the native library may be: as set, packaged for this platform in
+ * `native/<platform>-<arch>/`, or built in this repository.
+ */
 function libraryPath(): string {
   const candidates = [
     process.env.NICEVG_LIBRARY,
-    join(root, "native", libraryName),
+    join(root, "native", `${process.platform}-${process.arch}`, libraryName),
     join(root, "..", "..", "target", "release", libraryName),
   ].filter((candidate): candidate is string => candidate !== undefined);
   const found = candidates.find((candidate) => existsSync(candidate));
   if (!found) {
-    throw new Error(`nicevg: no ${libraryName} found; looked at ${candidates.join(", ")}. Build it with \`bun run build\`.`);
+    throw new Error(
+      `nicevg: no native library for ${process.platform}-${process.arch}; looked at ${candidates.join(", ")}.`,
+    );
   }
   return found;
 }

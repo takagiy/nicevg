@@ -1,4 +1,5 @@
-// Builds the native library and copies it beside the TypeScript sources.
+// Builds the native library for this platform and copies it where the
+// package looks for it, native/<platform>-<arch>/.
 
 import { copyFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -10,7 +11,7 @@ if (build.exitCode !== 0) {
   process.exit(build.exitCode ?? 1);
 }
 const name = process.platform === "win32" ? `nicevg_ffi.${suffix}` : `libnicevg_ffi.${suffix}`;
-const native = join(import.meta.dir, "..", "native");
+const native = join(import.meta.dir, "..", "native", `${process.platform}-${process.arch}`);
 mkdirSync(native, { recursive: true });
 copyFileSync(join(root, "target", "release", name), join(native, name));
 console.log(`copied ${name} to ${native}`);

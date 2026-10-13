@@ -88,7 +88,7 @@ println!("{} {:?} {:?}", result.svg, result.changes, result.report);
 
 ## TypeScript
 
-Bun と Node からは、ネイティブライブラリを FFI で呼ぶ TypeScript ライブラリが使える（`bindings/js`）。入口は `render()` 1 つで、ノードとコネクタの配列（または SVG の文字列）を受け取り、修正と配置調整をして SVG を表す `Svg` を返す。`Svg` は文字列にでき、ファイルに書け、ノードの範囲・コネクタの折れ点・ラベルの箱も読める。
+Bun と Node からは、ネイティブライブラリを FFI で呼ぶ TypeScript ライブラリが使える（`bindings/js`、npm の `nicevg`）。Linux・macOS・Windows 向けのビルド済みライブラリが入っているので、インストールに Rust もスクリプトも要らない。入口は `render()` 1 つで、ノードとコネクタの配列（または SVG の文字列）を受け取り、修正と配置調整をして SVG を表す `Svg` を返す。`Svg` は文字列にでき、ファイルに書け、ノードの範囲・コネクタの折れ点・ラベルの箱も読める。
 
 ```ts
 import { render } from "nicevg";
