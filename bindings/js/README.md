@@ -88,7 +88,7 @@ bun run typecheck
 
 Trusted Publisher はすでに npm にあるパッケージにしか登録できないので、最初の 1 回だけは手元から公開する。npm のアカウントで 2FA を有効にしたうえで、次のようにする。
 
-1. Actions の「Publish to npm」を手で実行する（`publish` は付けない）。全環境のライブラリを入れてテストしたパッケージが、成果物 `npm-package` に残る。
+1. Actions の「Publish to npm」を手で実行する（手での実行は公開しない）。全環境のライブラリをそれぞれの環境でテストし、まとめたパッケージが、成果物 `npm-package` に残る。
 2. それを手元に落として公開する（2FA のワンタイムコードを聞かれる）。手元からの公開なので、この版には配布元の証明が付かない。
    ```sh
    gh run download <run-id> -n npm-package
