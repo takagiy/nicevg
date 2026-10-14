@@ -1,7 +1,5 @@
 # 開発
 
-TypeScript ライブラリのビルド・テスト・公開は [bindings/js/README.md](../../bindings/js/README.md) にある。
-
 ## 作り
 
 コア部分は、入力 SVG から修正後 SVG までを純粋関数のパイプラインとして構成している。
@@ -52,6 +50,40 @@ cargo run --release --example profile -- input.svg --fix --chrome trace.json --f
 - CI（`.github/workflows/ci.yml`）は main への push とプルリクエストで、整形と lint と、Linux・macOS・Windows それぞれで Rust のテストと TypeScript ライブラリのビルドとテスト（Bun と Node）を回す。Rust のビルドは [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache) で、Bun の依存は `bun.lock` をキーにキャッシュし、キャッシュは main の実行でだけ保存する。
 - `v*` のタグを push すると、`.github/workflows/npm.yml` が npm に公開し、`.github/workflows/homebrew.yml` が [takagiy/homebrew-tap](https://github.com/takagiy/homebrew-tap) の formula をそのタグのソースの tarball とその sha256 に書き換えて commit する。tap への書き込みには、tap の contents だけに書き込める fine-grained token を `HOMEBREW_TAP_TOKEN` として secret に入れておく。
 - リリースでは、ルートと `bindings/js` の `Cargo.toml`、`bindings/js/package.json` の版を揃えて上げる。
+
+## TypeScript ライブラリ
+
+Bun と Node（型を取り除いて .ts を動かせる 22.18 以降）、Rust のツールチェーンが要る。`bindings/js` で次を実行する。
+
+```sh
+bun install
+bun run build       # cargo でネイティブライブラリを作って native/ に置き、tsc で src/ を dist/ に書き出す
+bun run test        # Bun で src/ を、Node でビルドした dist/ をテストする
+bun run typecheck
+```
+
+テストは `nicevg` をパッケージ名で読み込むので、型の変更は `bun run build:js` のあとでないと型検査に反映されない。
+
+パッケージは Bun には `src/` の TypeScript を、Node には `dist/` の JavaScript と型定義を渡す（`package.json` の `exports`）。ネイティブライブラリは `NICEVG_LIBRARY` 環境変数、`native/<platform>-<arch>/`（`bun run build` が置く場所で、公開するパッケージでは全環境ぶん）、リポジトリの `target/release/` の順に探す。
+
+`v*` のタグを push すると、`.github/workflows/npm.yml` が各環境のネイティブライブラリを作ってパッケージに入れ、Bun と Node でテストしてから npm に公開する。タグの版と `package.json` の `version` が違えば止まる。手で実行すると、公開せずにビルドとパックだけを確かめられる。
+
+公開は npm の Trusted Publishing（GitHub Actions の OIDC）で、npm のトークンを使わず、配布元の証明（provenance）も自動で付く。npm のパッケージページは `bindings/js/README.md` で、公開した版ごとに保存されるので、README の変更は次の公開で反映される。
+
+Trusted Publisher はすでに npm にあるパッケージにしか登録できないので、最初の 1 回だけは手元から公開する。npm のアカウントで 2FA を有効にしたうえで、次のようにする。
+
+1. Actions の「Publish to npm」を手で実行する（手での実行は公開しない）。全環境のライブラリをそれぞれの環境でテストし、まとめたパッケージが、成果物 `npm-package` に残る。
+2. それを手元に落として公開する（2FA のワンタイムコードを聞かれる）。手元からの公開なので、この版には配布元の証明が付かない。
+   ```sh
+   gh run download <run-id> -n npm-package
+   npm publish ./nicevg-<version>.tgz
+   ```
+3. このリポジトリと `npm.yml` を Trusted Publisher に登録する（npmjs.com のパッケージの設定か、次のコマンド。どちらも 2FA が要る）。
+   ```sh
+   npm trust github nicevg --file npm.yml --repo takagiy/nicevg --allow-publish
+   ```
+
+以後はタグの push だけで公開される。npm のトークンは作らない（2FA を回避するトークンは、npm が段階的に廃止している）。
 
 ## Windows
 

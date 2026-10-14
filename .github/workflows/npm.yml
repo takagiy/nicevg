@@ -6,7 +6,7 @@ name: Publish to npm
 # A `v*` tag publishes; running it by hand only builds, tests and packs.
 # Either way the packed package is kept as the run's `npm-package` artifact,
 # for the first publish, which has to be done by hand (see
-# bindings/js/README.md).
+# docs/guide/development.md).
 #
 # Actions from outside GitHub are pinned to commits, as they run in a job
 # whose output is published: a moved tag cannot change what ships.
