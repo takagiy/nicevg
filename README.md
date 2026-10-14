@@ -12,13 +12,15 @@ An SVG diagram tool for AI agents. It fixes a diagram's problems mechanically on
 
 ## Install
 
-### CLI
+### CLI (Node 20+ or Bun)
 
 ```sh
-brew install takagiy/tap/nicevg
+npm install -g nicevg
 # or
-cargo install --git https://github.com/takagiy/nicevg
+brew install takagiy/tap/nicevg
 ```
+
+To run it once without installing: `npx nicevg < diagram.svg > fixed.svg`, or `bunx nicevg`.
 
 ### TypeScript library (Bun, Node)
 

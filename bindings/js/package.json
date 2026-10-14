@@ -7,7 +7,8 @@
     "svg",
     "layout",
     "routing",
-    "ffi"
+    "ffi",
+    "cli"
   ],
   "license": "MIT",
   "homepage": "https://github.com/takagiy/nicevg#readme",
@@ -19,6 +20,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "nicevg": "./dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

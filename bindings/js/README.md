@@ -18,7 +18,19 @@ npm install nicevg
 bun add nicevg
 ```
 
+The package also has the `nicevg` command: install it with `npm install -g nicevg`, or run it once with `npx nicevg` or `bunx nicevg`.
+
 ## Example
+
+### CLI
+
+```sh
+nicevg < diagram.svg > fixed.svg
+```
+
+It reads the SVG from stdin and writes the fixed one to stdout. The issues it could not fix go to stderr, and the exit status is `0` with none left, `1` with some, and `2` for invalid SVG.
+
+### Library
 
 ```ts
 import { render, svg, text } from "nicevg";

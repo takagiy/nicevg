@@ -30,8 +30,7 @@ use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
 
-// The allocator the CLI uses, so the time goes where it goes there.
-#[cfg(feature = "mimalloc")]
+// The allocator the native library uses, so the time goes where it goes there.
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 

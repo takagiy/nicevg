@@ -1,7 +1,9 @@
 name: Publish to npm
 
 # Publishes bindings/js as the npm package `nicevg`, with the native library
-# prebuilt for each platform inside it, so installing runs no script.
+# prebuilt for each platform inside it, so installing runs no script, then
+# points the Homebrew formula in takagiy/homebrew-tap at the published
+# package.
 #
 # A `v*` tag publishes; running it by hand only builds, tests and packs.
 # Either way the packed package is kept as the run's `npm-package` artifact,
@@ -129,3 +131,33 @@ jobs:
       # The package just packed and tested, published with no token.
       - if: startsWith(github.ref, 'refs/tags/')
         run: npm publish ./nicevg-*.tgz
+
+  # The Homebrew formula installs the npm package with Node, so the tap
+  # moves to a version once npm serves it. The tap is another repository,
+  # which this run's GITHUB_TOKEN cannot write to: HOMEBREW_TAP_TOKEN is a
+  # fine-grained token with write access to takagiy/homebrew-tap's contents.
+  homebrew:
+    name: Update the Homebrew tap
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for npm to serve the package
+        id: package
+        run: |
+          url="https://registry.npmjs.org/nicevg/-/nicevg-${GITHUB_REF_NAME#v}.tgz"
+          for attempt in $(seq 60); do
+            curl -fsIL "$url" > /dev/null && { echo "url=$url" >> "$GITHUB_OUTPUT"; exit 0; }
+            sleep 10
+          done
+          echo "npm does not serve $url"; exit 1
+      - uses: mislav/bump-homebrew-formula-action@f865c8b0dbebd6e263cc06782a0e974c61cf12d2 # v4.2
+        with:
+          formula-name: nicevg
+          homebrew-tap: takagiy/homebrew-tap
+          base-branch: main
+          download-url: ${{ steps.package.outputs.url }}
+          create-pullrequest: false
+          commit-message: "{{formulaName}} {{version}}"
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

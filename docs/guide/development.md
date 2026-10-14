@@ -12,6 +12,8 @@
 - `arrange`: 修正結果を出発点に、ノードの小さな移動を候補ごとに修正して採点し、最も良い移動を採用することを繰り返す
 - `sketch`: ノードとコネクタの配列で渡した図を、[SVG の約束](../reference/svg-contract.md) どおりの SVG に組み立てる
 
+`nicevg` コマンドは `bindings/js/src/cli.ts` にある。標準入力の SVG を TypeScript ライブラリの `render()` に渡し、ネイティブライブラリの `arrange` で修正と配置調整をする。Rust のクレートは CLI を持たない（[ADR](../adr/cli-on-node.md)）。
+
 ## テスト
 
 実装は Canon TDD の縦方向のサイクルで進める。自然言語のテストリストは [docs/test-list/diagram.md](../test-list/diagram.md) に置く。
@@ -48,7 +50,7 @@ cargo run --release --example profile -- input.svg --fix --chrome trace.json --f
 ## CI とリリース
 
 - CI（`.github/workflows/ci.yml`）は main への push とプルリクエストで、整形と lint と、Linux・macOS・Windows それぞれで Rust のテストと TypeScript ライブラリのビルドとテスト（Bun と Node）を回す。Rust のビルドは [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache) で、Bun の依存は `bun.lock` をキーにキャッシュし、キャッシュは main の実行でだけ保存する。
-- `v*` のタグを push すると、`.github/workflows/npm.yml` が npm に公開し、`.github/workflows/homebrew.yml` が [takagiy/homebrew-tap](https://github.com/takagiy/homebrew-tap) の formula をそのタグのソースの tarball とその sha256 に書き換えて commit する。tap への書き込みには、tap の contents だけに書き込める fine-grained token を `HOMEBREW_TAP_TOKEN` として secret に入れておく。
+- `v*` のタグを push すると、`.github/workflows/npm.yml` が npm に公開し、npm がその版を配り始めたら [takagiy/homebrew-tap](https://github.com/takagiy/homebrew-tap) の formula を npm のパッケージの tarball とその sha256 に書き換えて commit する。formula は Node でそのパッケージを入れる。tap への書き込みには、tap の contents だけに書き込める fine-grained token を `HOMEBREW_TAP_TOKEN` として secret に入れておく。
 - リリースでは、ルートと `bindings/js` の `Cargo.toml`、`bindings/js/package.json` の版を揃えて上げる。
 
 ## TypeScript ライブラリ
