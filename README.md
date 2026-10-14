@@ -1,179 +1,67 @@
 # nicevg
 
-SVG のフローチャート、構造図、仕組みの説明図に対して、座標に関する機械的な検査と決定論的な修正を行う Rust 製のツール。
+[![CI](https://github.com/takagiy/nicevg/actions/workflows/ci.yml/badge.svg)](https://github.com/takagiy/nicevg/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/nicevg)](https://www.npmjs.com/package/nicevg)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-LLM に座標の再計算や衝突確認をさせる代わりに、次の問題をプログラムで検出する。
+An SVG diagram tool for AI agents. It fixes a diagram's problems mechanically on the agent's behalf, and optimizes the layout while preserving the original intent.
 
-- 描画範囲と安全余白が `viewBox` からはみ出している
-- ラベルがノード内の 12px の余白に収まっていない
-- 同じ段のノードが重なっている、または間隔が 20px 未満
-- 自由ラベル同士が重なっている
-- 自由ラベルがノードに重なっている（包含ノードの空いた領域は除く）
-- コネクタが無関係なノードを貫通している
-- コネクタが自由ラベルから 8px 未満を通っている
-- コネクタの端点が接続ノードの内側で止まっている
-- コネクタの端の区間が接続ノードの辺に重なって走っている（辺に入射せず、矢じりが辺に沿う）
-- コネクタ同士が同じ線分上で重なっている
-- コネクタの角が別のコネクタから 5px 未満にある（2 本が 1 本の線が曲がっているように見える）
-- `data-label-for` で紐づいたラベルがコネクタから 16px より離れている
-
-修正可能な問題には、`viewBox` の拡張、背景矩形の拡張、ノードの押し出し、コネクタの直交経路への引き直し、コネクタに紐づいたラベルの移動を適用する。
-
-`viewBox` を拡張するときは、絶対値（単位なし、`px`、`cm` など）の `width` と `height` も同じ比率で拡張し、図の表示の縮尺を保つ。割合指定や未指定の大きさはコンテナに任せ、変更しない。
-
-コネクタの引き直しでは、次を守る。
-
-- 接続元と接続先の辺から垂直に出入りし、辺に沿って走らない
-- 同じ辺の端点は辺上に分散させ、向かい合う辺をつなぐときは可能なら端点を揃えて直線にする
-- 障害物から 8px 離れ、ほかのコネクタと同じ線分上に重ならない（必要なら 10px 隣に並走する）
-- ほかのコネクタとの交差は、300px の迂回と同じだけ避ける。交差するくらいなら大回りする
-- 1 本のコネクタの 3 回目以降の折れは、1・2 回目の 3 倍のコストとして避ける
-- 1 回の迂回で避けられないときは、複数回折れる経路を探す
-- 折れ曲がりが減るなら、経路が少し長くなっても接続する辺を付け替える。ただし接続の多い辺は避ける
-- ほかのコネクタと 10px 未満の間隔で平行に並ばず、場所があれば 20px 以上離れる。交差も折れ曲がり 1 回分のコストとして避ける
-- 端を囲む包含ノードの枠は横切ってよいが、枠に沿っては走らない
-- 同じ辺の端点は、引き直さないコネクタの端点も含めて均等に分散する
-- 経路を引いたあと、同じ辺から出入りする 2 本が交差していれば端点を入れ替え（片方が引き直さないコネクタでもよい。まっすぐなコネクタは反対側の端点も一緒にずらしてまっすぐに保つ）、ノードの手前で横に段差をつけてから入る経路は端点を辺に沿ってずらしてまっすぐ入れる。どちらも、交差も折れも増えないときだけ採用する
-
-1 回の修正で問題が残るときは、問題が減る限り修正を繰り返す（既定で最大 5 回、`fix_with_passes(svg, max_passes)` で変更できる）。
+| Before | After |
+|---|---|
+| ![A service diagram with overlapping boxes, an overflowing label, a diagonal line, lines through a box, a box cut off at the edge and labels far from their lines](docs/images/before.svg) | ![The same diagram repaired by nicevg](docs/images/after.svg) |
 
 ## Install
 
+### CLI
+
 ```sh
 brew install takagiy/tap/nicevg
-# または
+# or
 cargo install --git https://github.com/takagiy/nicevg
 ```
 
-## CLI
+### TypeScript library (Bun, Node)
 
-標準入力の SVG を修正し、ノードの位置を少しだけ調整（arrange）して、結果の SVG を標準出力へ出す。
+```sh
+npm install nicevg
+```
+
+## Examples
+
+### CLI
 
 ```sh
 nicevg < diagram.svg > fixed.svg
 ```
 
-修正のあとでノードの位置も少しだけ調整する。入力の大まかな位置関係を保ったまま、コネクタの折れ曲がり・交差・混み合いと残った問題が減るようにノードを動かす。ノードを動かさずに修正だけを行いたいときはライブラリの `fix` を使う。
-
-- 1 回に 1 つのノードを動かす候補（折れたコネクタの両端のコネクタをその場で引き直すこと、折れたコネクタの両端を揃える移動、直線をふさいでいるノードをどける移動、交差・混み合い・問題に関わるノードや、2 回以上折れるコネクタ・20px 未満の端の区間・ノードの 20px 以内での交差を持つノードの 20px・40px の移動）を評価し、最も良くなる移動を採用することを繰り返す
-- 問題や経路の小さな段差（ジョグ）を増やす移動、横に並ぶノードとの左右・縦に並ぶノードとの上下の順序を入れ替える移動、各軸 60px を超える移動、ほかのノードとの間隔を 20px 未満にする移動、包含ノードのタイトルや枠に近づきすぎる移動はしない。包含ノード自体は動かさない
-- 揃った並び（中心や辺が揃ったノード）を崩す移動は避ける。並びに沿ってまっすぐのコネクタでつながったノードどうしの揃いは強く、座標だけの揃い（つながっていない、またはコネクタが迂回している）は弱く扱う。並びの内側のノードがずれると凹みに見えるため、外側より強く避ける
-- 同じ辺に複数のコネクタが接続するときは、端点どうしと辺の両端との間隔ができるだけ均等になる配置を良しとする（辺ごとに同じ数を割り当てるわけではない）
-- 経路に 20px 未満の小さな段差（ジョグ）ができる配置や、まっすぐだったコネクタが折れる配置は避ける。コネクタの角がほかのコネクタの上に乗って 1 本につながって見える配置も避ける。20px 未満の端の区間や、ノードから 20px 以内での交差は、入射が見えにくいので避ける。折れたコネクタの直線をふさいでいるノードは、直線が通るだけ動かす候補にする
-- 移動はノードのグループの `translate(...)` として書き込む
-
-修正しても残った問題は標準エラーへ表示する。終了コードは、問題が残らなければ `0`、問題が残れば `1`、不正な入力なら `2`。検査だけを行うときや構造化レポートが必要なときはライブラリの `analyze` を使う。
-
-## Library
-
-```rust
-let report = nicevg::analyze(svg)?;
-let result = nicevg::fix(svg)?;
-let arranged = nicevg::arrange(svg)?;
-
-println!("{:?}", report.issues);
-println!("{} {:?} {:?}", result.svg, result.changes, result.report);
-```
-
-レポートと修正結果は `serde::Serialize` を実装しており、JSON へ書き出せる。
-
-コア部分は、入力 SVG から修正後 SVG までを純粋関数のパイプラインとして構成している。
-
-- `xml`: SVG を値としての DOM に読み書きする。更新は新しい文書を返す
-- `diagram`: 文書からノード・コネクタ・ラベルを読み取る
-- `inspect`: 図から問題を求める検査を順に合成する
-- `route`: 辺と端点の選択、直交経路の探索、ラベルの置き場所を求める
-- `fix`: ノードの拡張 → ノードの分離 → コネクタの引き直しとラベルの移動 → `viewBox` の拡張、の各段階を下書きから新しい下書きへの関数として順に適用する
-- `arrange`: 修正結果を出発点に、ノードの小さな移動を候補ごとに修正して採点し、最も良い移動を採用することを繰り返す
-
-## TypeScript
-
-Bun と Node からは、ネイティブライブラリを FFI で呼ぶ TypeScript ライブラリが使える（`bindings/js`、npm の `nicevg`）。Linux・macOS・Windows 向けのビルド済みライブラリが入っているので、インストールに Rust もスクリプトも要らない。入口は `render()` 1 つで、ノードとコネクタの配列（または SVG の文字列）を受け取り、修正と配置調整をして SVG を表す `Svg` を返す。`Svg` は文字列にでき、ファイルに書け、ノードの範囲・コネクタの折れ点・ラベルの箱も読める。
+### TypeScript library
 
 ```ts
-import { render } from "nicevg";
+import { render, svg, text } from "nicevg";
 
-const svg = render({
+const image = render({
   nodes: [
     { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
-    { id: "bill", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
+    { id: "orders", class: "pill", x: 300, y: 160, label: "Orders" },
   ],
-  connectors: [{ from: "order", to: "bill", label: "invoice" }],
+  edges: [{ from: "order", to: "orders", label: "save" }],
+  style: {
+    pill: ({ label }) => {
+      const name = text(String(label));
+      const w = name.width + 32, h = name.height + 20;
+      return svg`
+        <rect width="${w}" height="${h}" rx="${h / 2}" fill="white" stroke="black"/>
+        ${name.at({ cx: w / 2, cy: h / 2 })}`;
+    },
+  },
+  rootAttrs: { "font-family": "sans-serif" },
 });
-await svg.write("diagram.svg");
+await image.write("diagram.svg");
 ```
 
-Rust からも同じ形の図を `nicevg::Sketch` として渡し、`analyze_sketch`、`fix_sketch`、`arrange_sketch` で扱える。詳しくは [bindings/js/README.md](bindings/js/README.md)。
+## Docs
 
-## SVG contract
-
-通常の `<g>` に直接 `<rect>` または `<circle>` と `<text>` が入っていればノードとして推定する。LLM から安定した SVG を受け取る場合は、次の属性で意味を明示する。
-
-```xml
-<g data-node="source">
-  <rect x="20" y="20" width="120" height="56" />
-  <text x="80" y="53" text-anchor="middle">Source</text>
-</g>
-
-<g data-node="target">
-  <rect x="220" y="20" width="120" height="56" />
-  <text x="280" y="53" text-anchor="middle">Target</text>
-</g>
-
-<path
-  id="source-target"
-  data-from="source"
-  data-to="target"
-  d="M 140 48 L 220 48"
-/>
-```
-
-- ノードの形は `<rect>` または `<circle>`。円形ノードは外接矩形を `bounds` とし、`shape: "circle"` で区別する。ラベルの余白、コネクタの横切りと端点は円そのもので判定し、修正では中心を保ったまま半径を広げ、コネクタの端を円周まで伸ばす。
-- 構造図の包含は、子の `data-node` グループを親の `data-node` グループ内にネストする。
-- 意図したノード重複には `data-allow-overlap="true"` を付ける。
-- `data-node` グループに `data-custom="true"` を付けると、中身を絵として扱う。範囲は中の要素（`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`、`path`、`text`）を囲む矩形（入れ子のノードは除く）で、中の `<text>` はラベルとして検査せず、中のグループもノードと推定しない。修正と配置調整は `translate` で動かすだけで、大きさは変えない。
-- ノード外のラベルには `data-label="label-id"` を付ける。
-- コネクタの説明ラベルには `data-label-for="connector-id"` も付ける。コネクタを引き直すと、ラベルはその脇へ移動する。場所があれば、どのコネクタのラベルか紛れないよう、ほかのコネクタから 18px（自分の線までの 9px の 2 倍）以上離して置く。ただし、ラベルが脇に付く区間と平行に、区間を挟んだ反対側を走るコネクタは数えない（自分の線がラベルとの間にあるので紛れない）。ほかのコネクタから 18px 未満に残ったラベルも、離れた場所が自分のコネクタの脇にあれば、そこへ移す。コネクタの交点・折れ・両端が修正の途中で変わったときは、そのラベルを（入力どおりの位置のものも含めて）置き直す。置ける場所が複数あれば、自分のコネクタ上の交点（ほかのコネクタと交わる点）・折れ・両端から最も離れた場所（それらのうち最も近い点との距離が最大の場所）を選ぶ。その際、ほかのコネクタが 30px 以内にある場所は、近いほど減点する（1px 近いごとに、交点などから 3px 近いのと同じ扱い）。
-- 複数行のラベルは、`x` を持つ `<tspan>` で行を分けた 1 つの `<text>`、同じ `data-label` を持つ複数の `<text>`、`data-label` を付けた `<g>` で囲んだ複数の `<text>` のいずれかで書ける。移動するときはすべての行が一緒に動く。
-- 自動経路修正の対象となるコネクタには `data-from` と `data-to` を付ける。向きのない接続には同じ意味で `data-a` と `data-b` も使える。
-- 矢じりを `<polygon>` で描く場合は、線と矢じりを `data-from` と `data-to` を付けた `<g>` で囲むか、注釈付きの線と同じ `<g>` に矢じりを置く。線の端に接する多角形を矢じりとみなし、コネクタは矢じりの先端まで続くものとして扱う。引き直すと、矢じりは新しい終点へ移って最後の区間の向きに回り、線は元と同じだけ手前で止まる。
-- コネクタのパスは `M`、`L`、`H`、`V` による折れ線を使用する。
-- 現在の座標変換は `translate(...)` をサポートする。
-- テキストの幅は、全角文字を 1 文字あたりフォントサイズ、それ以外を 0.59 倍として見積もる。`font-size`、`text-anchor`、`dominant-baseline` は属性と `style` 属性の両方から読み、祖先のグループから継承する。`<style>` 要素のスタイルシートは読まない。
-
-対応できない自由形状には意味を推測せず、`unsupportedElements` としてレポートする。自動修正でもその要素は変更しない。
-
-## Development
-
-自然言語のテストリストは `docs/test-list/diagram.md` に置く。
-
-CI（`.github/workflows/ci.yml`）は main への push とプルリクエストで、整形と lint と、Linux・macOS・Windows それぞれで Rust のテストと TypeScript ライブラリのビルドとテスト（Bun と Node）を回す。Rust のビルドは [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache) で、Bun の依存は `bun.lock` をキーにキャッシュし、キャッシュは main の実行でだけ保存する。実装は Canon TDD の縦方向のサイクルで進める。
-
-```sh
-cargo test
-cargo clippy --all-targets
-cargo fmt --check
-
-# 修正の入出力をギャラリーで確認する（test-results/fix-gallery.html）
-cargo run --example fix-gallery
-```
-
-単体テストは出力の座標を固定せず、Given/When/Then の Then が約束する性質（直交している、ノードを貫通しない、辺から垂直に出入りする など）を `tests/support/mod.rs` の述語で確かめる。
-
-修正のテストは、Then の性質に加えて、修正後の SVG そのものと、その品質（残る問題・折れ曲がり・斜めの線分・コネクタから離れたラベルの数・並走するコネクタの密度・ジョグ・短い端・交差・角に寄った端子・遠回り、それらを人が見比べた判断から決めた重みで合計した悪さ。どれも悪いほど大きい）を [insta](https://insta.rs) のスナップショットとして `tests/snapshots/` に記録する。個々の期待値が固定していない形の変化も、スナップショットの差分として検出される。品質の差分を見れば、その変化が改善か後退かを判断できる。改善も差分として失敗するので、意図した変化は差分を確認してから記録し直す。
-
-```sh
-cargo insta review
-# または
-INSTA_UPDATE=always cargo test --test fix
-```
-
-処理時間は `examples/profile.rs` で測る。ライブラリの主な処理には [tracing](https://docs.rs/tracing) のスパンが付いており、スパンごとの呼び出し回数・合計時間・自分の時間（子のスパンを除いた時間）と、記録した数値（経路探索のグリッドの大きさ、探索した状態数など）を表にする。arrange の評価は並列なので、時間はスレッドの合計になる。
-
-```sh
-cargo run --release --example profile -- tests/fixtures/loan-origination-dfd.svg
-# 修正だけを測り、Perfetto で開くトレースとフレームグラフ用のスタックも書き出す
-cargo run --release --example profile -- input.svg --fix --chrome trace.json --folded stacks.folded
-```
-
-Windows では GNU ツールチェーン（`x86_64-pc-windows-gnu`）でビルドしており、依存クレートのリンクに MinGW-w64 の `dlltool` を使う。
+- [SVG contract](docs/reference/svg-contract.md): the attributes nicevg reads (`data-node`, `data-from`, `data-label-for`, ...)
+- [Test list](docs/test-list/diagram.md): what nicevg checks, fixes and arranges, one behaviour per line
+- [TypeScript library](bindings/js/README.md)
+- [Development](docs/guide/development.md)
