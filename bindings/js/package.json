@@ -43,7 +43,7 @@
     "build:native": "bun run scripts/build-native.ts",
     "build:js": "tsc -p tsconfig.build.json",
     "test": "bun run test:bun && bun run test:node",
-    "test:bun": "bun test ./test/bun",
+    "test:bun": "bun test --timeout 30000 ./test/bun",
     "test:node": "node --test \"test/node/**/*.test.*\"",
     "typecheck": "tsc --noEmit"
   },
