@@ -59,13 +59,49 @@ console.log(svg.changes); // 何を直し、何を動かしたか
 | `nodes[].label`、`fontSize` | 中に書く文字（`\n` で改行）。子を持つノードでは左上に、それ以外では中央に置く |
 | `nodes[].parent` | このノードを入れる親ノードの id |
 | `nodes[].allowOverlap` | 意図した重なりなら `true` |
-| `connectors[].from`、`to` | 両端のノードの id |
-| `connectors[].points` | 経路の折れ点。省くと、修正と配置調整が両端のノードの辺から辺へ経路を引く |
-| `connectors[].label`、`fontSize` | コネクタの脇に置く文字 |
+| `nodes[].class` | 描き方を `style` から選ぶ名前。付けたノードは `width`・`height`・`shape`・`label` を使わず、`style` が描く |
+| `edges[].from`、`to` | 両端のノードの id。`edges` は前の名前の `connectors` でも渡せる（両方は渡せない） |
+| `edges[].points` | 経路の折れ点。省くと、修正と配置調整が両端のノードの辺から辺へ経路を引く |
+| `edges[].label`、`fontSize` | コネクタの脇に置く文字 |
+| `style` | クラス名から、そのクラスのノードを描く関数への対応 |
+
+### style
+
+`style` の関数はノードを受け取り、ノードの左上を原点にして描いた SVG を `svg` で返す。ノードに足した項目（下の `no` など）も受け取れる。置く位置は `render` がノードの `x`、`y` と配置調整の移動から `translate` で付ける。
+
+```ts
+import { render, svg, text } from "nicevg";
+
+const image = render({
+  nodes: [
+    { id: "customer", x: 20, y: 40, width: 80, height: 40, label: "顧客" },
+    { id: "orders", class: "store", x: 260, y: 40, no: "D1", label: "注文" },
+  ],
+  edges: [{ from: "customer", to: "orders", label: "注文" }],
+  style: {
+    store: ({ no, label }) => {
+      const id = text(String(no)), name = text(String(label));
+      const sep = id.width + 24, w = sep + name.width + 24, h = Math.max(id.height, name.height) + 20;
+      return svg`
+        <g fill="none" stroke="#333">
+          <path d="M ${w} 0 H 0 V ${h} H ${w}"/>
+          <line x1="${sep}" y1="0" x2="${sep}" y2="${h}"/>
+        </g>
+        ${id.at({ cx: sep / 2, cy: h / 2 })}
+        ${name.at({ left: sep + 12, cy: h / 2 })}`;
+    },
+  },
+});
+```
+
+- `` svg`...` `` の中は SVG そのもの。埋め込んだ文字列はエスケープされ、`svg` の断片、`text`、それらの配列はそのまま入る。断片は `.at(x, y)` で原点をずらせる。
+- `text(文字列, 大きさ)` は 1 行の `<text>`。`width`・`height` は nicevg と同じ見積もり。`.at({ 横, 縦 })` で、横は `left`・`cx`・`right`、縦は `top`・`cy`・`bottom` から 1 つずつ選び、文字の箱のその点をその座標に置く。
+- ノードの範囲は、描いたもの（`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`、`path`、`text`）を囲む矩形。コネクタはその辺から出入りする。曲線と円弧は端点だけで数える。
+- 修正と配置調整はノードを動かすが、大きさは変えない。中の `<text>` はラベルとして検査しないので、収まりは描く側が決める。
 
 `Svg` の `report.diagram` は、描いた図を読み直したもので、ノード（`bounds`、ラベルの範囲 `labelBounds`）、コネクタ（`points`）、ラベル（`bounds`、説明するコネクタの id `connector`）を持つ。コネクタは id を持たないので、`from` と `to` で見分ける。文字の幅は、全角を 1 文字あたりフォントサイズ、それ以外を 0.59 倍として見積もる。
 
-形の書き方が違う入力や、存在しないノードを指す `from`・`to`・`parent` は、どこが何を指しているか（`connectors[0].to` など）を書いた `NicevgError` を投げる。
+形の書き方が違う入力、存在しないノードを指す `from`・`to`・`parent`、`style` にないクラス、整形式でない SVG を描いたスタイルは、どこが何を指しているか（`connectors[0].to`、`nodes[1].class` など）を書いた `NicevgError` を投げる。
 
 描画は呼んだスレッドで最後まで走る。大きな図の配置調整は 1〜2 秒かかり、その間すべてのコアを使う。
 

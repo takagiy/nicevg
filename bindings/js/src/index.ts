@@ -23,7 +23,10 @@
 
 import { writeFile } from "node:fs/promises";
 
+import type { SvgFragment } from "./draw.ts";
 import { call as native } from "./native.ts";
+
+export { SvgFragment, Text, type TextPlace, svg, text } from "./draw.ts";
 
 export interface Point {
   x: number;
@@ -69,10 +72,34 @@ export interface SketchConnector {
   fontSize?: number;
 }
 
-/** A diagram as nodes and the connectors between them. */
+/**
+ * A node drawn by the style its `class` names, with its origin at `x`, `y`.
+ * It lies around what the style draws, and rendering moves it but never
+ * resizes it. Its other fields, such as `label`, are for the style to use.
+ */
+export interface StyledNode {
+  id: string;
+  x: number;
+  y: number;
+  class: string;
+  /** The node this one sits inside. */
+  parent?: string;
+  /** Whether it may overlap other nodes on purpose. */
+  allowOverlap?: boolean;
+  [field: string]: unknown;
+}
+
+/** Draws a styled node's picture, from its own origin, with `svg` and `text`. */
+export type Style = (node: StyledNode) => SvgFragment;
+
+/** A diagram as nodes and the edges (connectors) between them. */
 export interface Sketch {
-  nodes: SketchNode[];
+  nodes: (SketchNode | StyledNode)[];
+  edges?: SketchConnector[];
+  /** The same as `edges`, its name before; pass one or the other. */
   connectors?: SketchConnector[];
+  /** How to draw the nodes of each class. */
+  style?: Record<string, Style>;
 }
 
 /** A diagram to render: a sketch, SVG text following nicevg's SVG contract, or an Svg rendered before. */
@@ -165,7 +192,9 @@ export class NicevgError extends Error {
  * no points, and moves nodes a little where that reads better.
  */
 export function render(input: Input): Svg {
-  const request = new TextEncoder().encode(JSON.stringify(input instanceof Svg ? { svg: input.toString() } : input));
+  const request = new TextEncoder().encode(
+    JSON.stringify(input instanceof Svg ? { svg: input.toString() } : "svg" in input ? input : sketchRequest(input)),
+  );
   const reply = JSON.parse(native(request)) as
     | { ok: { svg: string; changes: Change[]; report: AnalysisReport } }
     | { error: string };
@@ -173,4 +202,25 @@ export function render(input: Input): Svg {
     throw new NicevgError(reply.error);
   }
   return new Svg(reply.ok.svg, reply.ok.changes, reply.ok.report);
+}
+
+/** The sketch as the native library reads it: styled nodes drawn, edges as connectors. */
+function sketchRequest({ nodes, edges, connectors, style = {} }: Sketch) {
+  if (edges && connectors) {
+    throw new NicevgError("edges and connectors are the same; pass one of them");
+  }
+  return {
+    nodes: nodes.map((node, index) => {
+      if (!("class" in node)) {
+        return node;
+      }
+      const draw = Object.hasOwn(style, node.class) ? style[node.class] : undefined;
+      if (!draw) {
+        throw new NicevgError(`nodes[${index}].class: no style named "${node.class}"`);
+      }
+      const { id, x, y, parent, allowOverlap } = node;
+      return { id, x, y, parent, allowOverlap, svg: String(draw(node)) };
+    }),
+    connectors: edges ?? connectors,
+  };
 }

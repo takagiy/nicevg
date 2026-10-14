@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { NicevgError, type Sketch, Svg, render } from "nicevg";
+import { NicevgError, type Sketch, Svg, render, svg, text } from "nicevg";
 
 const fixtures = fileURLToPath(new URL("../../../../tests/fixtures/", import.meta.url));
 
@@ -116,5 +116,30 @@ describe("render on Node", () => {
     assert.throws(() => render(missingWidth), NicevgError);
     assert.throws(() => render(missingWidth), /nodes\[0\].*width/);
     assert.throws(() => render(dangling), /connectors\[0\]\.to.*"ghost"/);
+  });
+
+  /**
+   * Given a node of a class whose style draws a box with svg and text, joined by an edge
+   * When it is rendered from the built package
+   * Then the node lies around what the style drew, with no issue left
+   */
+  test("draws a styled node with its style", () => {
+    const image = render({
+      nodes: [
+        { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+        { id: "bill", class: "box", x: 300, y: 160, label: "Bill" },
+      ],
+      edges: [{ from: "order", to: "bill" }],
+      style: {
+        box: ({ label }) => {
+          const name = text(String(label));
+          return svg`<rect width="${name.width + 32}" height="40" fill="none" stroke="black"/>${name.at({ left: 16, cy: 20 })}`;
+        },
+      },
+    });
+
+    const bill = image.report.diagram.nodes.find((node) => node.id === "bill")!;
+    assert.deepEqual([bill.bounds.width, bill.bounds.height], [text("Bill").width + 32, 40]);
+    assert.deepEqual(image.report.issues, []);
   });
 });

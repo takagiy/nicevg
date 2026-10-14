@@ -7,7 +7,9 @@ use std::fmt::Write;
 
 use serde::Deserialize;
 
-use crate::geometry::{Point, format_number, point};
+use crate::diagram::content_bounds;
+use crate::geometry::{Bounds, Point, format_number, point};
+use crate::xml;
 use crate::{AnalysisReport, FixResult};
 
 /// A diagram as nodes and the connectors between them.
@@ -19,15 +21,24 @@ pub struct Sketch {
     pub connectors: Vec<SketchConnector>,
 }
 
-/// A box or a circle; a circle's bounds are the square around it.
+/// A box or a circle; a circle's bounds are the square around it. A node
+/// with `svg` is that picture instead, drawn with its origin at `x`, `y`:
+/// its bounds are the box around what it draws, and fixing moves it but
+/// never resizes it.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SketchNode {
     pub id: String,
     pub x: f64,
     pub y: f64,
-    pub width: f64,
-    pub height: f64,
+    /// Required unless the node has `svg`.
+    #[serde(default)]
+    pub width: Option<f64>,
+    #[serde(default)]
+    pub height: Option<f64>,
+    /// SVG elements drawing the node, such as `<rect width="80" height="40"/>`.
+    #[serde(default)]
+    pub svg: Option<String>,
     #[serde(default)]
     pub shape: SketchShape,
     /// Its text, lines split at `\n`; a node with children shows it at its
@@ -78,6 +89,10 @@ pub enum SketchError {
     /// The field at `referrer` (such as `connectors[0].to` or
     /// `nodes[2].parent`) names a node the sketch does not have.
     UnknownNode { referrer: String, node: String },
+    /// The node at `referrer` has neither `svg` nor both `width` and `height`.
+    MissingSize { referrer: String },
+    /// The `svg` at `referrer` is not well-formed SVG or draws nothing.
+    InvalidSvg { referrer: String, message: String },
 }
 
 impl std::fmt::Display for SketchError {
@@ -89,6 +104,10 @@ impl std::fmt::Display for SketchError {
                     "{referrer} refers to node \"{node}\", which the sketch does not have"
                 )
             }
+            SketchError::MissingSize { referrer } => {
+                write!(formatter, "{referrer} needs a width and a height, or svg")
+            }
+            SketchError::InvalidSvg { referrer, message } => write!(formatter, "{referrer}: {message}"),
         }
     }
 }
@@ -132,6 +151,11 @@ pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
         }
     }
 
+    let mut boxes: HashMap<&str, Bounds> = HashMap::new();
+    for (index, node) in sketch.nodes.iter().enumerate() {
+        boxes.insert(node.id.as_str(), node_bounds(node, index)?);
+    }
+
     let mut children: HashMap<&str, Vec<&SketchNode>> = HashMap::new();
     for node in &sketch.nodes {
         if let Some(parent) = &node.parent {
@@ -145,8 +169,10 @@ pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
             if connector.points.len() >= 2 {
                 connector.points.clone()
             } else {
-                let (from, to) = (nodes[connector.from.as_str()], nodes[connector.to.as_str()]);
-                vec![centre(from), centre(to)]
+                vec![
+                    boxes[connector.from.as_str()].centre(),
+                    boxes[connector.to.as_str()].centre(),
+                ]
             }
         })
         .collect();
@@ -156,11 +182,11 @@ pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
     // Nodes outside any other first, each with its children inside; nodes
     // in a cycle of parents last, outside one another.
     for node in sketch.nodes.iter().filter(|node| node.parent.is_none()) {
-        write_node(&mut body, node, &children, &mut written, 1);
+        write_node(&mut body, node, &boxes, &children, &mut written, 1);
     }
     for node in &sketch.nodes {
         if !written.contains(node.id.as_str()) {
-            write_node(&mut body, node, &children, &mut written, 1);
+            write_node(&mut body, node, &boxes, &children, &mut written, 1);
         }
     }
     for (index, (connector, route)) in sketch.connectors.iter().zip(&routes).enumerate() {
@@ -193,7 +219,10 @@ pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
     let points = sketch
         .nodes
         .iter()
-        .flat_map(|node| [point(node.x, node.y), point(node.x + node.width, node.y + node.height)])
+        .flat_map(|node| {
+            let bounds = boxes[node.id.as_str()];
+            [point(bounds.x, bounds.y), point(bounds.right(), bounds.bottom())]
+        })
         .chain(routes.iter().flatten().copied());
     let (mut left, mut top, mut right, mut bottom) =
         (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
@@ -222,6 +251,35 @@ fn connector_id(index: usize) -> String {
     format!("connector-{index}")
 }
 
+/// Where a node lies: the box around its picture, or its given size.
+fn node_bounds(node: &SketchNode, index: usize) -> Result<Bounds, SketchError> {
+    let referrer = format!("nodes[{index}]");
+    let Some(svg) = &node.svg else {
+        let (Some(width), Some(height)) = (node.width, node.height) else {
+            return Err(SketchError::MissingSize { referrer });
+        };
+        return Ok(Bounds {
+            x: node.x,
+            y: node.y,
+            width,
+            height,
+        });
+    };
+    let invalid = |message: String| SketchError::InvalidSvg {
+        referrer: format!("{referrer}.svg"),
+        message,
+    };
+    let document = xml::parse(&format!("<svg xmlns=\"http://www.w3.org/2000/svg\">{svg}</svg>"))
+        .map_err(|error| invalid(error.0))?;
+    let drawn =
+        content_bounds(&document, &[document.root_index()]).ok_or_else(|| invalid("draws nothing".to_owned()))?;
+    Ok(Bounds {
+        x: drawn.x + node.x,
+        y: drawn.y + node.y,
+        ..drawn
+    })
+}
+
 fn unknown(referrer: String, node: &str) -> SketchError {
     SketchError::UnknownNode {
         referrer,
@@ -232,6 +290,7 @@ fn unknown(referrer: String, node: &str) -> SketchError {
 fn write_node<'a>(
     body: &mut String,
     node: &'a SketchNode,
+    boxes: &HashMap<&str, Bounds>,
     children: &HashMap<&str, Vec<&'a SketchNode>>,
     written: &mut HashSet<&'a str>,
     depth: usize,
@@ -240,55 +299,72 @@ fn write_node<'a>(
         return;
     }
     let indent = "  ".repeat(depth);
-    let _ = writeln!(
-        body,
-        "{indent}<g data-node=\"{}\"{}>",
-        escape(&node.id),
-        if node.allow_overlap {
-            r#" data-allow-overlap="true""#
-        } else {
-            ""
-        }
-    );
+    let overlap = if node.allow_overlap {
+        r#" data-allow-overlap="true""#
+    } else {
+        ""
+    };
+    let inside = children.get(node.id.as_str());
+    if let Some(svg) = &node.svg {
+        let _ = writeln!(
+            body,
+            // The picture alone is translated, so children keep the places given.
+            "{indent}<g data-node=\"{}\" data-custom=\"true\"{overlap}>\n{indent}  <g transform=\"translate({} {})\">{svg}</g>",
+            escape(&node.id),
+            number(node.x),
+            number(node.y),
+        );
+    } else {
+        let bounds = boxes[node.id.as_str()];
+        let _ = writeln!(body, "{indent}<g data-node=\"{}\"{overlap}>", escape(&node.id));
+        write_shape(body, node, bounds, inside.is_some(), &indent);
+    }
+    for child in inside.into_iter().flatten() {
+        write_node(body, child, boxes, children, written, depth + 1);
+    }
+    let _ = writeln!(body, "{indent}</g>");
+}
+
+/// A box or circle node's shape and label.
+fn write_shape(body: &mut String, node: &SketchNode, bounds: Bounds, has_children: bool, indent: &str) {
     match node.shape {
         SketchShape::Rect => {
             let _ = writeln!(
                 body,
                 r#"{indent}  <rect x="{}" y="{}" width="{}" height="{}" fill="white" stroke="black"/>"#,
-                number(node.x),
-                number(node.y),
-                number(node.width),
-                number(node.height)
+                number(bounds.x),
+                number(bounds.y),
+                number(bounds.width),
+                number(bounds.height)
             );
         }
         SketchShape::Circle => {
-            let centre = centre(node);
+            let centre = bounds.centre();
             let _ = writeln!(
                 body,
                 r#"{indent}  <circle cx="{}" cy="{}" r="{}" fill="white" stroke="black"/>"#,
                 number(centre.x),
                 number(centre.y),
-                number(node.width.min(node.height) / 2.0)
+                number(bounds.width.min(bounds.height) / 2.0)
             );
         }
     }
-    let inside = children.get(node.id.as_str());
     if let Some(label) = &node.label {
         let font_size = node.font_size.unwrap_or(NODE_FONT_SIZE);
-        if inside.is_some() {
+        if has_children {
             let _ = writeln!(
                 body,
                 r#"{indent}  <text font-size="{}">{}</text>"#,
                 number(font_size),
                 lines(
                     label,
-                    node.x + TITLE_INSET,
-                    node.y + TITLE_INSET + font_size * 0.35 + font_size / 2.0,
+                    bounds.x + TITLE_INSET,
+                    bounds.y + TITLE_INSET + font_size * 0.35 + font_size / 2.0,
                     font_size
                 )
             );
         } else {
-            let centre = centre(node);
+            let centre = bounds.centre();
             let _ = writeln!(
                 body,
                 r#"{indent}  <text text-anchor="middle" font-size="{}">{}</text>"#,
@@ -297,10 +373,6 @@ fn write_node<'a>(
             );
         }
     }
-    for child in inside.into_iter().flatten() {
-        write_node(body, child, children, written, depth + 1);
-    }
-    let _ = writeln!(body, "{indent}</g>");
 }
 
 /// A label's lines as `tspan`s, centred on `y` as a block.
@@ -319,10 +391,6 @@ fn lines(text: &str, x: f64, y: f64, font_size: f64) -> String {
             )
         })
         .collect()
-}
-
-fn centre(node: &SketchNode) -> Point {
-    point(node.x + node.width / 2.0, node.y + node.height / 2.0)
 }
 
 fn number(value: f64) -> String {

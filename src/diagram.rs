@@ -245,19 +245,99 @@ pub(crate) fn non_empty(value: &str) -> Option<&str> {
 struct Recognized {
     path: Path,
     id: String,
-    shape_path: Path,
+    shape: Option<Shape>,
+    bounds: Bounds,
     labels: Vec<Path>,
     allow_overlap: bool,
 }
 
+/// Whether a node group is drawn as it is: its contents are a picture, not
+/// a shape with labels, and fixing never resizes it.
+fn is_custom(group: &Element) -> bool {
+    group.attr("data-custom") == "true"
+}
+
+/// The box around what the element at `path` draws: its rects, circles,
+/// ellipses, lines, polylines, polygons, paths and texts, leaving out the
+/// nodes nested in it.
+pub fn content_bounds(document: &Document, path: &[usize]) -> Option<Bounds> {
+    let descendants = document.descendants(path);
+    let nested: Vec<&Path> = descendants
+        .iter()
+        .filter(|(_, element)| element.name == "g" && !element.attr("data-node").is_empty())
+        .map(|(path, _)| path)
+        .collect();
+    let bounds: Vec<Bounds> = descendants
+        .iter()
+        .filter(|(path, _)| !nested.iter().any(|node| path.starts_with(node)))
+        .filter_map(|(path, element)| match element.name.as_str() {
+            "rect" => Some(rect_bounds(document, path)),
+            "circle" => Some(circle_bounds(document, path)),
+            "ellipse" => {
+                let offset = translation(document, path);
+                let (rx, ry) = (number_attribute(element, "rx"), number_attribute(element, "ry"));
+                Some(Bounds {
+                    x: number_attribute(element, "cx") + offset.x - rx,
+                    y: number_attribute(element, "cy") + offset.y - ry,
+                    width: rx * 2.0,
+                    height: ry * 2.0,
+                })
+            }
+            // shortcut: a curve or arc counts by its end points only, so a bulge past them sits outside the bounds; measure curves if custom shapes need them.
+            "line" | "polyline" | "path" => points_bounds(&connector_points(document, path)),
+            "polygon" => {
+                let offset = translation(document, path);
+                let points: Vec<Point> = number_list(element.attr("points"))
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|[x, y]| point(x + offset.x, y + offset.y))
+                    .collect();
+                points_bounds(&points)
+            }
+            "text" => Some(text_bounds(document, path)),
+            _ => None,
+        })
+        .collect();
+    enclosing(&bounds)
+}
+
 fn recognize_nodes(document: &Document) -> Vec<Recognized> {
-    document
-        .elements_named("g")
-        .into_iter()
+    let groups = document.elements_named("g");
+    let custom: Vec<&Path> = groups
+        .iter()
+        .filter(|(_, group)| is_custom(group) && !group.attr("data-node").is_empty())
+        .map(|(path, _)| path)
+        .collect();
+    groups
+        .iter()
         .enumerate()
         .filter_map(|(index, (path, group))| {
-            let children = child_element_paths(document, &path);
             let annotation = group.attr("data-node");
+            let annotated = !annotation.is_empty();
+            let id = non_empty(annotation)
+                .or_else(|| non_empty(group.attr("id")))
+                .map_or_else(|| format!("node-{}", index + 1), str::to_owned);
+            let allow_overlap = group.attr("data-allow-overlap") == "true";
+            if annotated && is_custom(group) {
+                return Some(Recognized {
+                    path: path.clone(),
+                    id,
+                    shape: None,
+                    bounds: content_bounds(document, path)?,
+                    labels: Vec::new(),
+                    allow_overlap,
+                });
+            }
+            // A group inside a custom node's picture is part of the picture.
+            if !annotated
+                && custom
+                    .iter()
+                    .any(|outer| path.len() > outer.len() && path.starts_with(outer))
+            {
+                return None;
+            }
+            let children = child_element_paths(document, path);
             let direct_shape = children
                 .iter()
                 .find(|child| is_node_shape(document.element(child)))
@@ -266,28 +346,25 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
                 .into_iter()
                 .filter(|child| document.element(child).name == "text")
                 .collect();
-            let annotated = !annotation.is_empty();
             if !annotated && (direct_shape.is_none() || labels.is_empty()) {
                 return None;
             }
             let shape_path = if annotated {
                 document
-                    .descendants(&path)
+                    .descendants(path)
                     .into_iter()
                     .find(|(_, element)| is_node_shape(element))
                     .map(|(candidate, _)| candidate)
             } else {
                 direct_shape
             }?;
-            let id = non_empty(annotation)
-                .or_else(|| non_empty(group.attr("id")))
-                .map_or_else(|| format!("node-{}", index + 1), str::to_owned);
             Some(Recognized {
-                allow_overlap: group.attr("data-allow-overlap") == "true",
-                path,
+                path: path.clone(),
                 id,
-                shape_path,
+                shape: (document.element(&shape_path).name == "circle").then_some(Shape::Circle),
+                bounds: shape_bounds(document, &shape_path),
                 labels,
+                allow_overlap,
             })
         })
         .collect()
@@ -308,8 +385,8 @@ pub fn read(document: &Document) -> Diagram {
                 .map(|parent| parent.id.clone());
             DiagramNode {
                 id: node.id.clone(),
-                shape: (document.element(&node.shape_path).name == "circle").then_some(Shape::Circle),
-                bounds: shape_bounds(document, &node.shape_path),
+                shape: node.shape,
+                bounds: node.bounds,
                 label_bounds: node.labels.iter().map(|label| text_bounds(document, label)).collect(),
                 parent_id,
                 allow_overlap: node.allow_overlap,
