@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 330" width="660" height="330" font-family="Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 337" width="660" height="337" font-family="Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#333"/>
     </marker>
   </defs>
-  <rect width="660" height="330" fill="white" x="0" y="0"/>
+  <rect width="660" height="337" fill="white" x="0" y="0"/>
   <g data-node="user">
     <rect x="20" y="30" width="90" height="44" fill="#eef" stroke="#333"/>
     <text x="65" y="57" text-anchor="middle" font-size="14">User</text>
@@ -21,7 +21,7 @@
     <rect x="300" y="130" width="90" height="44" fill="#fff" stroke="#333"/>
     <text x="345" y="157" text-anchor="middle" font-size="14">Auth</text>
   </g>
-  <g data-node="orders" transform="translate(20 0)">
+  <g data-node="orders">
     <rect x="150" y="200" width="110" height="44" fill="#fff" stroke="#333"/>
     <text x="205" y="227" text-anchor="middle" font-size="14">Orders</text>
   </g>
@@ -36,11 +36,15 @@
   <path id="browse" data-from="user" data-to="web" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 110 52 L 170 52"/>
   <path id="call" data-from="web" data-to="gateway" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 270 52 L 347.5 52"/>
   <path id="verify" data-from="gateway" data-to="auth" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 424 74 L 424 152 L 390 152"/>
-  <path id="place" data-from="gateway" data-to="orders" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 386 74 L 386 102 L 225 102 L 225 200"/>
-  <path id="charge" data-from="orders" data-to="payments" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 280 229 L 335 229 L 335 265"/>
-  <path id="save" data-from="orders" data-to="db" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 280 215 L 520 215"/>
-  <path id="receipt" data-from="payments" data-to="user" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 280 287 L 65 287 L 65 74"/>
-  <text data-label="place-label" data-label-for="place" x="216" y="156" font-size="12" text-anchor="end">place order</text>
-  <text data-label="receipt-label" data-label-for="receipt" x="74" y="186" font-size="12" text-anchor="start">receipt</text>
-  <text data-label="save-label" data-label-for="save" x="400" y="204" font-size="12" text-anchor="middle">save</text>
+  <path id="place" data-from="gateway" data-to="orders" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 386 74 L 386 102 L 205 102 L 205 200"/>
+  <path id="charge" data-from="orders" data-to="payments" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 205 244 L 205 280 L 280 280"/>
+  <path id="save" data-from="orders" data-to="db" d="M 260 210 L 520 210" fill="none" stroke="#333" marker-end="url(#arrow)"/>
+  <path id="receipt" data-from="payments" data-to="user" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 280 294 L 65 294 L 65 74"/>
+  <text data-label="place-label" data-label-for="place" x="296" y="123" font-size="12" text-anchor="middle">place order</text>
+  <text data-label="receipt-label" data-label-for="receipt" x="74" y="189" font-size="12" text-anchor="start">receipt</text>
+  <text data-label="save-label" data-label-for="save" x="390" y="199" font-size="12" text-anchor="middle">save</text>
+  <text data-label="browse-label" data-label-for="browse" x="140" y="41" font-size="12" text-anchor="middle">browse</text>
+  <text data-label="call-label" data-label-for="call" x="309" y="41" font-size="12" text-anchor="middle">request</text>
+  <text data-label="verify-label" data-label-for="verify" x="433" y="118" font-size="12" text-anchor="start">verify token</text>
+  <text data-label="charge-label" data-label-for="charge" x="243" y="269" font-size="12" text-anchor="middle">charge</text>
 </svg>

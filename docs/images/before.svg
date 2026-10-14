@@ -40,7 +40,11 @@
   <path id="charge" data-from="orders" data-to="payments" d="M 205 244 L 205 300 L 295 300 L 295 269" fill="none" stroke="#333" marker-end="url(#arrow)"/>
   <path id="save" data-from="orders" data-to="db" d="M 260 210 L 520 210" fill="none" stroke="#333" marker-end="url(#arrow)"/>
   <path id="receipt" data-from="payments" data-to="user" d="M 240 247 L 65 247 L 65 74" fill="none" stroke="#333" marker-end="url(#arrow)"/>
-  <text data-label="place-label" data-label-for="place" x="420" y="120" font-size="12">place order</text>
-  <text data-label="receipt-label" data-label-for="receipt" x="500" y="310" font-size="12">receipt</text>
+  <text data-label="place-label" data-label-for="place" x="356" y="120" font-size="12">place order</text>
+  <text data-label="receipt-label" data-label-for="receipt" x="110" y="298" font-size="12">receipt</text>
   <text data-label="save-label" data-label-for="save" x="430" y="200" font-size="12">save</text>
+  <text data-label="browse-label" data-label-for="browse" x="122" y="45" font-size="12">browse</text>
+  <text data-label="call-label" data-label-for="call" x="278" y="40" font-size="12">request</text>
+  <text data-label="verify-label" data-label-for="verify" x="386" y="90" font-size="12">verify token</text>
+  <text data-label="charge-label" data-label-for="charge" x="215" y="315" font-size="12">charge</text>
 </svg>
