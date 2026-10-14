@@ -49,6 +49,7 @@ fn render(request: &[u8]) -> Result<Value, String> {
 /// writable `usize`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nicevg_render(request: *const u8, length: usize, reply_length: *mut usize) -> *mut u8 {
+    keep_loaded();
     let request = if length == 0 {
         &[][..]
     } else {
@@ -66,6 +67,27 @@ pub unsafe extern "C" fn nicevg_render(request: *const u8, length: usize, reply_
     // SAFETY: the caller passes a writable `usize`.
     unsafe { *reply_length = bytes.len() };
     Box::into_raw(bytes).cast::<u8>()
+}
+
+/// Keeps the library in memory until the process ends, once called. A
+/// thread that has finished its work still runs code in the library as it
+/// exits, and koffi unloads the library while Node exits: on Windows, an
+/// exiting thread then crashed the process.
+fn keep_loaded() {
+    #[cfg(windows)]
+    {
+        static PINNED: std::sync::Once = std::sync::Once::new();
+        PINNED.call_once(|| {
+            unsafe extern "system" {
+                fn GetModuleHandleExW(flags: u32, name: *const u16, module: *mut *mut std::ffi::c_void) -> i32;
+            }
+            const PIN: u32 = 0x1;
+            const FROM_ADDRESS: u32 = 0x4;
+            let mut module = std::ptr::null_mut();
+            // SAFETY: the name is an address inside this library, as FROM_ADDRESS asks.
+            unsafe { GetModuleHandleExW(PIN | FROM_ADDRESS, keep_loaded as *const u16, &mut module) };
+        });
+    }
 }
 
 /// Frees a reply [`nicevg_render`] returned.
