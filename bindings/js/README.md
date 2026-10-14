@@ -64,6 +64,7 @@ console.log(svg.changes); // 何を直し、何を動かしたか
 | `edges[].points` | 経路の折れ点。省くと、修正と配置調整が両端のノードの辺から辺へ経路を引く |
 | `edges[].label`、`fontSize` | コネクタの脇に置く文字 |
 | `style` | クラス名から、そのクラスのノードを描く関数への対応 |
+| `rootAttrs` | ルートの `<svg>` に付ける属性（`{ "font-family": "'Yu Gothic', sans-serif" }` など）。中の文字はこれを継承する。`xmlns`・`viewBox`・`width`・`height` は nicevg が書くので渡せない |
 
 ### style
 

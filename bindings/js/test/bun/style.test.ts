@@ -91,4 +91,26 @@ describe("render with style", () => {
     expect(() => render({ ...dfd, style: {} })).toThrow('nodes[1].class: no style named "store"');
     expect(() => render({ ...dfd, connectors: dfd.edges })).toThrow(NicevgError);
   });
+
+  /**
+   * Given root attributes with a font family and a numeric font size
+   * When the sketch is rendered
+   * Then the root of the SVG carries both
+   */
+  test("writes root attributes on the svg", () => {
+    const image = render({ ...dfd, rootAttrs: { "font-family": "Yu Gothic, sans-serif", "font-size": 13 } });
+    const root = String(image).split("\n")[0];
+
+    expect(root).toContain('font-family="Yu Gothic, sans-serif"');
+    expect(root).toContain('font-size="13"');
+  });
+
+  /**
+   * Given a root attribute nicevg writes itself
+   * When the sketch is rendered
+   * Then it throws, naming the attribute
+   */
+  test("rejects a root attribute nicevg writes", () => {
+    expect(() => render({ ...dfd, rootAttrs: { viewBox: "0 0 10 10" } })).toThrow("rootAttrs.viewBox");
+  });
 });

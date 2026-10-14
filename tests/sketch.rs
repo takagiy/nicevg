@@ -284,3 +284,37 @@ fn reads_a_child_of_a_drawn_node_where_it_is_given() {
     let service = report.diagram.node("service").expect("service node");
     assert_eq!(service.parent_id.as_deref(), Some("zone"));
 }
+
+/// Given root attributes setting the font, with `&` in a value, and a node drawing a text of no size of its own
+/// When the sketch is fixed
+/// Then the fixed SVG's root keeps them escaped, and the drawn text measures at the root's font size
+#[test]
+fn writes_root_attributes_that_drawn_texts_inherit() {
+    let input = sketch(json!({
+        "nodes": [{"id": "note", "x": 20, "y": 20, "svg": "<text x=\"0\" y=\"0\" dominant-baseline=\"hanging\">Note</text>"}],
+        "rootAttrs": {"font-family": "'Yu Gothic' & sans-serif", "font-size": "20"}
+    }));
+
+    let result = nicevg::fix_sketch(&input).expect("valid sketch");
+
+    let root = result.svg.lines().next().expect("the root");
+    assert!(root.contains(r#"font-family="'Yu Gothic' &amp; sans-serif""#), "{root}");
+    assert!(root.contains(r#"font-size="20""#), "{root}");
+    assert_eq!(node_bounds(&result.report, "note").height, 24.0);
+}
+
+/// Given a root attribute nicevg writes itself, and one that is not an attribute name
+/// When the sketch is read
+/// Then each is an error naming the attribute
+#[test]
+fn rejects_root_attributes_nicevg_writes_or_that_are_not_names() {
+    for name in ["viewBox", "bad name"] {
+        let mut input = two_boxes(json!({"from": "order", "to": "bill"}));
+        input.root_attrs.insert(name.to_owned(), "0".to_owned());
+
+        assert!(matches!(
+            nicevg::analyze_sketch(&input).unwrap_err(),
+            SketchError::InvalidRootAttribute { name: rejected, .. } if rejected == name
+        ));
+    }
+}

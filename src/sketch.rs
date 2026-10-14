@@ -2,7 +2,10 @@
 //! data. A sketch is written out as the SVG it stands for, following the
 //! SVG contract, and read and repaired like any other diagram.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::LazyLock;
+
+use regex::Regex;
 use std::fmt::Write;
 
 use serde::Deserialize;
@@ -19,6 +22,11 @@ pub struct Sketch {
     pub nodes: Vec<SketchNode>,
     #[serde(default)]
     pub connectors: Vec<SketchConnector>,
+    /// Attributes for the root `svg`, such as `font-family`, which its
+    /// texts inherit. nicevg writes `xmlns`, `viewBox`, `width` and
+    /// `height` itself.
+    #[serde(default)]
+    pub root_attrs: BTreeMap<String, String>,
 }
 
 /// A box or a circle; a circle's bounds are the square around it. A node
@@ -93,6 +101,8 @@ pub enum SketchError {
     MissingSize { referrer: String },
     /// The `svg` at `referrer` is not well-formed SVG or draws nothing.
     InvalidSvg { referrer: String, message: String },
+    /// The root attribute `name` is not an XML name, or one nicevg writes.
+    InvalidRootAttribute { name: String, message: String },
 }
 
 impl std::fmt::Display for SketchError {
@@ -108,6 +118,7 @@ impl std::fmt::Display for SketchError {
                 write!(formatter, "{referrer} needs a width and a height, or svg")
             }
             SketchError::InvalidSvg { referrer, message } => write!(formatter, "{referrer}: {message}"),
+            SketchError::InvalidRootAttribute { name, message } => write!(formatter, "rootAttrs.{name}: {message}"),
         }
     }
 }
@@ -151,9 +162,10 @@ pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
         }
     }
 
+    let root_attrs = root_attributes(&sketch.root_attrs)?;
     let mut boxes: HashMap<&str, Bounds> = HashMap::new();
     for (index, node) in sketch.nodes.iter().enumerate() {
-        boxes.insert(node.id.as_str(), node_bounds(node, index)?);
+        boxes.insert(node.id.as_str(), node_bounds(node, index, &root_attrs)?);
     }
 
     let mut children: HashMap<&str, Vec<&SketchNode>> = HashMap::new();
@@ -235,7 +247,7 @@ pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
     let (x, y) = (left - MARGIN, top - MARGIN);
     let (width, height) = (right - left + 2.0 * MARGIN, bottom - top + 2.0 * MARGIN);
     Ok(format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\" width=\"{}\" height=\"{}\">\n{body}</svg>\n",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\" width=\"{}\" height=\"{}\"{root_attrs}>\n{body}</svg>\n",
         number(x),
         number(y),
         number(width),
@@ -252,7 +264,7 @@ fn connector_id(index: usize) -> String {
 }
 
 /// Where a node lies: the box around its picture, or its given size.
-fn node_bounds(node: &SketchNode, index: usize) -> Result<Bounds, SketchError> {
+fn node_bounds(node: &SketchNode, index: usize, root_attrs: &str) -> Result<Bounds, SketchError> {
     let referrer = format!("nodes[{index}]");
     let Some(svg) = &node.svg else {
         let (Some(width), Some(height)) = (node.width, node.height) else {
@@ -269,14 +281,37 @@ fn node_bounds(node: &SketchNode, index: usize) -> Result<Bounds, SketchError> {
         referrer: format!("{referrer}.svg"),
         message,
     };
-    let document = xml::parse(&format!("<svg xmlns=\"http://www.w3.org/2000/svg\">{svg}</svg>"))
-        .map_err(|error| invalid(error.0))?;
+    // Measured under the same root attributes, which its texts inherit.
+    let document = xml::parse(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"{root_attrs}>{svg}</svg>"
+    ))
+    .map_err(|error| invalid(error.0))?;
     let drawn =
         content_bounds(&document, &[document.root_index()]).ok_or_else(|| invalid("draws nothing".to_owned()))?;
     Ok(Bounds {
         x: drawn.x + node.x,
         y: drawn.y + node.y,
         ..drawn
+    })
+}
+
+static XML_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_.:-]*$").expect("valid pattern"));
+
+/// The root attributes written out, each with a leading space.
+fn root_attributes(attrs: &BTreeMap<String, String>) -> Result<String, SketchError> {
+    attrs.iter().try_fold(String::new(), |mut written, (name, value)| {
+        let invalid = |message: &str| SketchError::InvalidRootAttribute {
+            name: name.clone(),
+            message: message.to_owned(),
+        };
+        if !XML_NAME.is_match(name) {
+            return Err(invalid("is not an attribute name"));
+        }
+        if ["xmlns", "viewBox", "width", "height"].contains(&name.as_str()) {
+            return Err(invalid("is written by nicevg"));
+        }
+        let _ = write!(written, " {name}=\"{}\"", escape(value));
+        Ok(written)
     })
 }
 

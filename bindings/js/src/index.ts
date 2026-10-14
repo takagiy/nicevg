@@ -100,6 +100,11 @@ export interface Sketch {
   connectors?: SketchConnector[];
   /** How to draw the nodes of each class. */
   style?: Record<string, Style>;
+  /**
+   * Attributes for the root `<svg>`, such as `font-family`, which its texts
+   * inherit. nicevg writes `xmlns`, `viewBox`, `width` and `height` itself.
+   */
+  rootAttrs?: Record<string, string | number>;
 }
 
 /** A diagram to render: a sketch, SVG text following nicevg's SVG contract, or an Svg rendered before. */
@@ -205,7 +210,7 @@ export function render(input: Input): Svg {
 }
 
 /** The sketch as the native library reads it: styled nodes drawn, edges as connectors. */
-function sketchRequest({ nodes, edges, connectors, style = {} }: Sketch) {
+function sketchRequest({ nodes, edges, connectors, style = {}, rootAttrs }: Sketch) {
   if (edges && connectors) {
     throw new NicevgError("edges and connectors are the same; pass one of them");
   }
@@ -222,5 +227,6 @@ function sketchRequest({ nodes, edges, connectors, style = {} }: Sketch) {
       return { id, x, y, parent, allowOverlap, svg: String(draw(node)) };
     }),
     connectors: edges ?? connectors,
+    rootAttrs: rootAttrs && Object.fromEntries(Object.entries(rootAttrs).map(([name, value]) => [name, String(value)])),
   };
 }
