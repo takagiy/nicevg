@@ -124,6 +124,25 @@ for (const [runtime, cli] of runtimes) {
     });
 
     /**
+     * Given a reader that stops reading after the first bytes, as `head` does
+     * When the command writes the arranged SVG to it
+     * Then it still succeeds, without a broken pipe error
+     */
+    test("succeeds when the reader of stdout goes away early", async () => {
+      const svg = readFileSync(new URL("../../../../docs/images/before.svg", import.meta.url), "utf8");
+      const child = spawn(runtime, [cli], { stdio: ["pipe", "pipe", "pipe"] });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => (stderr += chunk));
+      child.stdout.once("data", () => child.stdout.destroy());
+      child.stdin.end(svg);
+
+      const status = await new Promise((resolve) => child.on("exit", (code, signal) => resolve(signal ?? code)));
+
+      assert.equal(status, 0);
+      assert.doesNotMatch(stderr, /EPIPE/);
+    });
+
+    /**
      * Given a diagram whose arranging frees its old candidates on other threads, run by many processes at once
      * When each process exits right after writing the SVG
      * Then none of them crashes: the library is done with its threads before the runtime unloads it

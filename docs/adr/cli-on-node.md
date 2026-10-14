@@ -27,6 +27,7 @@ CLI は Rust のバイナリ（`src/main.rs`）で、`brew` か `cargo install -
 - `cargo install --git` では CLI を入れられなくなった。Rust のクレートはライブラリだけになる。
 - 起動のたびに Node とネイティブライブラリを読み込むので、小さな図では Rust のバイナリより遅い（何も直さない図で、Rust 38ms に対して Node・Bun とも 94ms）。
 - 配るのは npm のパッケージと同じ 5 つの環境だけ。
+- Windows の Node で、読み手が途中で閉じた標準出力（`nicevg < in.svg | head` など）に書いたあと、koffi が終了時に標準出力を同期しようとして `Failed to sync '<stdout>': The pipe has been ended.` を標準エラーに出す。koffi の終了処理なので止められない。標準出力の中身と終了コードは Rust の CLI と同じ。
 
 ## 採らなかった案
 
