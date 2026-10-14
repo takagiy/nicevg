@@ -90,16 +90,21 @@ export interface StyledNode {
 }
 
 /** Draws a styled node's picture, from its own origin, with `svg` and `text`. */
-export type Style = (node: StyledNode) => SvgFragment;
+export type Style<Node extends StyledNode = StyledNode> = (node: Node) => SvgFragment;
+
+/** A style for each class the nodes name, each given the nodes of its class. */
+export type Styles<Node extends SketchNode | StyledNode> = {
+  [Class in Extract<Node, StyledNode>["class"]]: Style<Extract<Node, { class: Class }>>;
+};
 
 /** A diagram as nodes and the edges (connectors) between them. */
-export interface Sketch {
-  nodes: (SketchNode | StyledNode)[];
+export interface Sketch<Node extends SketchNode | StyledNode = SketchNode | StyledNode> {
+  nodes: readonly Node[];
   edges?: SketchConnector[];
   /** The same as `edges`, its name before; pass one or the other. */
   connectors?: SketchConnector[];
   /** How to draw the nodes of each class. */
-  style?: Record<string, Style>;
+  style?: Styles<NoInfer<Node>>;
   /**
    * Attributes for the root `<svg>`, such as `font-family`, which its texts
    * inherit. nicevg writes `xmlns`, `viewBox`, `width` and `height` itself.
@@ -108,7 +113,7 @@ export interface Sketch {
 }
 
 /** A diagram to render: a sketch, SVG text following nicevg's SVG contract, or an Svg rendered before. */
-export type Input = Sketch | { svg: string } | Svg;
+export type Input<Node extends SketchNode | StyledNode = SketchNode | StyledNode> = Sketch<Node> | { svg: string } | Svg;
 
 export interface DiagramNode {
   id: string;
@@ -196,7 +201,7 @@ export class NicevgError extends Error {
  * routes through nodes, stray labels and more), routes the connectors given
  * no points, and moves nodes a little where that reads better.
  */
-export function render(input: Input): Svg {
+export function render<const Node extends SketchNode | StyledNode>(input: Input<Node>): Svg {
   const request = new TextEncoder().encode(
     JSON.stringify(input instanceof Svg ? { svg: input.toString() } : "svg" in input ? input : sketchRequest(input)),
   );
@@ -210,7 +215,9 @@ export function render(input: Input): Svg {
 }
 
 /** The sketch as the native library reads it: styled nodes drawn, edges as connectors. */
-function sketchRequest({ nodes, edges, connectors, style = {}, rootAttrs }: Sketch) {
+function sketchRequest<Node extends SketchNode | StyledNode>({ nodes, edges, connectors, style, rootAttrs }: Sketch<Node>) {
+  // Each style is called only with nodes of its own class.
+  const styles = (style ?? {}) as Record<string, Style>;
   if (edges && connectors) {
     throw new NicevgError("edges and connectors are the same; pass one of them");
   }
@@ -219,7 +226,7 @@ function sketchRequest({ nodes, edges, connectors, style = {}, rootAttrs }: Sket
       if (!("class" in node)) {
         return node;
       }
-      const draw = Object.hasOwn(style, node.class) ? style[node.class] : undefined;
+      const draw = Object.hasOwn(styles, node.class) ? styles[node.class] : undefined;
       if (!draw) {
         throw new NicevgError(`nodes[${index}].class: no style named "${node.class}"`);
       }

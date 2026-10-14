@@ -81,7 +81,7 @@ const image = render({
   edges: [{ from: "customer", to: "orders", label: "注文" }],
   style: {
     store: ({ no, label }) => {
-      const id = text(String(no)), name = text(String(label));
+      const id = text(no), name = text(label);
       const sep = id.width + 24, w = sep + name.width + 24, h = Math.max(id.height, name.height) + 20;
       return svg`
         <g fill="none" stroke="#333">

@@ -229,3 +229,4 @@ Bun からは `bun:ffi`、Node からは koffi で呼ぶ（`bindings/js/test/bun
 - [x] `class` を持つノードは `style` の関数が描き、`edges` のコネクタがその辺へつながる（Bun と Node）
 - [x] `style` にないクラスや、`edges` と `connectors` の両方を渡すと例外になる
 - [x] `rootAttrs` はルートの `<svg>` に書かれ、数の値も渡せる。nicevg が書く属性を渡すと例外になる
+- [x] その場で書いたスタイルは、そのクラスのノードの型を引数に受け取り、スタイルのないクラスやノードにない項目は型エラーになる

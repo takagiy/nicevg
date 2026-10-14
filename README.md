@@ -47,7 +47,7 @@ const image = render({
   edges: [{ from: "order", to: "orders", label: "save" }],
   style: {
     pill: ({ label }) => {
-      const name = text(String(label));
+      const name = text(label);
       const w = name.width + 32, h = name.height + 20;
       return svg`
         <rect width="${w}" height="${h}" rx="${h / 2}" fill="white" stroke="black"/>

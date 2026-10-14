@@ -113,4 +113,36 @@ describe("render with style", () => {
   test("rejects a root attribute nicevg writes", () => {
     expect(() => render({ ...dfd, rootAttrs: { viewBox: "0 0 10 10" } })).toThrow("rootAttrs.viewBox");
   });
+
+  /**
+   * Given styles written inline, beside nodes of their classes
+   * When the sketch is type-checked
+   * Then each style receives its own class's nodes, their fields typed as given, and a missing style or field is a type error
+   */
+  test("types each style's node by the nodes of its class", () => {
+    const image = render({
+      nodes: [
+        { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+        { id: "orders", class: "store", x: 300, y: 160, no: "D1", label: "注文" },
+        { id: "user", class: "actor", x: 20, y: 200, name: "User" },
+      ],
+      edges: [{ from: "order", to: "orders" }],
+      style: {
+        store: ({ no, label }) => svg`${text(no).at({ left: 0, top: 0 })}${text(label).at({ left: 40, top: 0 })}`,
+        actor: ({ name }) => svg`${text(name).at({ left: 0, top: 0 })}`,
+      },
+    });
+    expect(image.report.issues).toEqual([]);
+
+    // Checked by the type checker only, never run.
+    const _typeErrors = () => {
+      // @ts-expect-error a style for every class the nodes name
+      render({ nodes: [{ id: "user", class: "actor", x: 0, y: 0, name: "User" }], style: {} });
+      render({
+        nodes: [{ id: "user", class: "actor", x: 0, y: 0, name: "User" }],
+        // @ts-expect-error actor nodes have no label
+        style: { actor: ({ label }) => svg`${text(label).at({ left: 0, top: 0 })}` },
+      });
+    };
+  });
 });
