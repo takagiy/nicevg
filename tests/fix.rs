@@ -139,6 +139,72 @@ fn leaves_relative_and_missing_sizes_to_the_container() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a clipped diagram with a background rect covering its whole viewBox,
+///   and a smaller decorative rect
+/// When the diagram is fixed
+/// Then the background grows to cover the expanded viewBox, and the smaller
+///   rect keeps its place and size
+#[test]
+fn grows_a_background_covering_the_viewbox_with_it() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120">
+        <rect id="bg" width="100" height="120" fill="white" />
+        <rect id="badge" x="4" y="4" width="10" height="10" fill="red" />
+        <g data-node="checkout">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Checkout</text>
+        </g>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let written = Written::parse(&result.svg);
+    let rect = |id: &str| {
+        let (_, attrs) = written.by_id(id);
+        let number = |name: &str| attr(attrs, name).parse::<f64>().unwrap_or(0.0);
+        bounds(number("x"), number("y"), number("width"), number("height"))
+    };
+
+    let expanded = view_box(written.root());
+    assert!(expanded.width > 100.0);
+    assert!(contains(&rect("bg"), &expanded), "{:?} {expanded:?}", rect("bg"));
+    assert_eq!(rect("badge"), bounds(4.0, 4.0, 10.0, 10.0));
+    assert_eq!(change_codes(&result), ["expand-viewbox", "expand-background"]);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given a diagram clipped on the left whose background is sized 100% of
+///   the viewBox from its origin
+/// When the diagram is fixed
+/// Then the background moves to the expanded viewBox's origin and keeps its
+///   percentage size, so it still covers the whole viewBox
+#[test]
+fn moves_a_percentage_background_to_the_expanded_origin() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120">
+        <rect id="bg" width="100%" height="100%" fill="white" />
+        <g data-node="checkout">
+          <rect x="-30" y="20" width="100" height="56" />
+          <text x="20" y="53" text-anchor="middle" font-size="14">Checkout</text>
+        </g>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let written = Written::parse(&result.svg);
+    let (_, bg) = written.by_id("bg");
+
+    let expanded = view_box(written.root());
+    assert!(expanded.x < 0.0);
+    assert_eq!(attr(bg, "x").parse::<f64>().ok(), Some(expanded.x));
+    assert_eq!(attr(bg, "y").parse::<f64>().unwrap_or(0.0), expanded.y);
+    assert_eq!((attr(bg, "width"), attr(bg, "height")), ("100%", "100%"));
+    assert_eq!(change_codes(&result), ["expand-viewbox", "expand-background"]);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a label that violates its node's 12px inner padding
 /// When the diagram is fixed
 /// Then only the box expands and the text coordinates remain unchanged

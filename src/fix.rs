@@ -11,7 +11,7 @@ use serde::Serialize;
 use crate::arrow::{drawn_connectors, moved_head, shaft_route};
 use crate::diagram::{
     Diagram, DiagramConnector, DiagramLabel, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, holds_end,
-    is_node_shape, node_group, number_attribute, rect_bounds, translation,
+    is_node_shape, node_group, non_empty, number_attribute, rect_bounds, translation,
 };
 use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, route_is_clear, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
@@ -1699,11 +1699,72 @@ fn expand_view_box(draft: Draft) -> Draft {
         .document
         .update(&root_path, |root| root.with_attr("viewBox", &expanded.format()));
     let message = format!("Expanded viewBox from {} to {}.", view_box.format(), expanded.format());
-    scale_size(
+    let draft = grow_backgrounds(
         draft.changed(updated, "expand-viewbox", message, &["svg"]),
         &view_box,
         &expanded,
-    )
+    );
+    scale_size(draft, &view_box, &expanded)
+}
+
+/// Grows each rect drawn straight on the root that covered the whole old
+/// viewBox, such as a background fill, to cover the expanded one too. A
+/// rect sized in percentages already follows the viewBox's size, so one at
+/// the old origin only moves to the new origin.
+fn grow_backgrounds(draft: Draft, before: &Bounds, after: &Bounds) -> Draft {
+    let root_path = vec![draft.document.root_index()];
+    let relative = |element: &Element| ["width", "height"].iter().any(|name| element.attr(name).contains('%'));
+    let backgrounds: Vec<Vec<usize>> = child_element_paths(&draft.document, &root_path)
+        .into_iter()
+        .filter(|path| {
+            let element = draft.document.element(path);
+            let current = rect_bounds(&draft.document, path);
+            element.name == "rect"
+                && if relative(element) {
+                    (current.x, current.y) == (before.x, before.y)
+                } else {
+                    current.x <= before.x
+                        && current.y <= before.y
+                        && current.right() >= before.right()
+                        && current.bottom() >= before.bottom()
+                }
+        })
+        .collect();
+    backgrounds.into_iter().fold(draft, |draft, path| {
+        let document = &draft.document;
+        let element = document.element(&path);
+        let current = rect_bounds(document, &path);
+        let offset = point(
+            current.x - number_attribute(element, "x"),
+            current.y - number_attribute(element, "y"),
+        );
+        let (left, top) = (current.x.min(after.x), current.y.min(after.y));
+        let grown = Bounds {
+            x: left,
+            y: top,
+            width: current.right().max(after.right()) - left,
+            height: current.bottom().max(after.bottom()) - top,
+        };
+        if relative(element) && (left, top) == (current.x, current.y) {
+            return draft;
+        }
+        let id = non_empty(element.attr("id")).unwrap_or("background").to_owned();
+        let relative = relative(element);
+        let updated = document.update(&path, |rect| {
+            let moved = rect
+                .with_attr("x", &format_number(grown.x - offset.x))
+                .with_attr("y", &format_number(grown.y - offset.y));
+            if relative {
+                moved
+            } else {
+                moved
+                    .with_attr("width", &format_number(grown.width))
+                    .with_attr("height", &format_number(grown.height))
+            }
+        });
+        let message = format!("Expanded background \"{id}\" to cover the viewBox {}.", after.format());
+        draft.changed(updated, "expand-background", message, &[&id])
+    })
 }
 
 /// Grows absolute `width` and `height` by the same ratio as the viewBox, so

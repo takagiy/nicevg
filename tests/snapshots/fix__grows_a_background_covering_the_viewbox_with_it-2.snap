@@ -1,0 +1,13 @@
+---
+source: tests/fix.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 120">
+        <rect id="bg" width="140" height="120" fill="white" x="0" y="0"/>
+        <rect id="badge" x="4" y="4" width="10" height="10" fill="red"/>
+        <g data-node="checkout">
+          <rect x="20" y="20" width="100" height="56"/>
+          <text x="70" y="53" text-anchor="middle" font-size="14">Checkout</text>
+        </g>
+      </svg>
