@@ -93,7 +93,10 @@ pub fn arrange(svg: &str) -> Result<FixResult, SvgInputError> {
         result: fixed,
         offsets: HashMap::new(),
     };
-    Ok(spread_close_runs(improve(&context, start, MAX_STEPS).result).written())
+    // The scope waits for the threads freeing old candidates, so none outlives
+    // the call: a host that unloads the library after it would crash them.
+    let best = std::thread::scope(|frees| improve(&context, start, MAX_STEPS, frees));
+    Ok(spread_close_runs(best.result).written())
 }
 
 struct Context {
@@ -120,7 +123,12 @@ struct Move {
 }
 
 #[tracing::instrument(name = "arrange_step", skip_all, fields(steps_left = steps, candidates = tracing::field::Empty))]
-fn improve(context: &Context, state: State, steps: usize) -> State {
+fn improve<'scope>(
+    context: &Context,
+    state: State,
+    steps: usize,
+    frees: &'scope std::thread::Scope<'scope, '_>,
+) -> State {
     if steps == 0 {
         return state;
     }
@@ -152,9 +160,9 @@ fn improve(context: &Context, state: State, steps: usize) -> State {
         .find(|next| keeps(next) && next.score < state.score - 1e-9);
     // The candidates not taken are many documents to free: let another
     // thread free them while the next step goes on.
-    std::thread::spawn(move || drop((compared, dropped)));
+    frees.spawn(move || drop((compared, dropped)));
     match best {
-        Some(next) => improve(context, next, steps - 1),
+        Some(next) => improve(context, next, steps - 1, frees),
         None => state,
     }
 }
