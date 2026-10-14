@@ -1,6 +1,6 @@
 {
   "name": "nicevg",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "description": "Deterministic checks and repairs for diagrams, given as shapes or SVG, on Bun and Node through native FFI.",
   "keywords": [
     "diagram",
