@@ -38,20 +38,20 @@ style の絵の中で `data-bounds` を付けた `<rect>` か `<circle>` を、�
 ```svg
 <g data-node="user" data-custom="true">
   <g transform="translate(40 200)">
-    <circle data-bounds cx="40" cy="40" r="40" fill="white" stroke="black"/>
+    <circle data-bounds="true" cx="40" cy="40" r="40" fill="white" stroke="black"/>
     <text x="40" y="40" font-size="14" text-anchor="middle" dominant-baseline="central">User</text>
   </g>
 </g>
 ```
 
 - `data-bounds` の要素の外にある図形（影、飾りの線）は範囲に入らない。
-- 属性は付いていることだけに意味があり、値は空か `"true"`。
+- SVG は XML なので、値のない属性は書けない。`data-bounds="true"` と書く。
 - 結果の `bounds` は今と同じく外接矩形で、円なら `shape: "circle"` が付く。
 
 透明な範囲は、塗りも線もない `data-bounds` の矩形で書く。nicevg は形だけを読み、塗りや線の有無は見ない。絵より広く場所を取りたいとき（アイコンと名前を 1 つのノードにする、など）に使う。`fill` を省くと既定の黒で塗られるので、`fill="none"` を書く。
 
 ```svg
-<rect data-bounds width="100" height="80" fill="none" stroke="none"/>
+<rect data-bounds="true" width="100" height="80" fill="none" stroke="none"/>
 ```
 
 採らなかった名前と示し方:
@@ -106,3 +106,11 @@ style 付きノードの絵の中の文字は、印を付けなくても、全�
 2. `data-bounds` を SVG の約束に足し、style 付きノードの絵の中の文字をラベルの範囲として読む。
 3. 複数行の `text()` と `nicevg/style/simple`。
 4. `class` のないノードの扱いを決めて移行する。
+
+## 結果（2026-10-16、box と circle）
+
+- Rust: style 付きノードの絵の中の `data-bounds="true"` の `<rect>`・`<circle>` を範囲と形にし、絵の中の文字をすべてラベルの範囲として読む。style 付きノードには `text-overflow` の検査をしない（`DiagramNode.custom`）。
+- TypeScript: `nicevg/style/simple` に `box` と `circle` を置いた。組み込みのノードと同じマークアップ（白い塗り、黒い線、`<tspan>` の行）で描き、ラベルが収まらなければ、修正の `expand_nodes` と同じ式（文字の幅は四捨五入、余白 12px、円は `radius_enclosing` の切り上げ）で自分で広がる。
+- 親子のない例の図（融資審査 DFD、注文 DFD、README の例）を Sketch に直し、`class` なしと `box`・`circle` で描いて、配置調整の結果（ノードの範囲と形、ラベルの範囲、経路、エッジのラベル、残る問題）が小数 6 桁まで同じになった。`box` の広がり方を変えると 3 つのうち 2 つで違いが出た。
+- 本体の速さは変わらない: 4 つの例の SVG の配置調整で、変更前とライブラリを交互に入れ替えて 25 回ずつ測り、中央値の差は −0.9%〜+0.7%。出力はバイト単位で同じ。
+- 親子のある図（包含ノードのタイトルを左上に置く描き方）は、まだ `box` で描けない。

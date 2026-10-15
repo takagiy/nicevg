@@ -25,7 +25,7 @@ style の絵の中に、名前を付けた点としてポートを置く。
 <!-- ひし形: 頂点に置く。向きは範囲の辺から決まる（上の頂点なら上向き） -->
 <g data-node="check" data-custom="true">
   <g transform="translate(200 100)">
-    <rect data-bounds width="120" height="80" fill="none" stroke="none"/>
+    <rect data-bounds="true" width="120" height="80" fill="none" stroke="none"/>
     <polygon points="60 0 120 40 60 80 0 40" fill="white" stroke="black"/>
     <circle data-port="in" cx="60" cy="0" r="0"/>
     <circle data-port="yes" cx="120" cy="40" r="0"/>
@@ -36,7 +36,7 @@ style の絵の中に、名前を付けた点としてポートを置く。
 <!-- ER 図: 列の行の高さに、左右 2 点を同じ名前で置く -->
 <g data-node="article" data-custom="true">
   <g transform="translate(20 20)">
-    <rect data-bounds width="160" height="96" fill="white" stroke="black"/>
+    <rect data-bounds="true" width="160" height="96" fill="white" stroke="black"/>
     …
     <circle data-port="author" cx="0" cy="62" r="0"/>
     <circle data-port="author" cx="160" cy="62" r="0"/>
