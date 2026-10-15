@@ -28,11 +28,17 @@
       "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./style/simple": {
+      "types": "./dist/style/simple.d.ts",
+      "bun": "./src/style/simple.ts",
+      "default": "./dist/style/simple.js"
     }
   },
   "files": [
     "dist",
     "src/*.ts",
+    "src/style/*.ts",
     "native"
   ],
   "engines": {

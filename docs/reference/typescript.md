@@ -94,6 +94,26 @@ const image = render({
 - ノードの範囲は、描いたもの（`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`、`path`、`text`）を囲む矩形。コネクタはその辺から出入りする。曲線と円弧は端点だけで数える。
 - 修正と配置調整はノードを動かすが、大きさは変えない。中の `<text>` はラベルとして検査しないので、収まりは描く側が決める。
 
+## 基本図形の style
+
+`nicevg/style/simple` の `box` と `circle` は、`class` のないノード（組み込みの矩形と円）と同じ見た目で描く style。白い塗りと黒い線で、ラベルは中央に行ごとに置く。ラベルが内側の余白 12px に収まらなければ、修正が組み込みのノードを広げるのと同じだけ、自分で広がる。そのため、同じ図を `class` なしで描いても `box`・`circle` で描いても、配置調整の結果（ノードの範囲と形、経路、ラベルの範囲、残る問題）は同じになる。
+
+```ts
+import { render } from "nicevg";
+import { box, circle } from "nicevg/style/simple";
+
+render({
+  nodes: [
+    { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+    { id: "user", class: "circle", x: 240, y: 20, width: 60, height: 60, label: "User" },
+  ],
+  edges: [{ from: "user", to: "order" }],
+  style: { box, circle },
+});
+```
+
+`box`・`circle` を使うノードは `width`・`height` を持ち、`label`・`fontSize` を持てる（型でも確かめられる）。親を持つノード（包含ノードのタイトル）は、まだ組み込みのノードと同じには描かない。
+
 ## 結果
 
 `Svg` の `report.diagram` は、描いた図を読み直したもので、ノード（`bounds`、ラベルの範囲 `labelBounds`）、コネクタ（`points`）、ラベル（`bounds`、説明するコネクタの id `connector`）を持つ。コネクタは id を持たないので、`from` と `to` で見分ける。文字の幅は、全角を 1 文字あたりフォントサイズ、それ以外を 0.59 倍として見積もる。

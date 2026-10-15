@@ -122,6 +122,8 @@ export interface DiagramNode {
   labelBounds: Bounds[];
   parentId?: string;
   allowOverlap?: boolean;
+  /** Drawn by a style: its texts are kept clear of, but not checked to fit. */
+  custom?: boolean;
 }
 
 export interface DiagramConnector {

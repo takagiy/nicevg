@@ -205,7 +205,8 @@ const STORE: &str = r#"<path d="M 120 0 H 0 V 40 H 120" fill="none" stroke="blac
 
 /// Given a node drawn by its own SVG, with no width or height
 /// When the sketch is analyzed
-/// Then the node lies around what it draws, from its x and y, and its texts are not labels to fit
+/// Then the node lies around what it draws, from its x and y, and its texts are labels to keep clear of,
+///   not checked to fit, though the id sits nearer its side than 12px
 #[test]
 fn reads_a_node_drawn_by_its_svg_as_the_box_around_the_drawing() {
     let input = sketch(json!({"nodes": [{"id": "orders", "x": 200, "y": 100, "svg": STORE}]}));
@@ -213,8 +214,25 @@ fn reads_a_node_drawn_by_its_svg_as_the_box_around_the_drawing() {
     let report = nicevg::analyze_sketch(&input).expect("valid sketch");
 
     assert_eq!(node_bounds(&report, "orders"), bounds(200.0, 100.0, 120.0, 40.0));
-    assert!(report.diagram.node("orders").expect("node").label_bounds.is_empty());
+    let node = report.diagram.node("orders").expect("node");
+    assert_eq!(node.label_bounds.len(), 2);
+    assert!(node.custom);
     assert!(report.issues.is_empty(), "{:?}", issue_codes(&report));
+}
+
+/// Given a node drawn by its SVG with a circle marked data-bounds, and a shadow sticking out beside it
+/// When the sketch is analyzed
+/// Then the node is that circle, round, and the shadow is not part of it
+#[test]
+fn takes_the_shape_marked_data_bounds_as_the_node() {
+    let svg = r##"<rect x="6" y="6" width="80" height="80" fill="#ccc"/><circle data-bounds="true" cx="40" cy="40" r="40" fill="white" stroke="black"/><text x="40" y="40" font-size="14" text-anchor="middle" dominant-baseline="central">User</text>"##;
+    let input = sketch(json!({"nodes": [{"id": "user", "x": 100, "y": 60, "svg": svg}]}));
+
+    let report = nicevg::analyze_sketch(&input).expect("valid sketch");
+
+    let node = report.diagram.node("user").expect("node");
+    assert_eq!(node.bounds, bounds(100.0, 60.0, 80.0, 80.0));
+    assert_eq!(node.shape, Some(Shape::Circle));
 }
 
 /// Given a node drawn by its SVG overlapping a box, joined to it by a connector with no route

@@ -51,7 +51,7 @@ export function svg(strings: TemplateStringsArray, ...values: unknown[]): SvgFra
 }
 
 // shortcut: the common wide ranges (CJK, kana, hangul, fullwidth forms), not every East Asian Wide character; widen it if a script measures short.
-const WIDE = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]|[\u{20000}-\u{3fffd}]/u;
+export const WIDE = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]|[\u{20000}-\u{3fffd}]/u;
 
 /** Where a text goes: one of `left`, `cx`, `right` across, one of `top`, `cy`, `bottom` down. */
 export type TextPlace = ({ left: number } | { cx: number } | { right: number }) &

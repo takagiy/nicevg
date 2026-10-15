@@ -102,3 +102,5 @@ Fixes the diagram, nudges its nodes into a cleaner layout and returns an `Svg`. 
 | `text(content, size = 14)` | A text, lines split at `\n`, with the `width` and `height` nicevg measures it at: its widest line, and 1.2 font sizes a line. |
 | `text(...).at({ left \| cx \| right, top \| cy \| bottom })` | Places the text so that point of its box sits at those coordinates. |
 | `` svg`...`.at(x, y) `` | The fragment with its origin moved to `x`, `y`. |
+
+`nicevg/style/simple` has `box` and `circle`, styles that draw nodes the way nodes with no `class` are drawn, growing to fit their label as fixing grows those: `import { box, circle } from "nicevg/style/simple"`, then `style: { box, circle }`.
