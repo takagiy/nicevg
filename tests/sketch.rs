@@ -336,3 +336,33 @@ fn rejects_root_attributes_nicevg_writes_or_that_are_not_names() {
         ));
     }
 }
+
+/// Given two nodes whose data-bounds cover only their icons, their names drawn far below them, joined
+///   by a connector with no route
+/// When the sketch is fixed
+/// Then the connector runs orthogonally between sides of the icons, the nodes' extents
+#[test]
+fn routes_from_the_data_bounds_even_with_a_picture_reaching_past_them() {
+    let svg = r##"<rect data-bounds="true" width="40" height="40" fill="white" stroke="black"/><text x="20" y="220" font-size="14" text-anchor="middle">Far below</text>"##;
+    let input = sketch(json!({
+        "nodes": [
+            {"id": "left", "x": 20, "y": 20, "svg": svg},
+            {"id": "right", "x": 300, "y": 60, "svg": svg}
+        ],
+        "connectors": [{"from": "left", "to": "right"}]
+    }));
+
+    let result = nicevg::fix_sketch(&input).expect("valid sketch");
+
+    let points = route(&result.report, "left", "right");
+    assert_eq!(node_bounds(&result.report, "left"), bounds(20.0, 20.0, 40.0, 40.0));
+    assert!(is_orthogonal(&points), "{points:?}");
+    assert!(
+        leaves_perpendicularly(&points, &node_bounds(&result.report, "left")),
+        "{points:?}"
+    );
+    assert!(
+        enters_perpendicularly(&points, &node_bounds(&result.report, "right")),
+        "{points:?}"
+    );
+}

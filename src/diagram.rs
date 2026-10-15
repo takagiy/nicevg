@@ -261,6 +261,22 @@ fn picture_elements<'a>(document: &'a Document, path: &[usize]) -> Vec<(Path, &'
         .collect()
 }
 
+/// A custom node's shape and extent: the rect or circle marked data-bounds
+/// in its picture, or else the box around the picture.
+pub fn custom_extent(document: &Document, path: &[usize]) -> Option<(Option<Shape>, Bounds)> {
+    let picture = picture_elements(document, path);
+    let marked = picture
+        .iter()
+        .find(|(_, element)| is_node_shape(element) && element.has_attr("data-bounds"));
+    match marked {
+        Some((shape_path, element)) => Some((
+            (element.name == "circle").then_some(Shape::Circle),
+            shape_bounds(document, shape_path),
+        )),
+        None => Some((None, content_bounds(document, path)?)),
+    }
+}
+
 struct Recognized {
     path: Path,
     id: String,
@@ -333,19 +349,8 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
                 .map_or_else(|| format!("node-{}", index + 1), str::to_owned);
             let allow_overlap = group.attr("data-allow-overlap") == "true";
             if annotated && is_custom(group) {
-                // A rect or circle marked data-bounds is the node's extent and
-                // shape; without one, the node is the box around its picture.
+                let (shape, bounds) = custom_extent(document, path)?;
                 let picture = picture_elements(document, path);
-                let marked = picture
-                    .iter()
-                    .find(|(_, element)| is_node_shape(element) && element.has_attr("data-bounds"));
-                let (shape, bounds) = match marked {
-                    Some((shape_path, element)) => (
-                        (element.name == "circle").then_some(Shape::Circle),
-                        shape_bounds(document, shape_path),
-                    ),
-                    None => (None, content_bounds(document, path)?),
-                };
                 return Some(Recognized {
                     path: path.clone(),
                     id,
