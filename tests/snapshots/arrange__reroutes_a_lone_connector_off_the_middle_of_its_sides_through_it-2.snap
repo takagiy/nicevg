@@ -1,0 +1,16 @@
+---
+source: tests/arrange.rs
+expression: result.svg.as_str()
+---
+
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 120">
+        <g data-node="orders">
+          <rect x="20" y="40" width="110" height="44"/>
+          <text x="75" y="67" text-anchor="middle" font-size="14">Orders</text>
+        </g>
+        <g data-node="db">
+          <rect x="390" y="40" width="120" height="44"/>
+          <text x="450" y="67" text-anchor="middle" font-size="14">Orders DB</text>
+        </g>
+        <path id="save" data-from="orders" data-to="db" d="M 130 62 L 390 62"/>
+      </svg>

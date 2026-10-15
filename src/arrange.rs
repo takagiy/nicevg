@@ -8,7 +8,7 @@
 //! side of another node a node is on, and stay within a few lanes of where
 //! the node started.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::LazyLock;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::Relaxed;
@@ -74,6 +74,12 @@ const CROSSING_AT_END: Fade = Fade {
 /// gap between neighbours and to the side's corners; each even gap's worth
 /// of unevenness costs this much.
 const PORT_SPACING_COST: f64 = 80.0;
+/// A connector alone on a node side reads best through its middle; each
+/// even gap's worth of being off it costs this much.
+const LONE_PORT_COST: f64 = 8.0;
+/// Below this unevenness, in even gaps, a lone connector end counts as
+/// centred: rerouting it in place is not worth trying.
+const LONE_PORT_SLACK: f64 = 0.1;
 /// How far connectors keep from nodes they pass.
 const CLEARANCE: f64 = 8.0;
 /// A moved node keeps this far from other nodes, its container's edges and
@@ -305,8 +311,8 @@ fn translated(existing: &str, step: Move) -> String {
     }
 }
 
-/// Moves worth trying: rerouting the connectors of a bent connector's ends
-/// in place, lining up the ends of bent connectors, moving nodes
+/// Moves worth trying: rerouting the connectors of a bent connector's ends,
+/// and of a node with a connector alone on a side off its middle, in place, lining up the ends of bent connectors, moving nodes
 /// off the straight line between a bent connector's lined-up ends, and
 /// nudging the nodes at the ends of connectors that cross, crowd or have
 /// issues.
@@ -435,11 +441,19 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
             .map(|step| (id.clone(), step))
         })
     });
+    // A connector alone on a side off its middle may be rerouted through it.
+    let mut off_centre: Vec<String> = uneven_sides(diagram)
+        .into_iter()
+        .filter(|(_, ends, unevenness)| *ends == 1 && *unevenness > LONE_PORT_SLACK)
+        .map(|(id, _, _)| id.to_owned())
+        .collect();
+    off_centre.dedup();
     let reroute = diagram
         .connectors
         .iter()
         .filter(|c| turns(&c.points) > 0)
         .flat_map(|c| [c.from.clone(), c.to.clone()])
+        .chain(off_centre)
         .map(|id| (id, Move { dx: 0.0, dy: 0.0 }));
     // Connectors that cross or touch may each be stuck where the other
     // runs: rerouting all their ends at once lets both find new ways.
@@ -661,11 +675,13 @@ impl Context {
                 .sum::<f64>();
         let bent = connectors.iter().filter(|c| turns(&c.points) > 0).count();
         let movement: f64 = offsets.values().map(|offset| offset.x.abs() + offset.y.abs()).sum();
+        let sides = uneven_sides(&report.diagram);
         report.issues.len() as f64 * ISSUE_COST
             + routes
             + bent as f64 * BENT_COST
             + jog_cost(&report.diagram)
-            + port_unevenness(&report.diagram) * PORT_SPACING_COST
+            + port_unevenness(&sides) * PORT_SPACING_COST
+            + lone_port_offset(&sides) * LONE_PORT_COST
             + unclear_ends(connectors)
             + movement * MOVEMENT_COST
             + self.alignment_cost(&report.diagram)
@@ -810,7 +826,27 @@ fn lies_on(point: Point, start: Point, end: Point) -> bool {
 /// How unevenly the connector ends on each node side are spread, summed
 /// over sides with two or more ends: the gaps between neighbours and to
 /// the corners against an even split, in even gaps.
-fn port_unevenness(diagram: &Diagram) -> f64 {
+fn port_unevenness(sides: &[(&str, usize, f64)]) -> f64 {
+    sides
+        .iter()
+        .filter(|(_, ends, _)| *ends >= 2)
+        .map(|(_, _, unevenness)| unevenness)
+        .sum()
+}
+
+/// How far the connector ends alone on their node sides are from the
+/// middle, summed and measured the same way.
+fn lone_port_offset(sides: &[(&str, usize, f64)]) -> f64 {
+    sides
+        .iter()
+        .filter(|(_, ends, _)| *ends == 1)
+        .map(|(_, _, unevenness)| unevenness)
+        .sum()
+}
+
+/// Each node side connectors meet: its node, how many ends it has and
+/// how unevenly they are spread, in even gaps.
+fn uneven_sides(diagram: &Diagram) -> Vec<(&str, usize, f64)> {
     let ends = diagram
         .connectors
         .iter()
@@ -826,7 +862,8 @@ fn port_unevenness(diagram: &Diagram) -> f64 {
                 ),
             ]
         });
-    let mut sides: HashMap<(&str, u8), (f64, f64, Vec<f64>)> = HashMap::new();
+    // Ordered, so the sums over sides and the candidates come out the same every run.
+    let mut sides: BTreeMap<(&str, u8), (f64, f64, Vec<f64>)> = BTreeMap::new();
     for (id, end, inner) in ends {
         let Some(node) = diagram.node(id) else { continue };
         let b = &node.bounds;
@@ -842,19 +879,23 @@ fn port_unevenness(diagram: &Diagram) -> f64 {
         entry.2.push(position);
     }
     sides
-        .into_values()
-        .filter(|(_, _, positions)| positions.len() >= 2)
-        .map(|(low, high, mut positions)| {
+        .into_iter()
+        .map(|((id, _), (low, high, mut positions))| {
             positions.sort_by(f64::total_cmp);
             let even = (high - low) / (positions.len() + 1) as f64;
-            let marks: Vec<f64> = [low].into_iter().chain(positions).chain([high]).collect();
-            marks
+            let marks: Vec<f64> = [low]
+                .into_iter()
+                .chain(positions.iter().copied())
+                .chain([high])
+                .collect();
+            let unevenness = marks
                 .windows(2)
                 .map(|pair| (pair[1] - pair[0] - even).abs())
                 .sum::<f64>()
-                / even
+                / even;
+            (id, positions.len(), unevenness)
         })
-        .sum()
+        .collect()
 }
 
 /// The cost of connector ends that are hard to see arrive: stubs shorter
@@ -1185,8 +1226,8 @@ mod tests {
             ..diagram(vec![node("source", -100.0, 100.0), node("target", 150.0, 100.0)])
         };
 
-        assert!(port_unevenness(&side(116.0, 132.0)) < 1e-9);
-        assert!(port_unevenness(&side(124.0, 132.0)) > 0.5);
+        assert!(port_unevenness(&uneven_sides(&side(116.0, 132.0))) < 1e-9);
+        assert!(port_unevenness(&uneven_sides(&side(124.0, 132.0))) > 0.5);
     }
 
     /// Given a row of four nodes sharing their centre line

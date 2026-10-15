@@ -38,11 +38,11 @@
   <path id="verify" data-from="gateway" data-to="auth" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 424 74 L 424 152 L 390 152"/>
   <path id="place" data-from="gateway" data-to="orders" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 386 74 L 386 102 L 205 102 L 205 200"/>
   <path id="charge" data-from="orders" data-to="payments" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 205 244 L 205 280 L 280 280"/>
-  <path id="save" data-from="orders" data-to="db" d="M 260 210 L 520 210" fill="none" stroke="#333" marker-end="url(#arrow)"/>
+  <path id="save" data-from="orders" data-to="db" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 260 222 L 520 222"/>
   <path id="receipt" data-from="payments" data-to="user" fill="none" stroke="#333" marker-end="url(#arrow)" d="M 280 294 L 65 294 L 65 74"/>
   <text data-label="place-label" data-label-for="place" x="296" y="123" font-size="12" text-anchor="middle">place order</text>
   <text data-label="receipt-label" data-label-for="receipt" x="74" y="189" font-size="12" text-anchor="start">receipt</text>
-  <text data-label="save-label" data-label-for="save" x="390" y="199" font-size="12" text-anchor="middle">save</text>
+  <text data-label="save-label" data-label-for="save" x="390" y="211" font-size="12" text-anchor="middle">save</text>
   <text data-label="browse-label" data-label-for="browse" x="140" y="41" font-size="12" text-anchor="middle">browse</text>
   <text data-label="call-label" data-label-for="call" x="309" y="41" font-size="12" text-anchor="middle">request</text>
   <text data-label="verify-label" data-label-for="verify" x="433" y="118" font-size="12" text-anchor="start">verify token</text>

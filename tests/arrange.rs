@@ -124,6 +124,42 @@ fn moves_a_node_a_little_to_straighten_its_connector() {
     assert_fix_snapshots!(result);
 }
 
+/// Given two boxes of one height in a row, joined by a straight connector
+///   that runs 12px above the middle of the sides it leaves and enters
+/// When the diagram is arranged
+/// Then the connector is rerouted in place through the middle of both
+///   sides, still straight, and neither box moves
+#[test]
+fn reroutes_a_lone_connector_off_the_middle_of_its_sides_through_it() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 120">
+        <g data-node="orders">
+          <rect x="20" y="40" width="110" height="44" />
+          <text x="75" y="67" text-anchor="middle" font-size="14">Orders</text>
+        </g>
+        <g data-node="db">
+          <rect x="390" y="40" width="120" height="44" />
+          <text x="450" y="67" text-anchor="middle" font-size="14">Orders DB</text>
+        </g>
+        <path id="save" data-from="orders" data-to="db" d="M 130 50 L 390 50" />
+      </svg>
+    "#;
+
+    let before = analyze(svg);
+    let result = arrange(svg);
+    let points = connector_points(&result.report, "save");
+
+    assert!(before.issues.is_empty());
+    assert_eq!(bend_count(&points), 0);
+    assert!(points.iter().all(|p| p.y == 62.0), "{points:?}");
+    for id in ["orders", "db"] {
+        assert_eq!(node_bounds(&result.report, id), node_bounds(&before, id));
+    }
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given two connectors whose detours cross: a reply running down from one
 ///   process and left into another, and a pick list running up from a third
 ///   and right into a fourth
