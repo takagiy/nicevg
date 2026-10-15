@@ -57,11 +57,11 @@ const WIDE = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏�
 export type TextPlace = ({ left: number } | { cx: number } | { right: number }) &
   ({ top: number } | { cy: number } | { bottom: number });
 
-/** A line of text, sized the way nicevg measures text, placed with `at`. */
+/** A text of one or more lines (split at `\n`), sized the way nicevg measures text, placed with `at`. */
 export class Text {
-  /** Its width, wide characters one font size each and others 0.59. */
+  /** Its widest line's width, wide characters one font size each and others 0.59. */
   readonly width: number;
-  /** Its line's height, 1.2 font sizes. */
+  /** Its lines' height, 1.2 font sizes each. */
   readonly height: number;
 
   constructor(
@@ -69,12 +69,15 @@ export class Text {
     readonly size = 14,
     readonly place: TextPlace = { left: 0, top: 0 },
   ) {
-    let width = 0;
-    for (const character of content) {
-      width += WIDE.test(character) ? size : character.length * size * 0.59;
-    }
-    this.width = Math.ceil(width);
-    this.height = Math.ceil(size * 1.2);
+    const widths = content.split("\n").map((line) => {
+      let width = 0;
+      for (const character of line) {
+        width += WIDE.test(character) ? size : character.length * size * 0.59;
+      }
+      return width;
+    });
+    this.width = Math.ceil(Math.max(...widths));
+    this.height = Math.ceil(widths.length * size * 1.2);
   }
 
   /** This text with the point of its box named in `place` at the coordinates given. */
@@ -89,17 +92,28 @@ export class Text {
     return new Text(this.content, this.size, place);
   }
 
-  /** The `<text>` element, centred on its line by `dominant-baseline`. */
+  /** The `<text>` element, each line centred on itself by `dominant-baseline`, more than one as `<tspan>`s. */
   toString(): string {
     const place = this.place as Record<string, number>;
     const [x, anchor] =
       "cx" in place ? [place.cx!, "middle"] : "right" in place ? [place.right!, "end"] : [place.left!, "start"];
     const y = "cy" in place ? place.cy! : "top" in place ? place.top! + this.height / 2 : place.bottom! - this.height / 2;
-    return `<text x="${x}" y="${y}" font-size="${this.size}" text-anchor="${anchor}" dominant-baseline="central">${escape(this.content)}</text>`;
+    const attributes = `font-size="${this.size}" text-anchor="${anchor}" dominant-baseline="central"`;
+    const lines = this.content.split("\n");
+    if (lines.length === 1) {
+      return `<text x="${x}" y="${y}" ${attributes}>${escape(this.content)}</text>`;
+    }
+    // A tspan with its own x and y is a line of its own, to nicevg as to the renderer.
+    const step = this.size * 1.2;
+    const tspans = lines.map((line, index) => {
+      const lineY = Math.round((y + (index - (lines.length - 1) / 2) * step) * 100) / 100;
+      return `<tspan x="${x}" y="${lineY}">${escape(line)}</tspan>`;
+    });
+    return `<text x="${x}" ${attributes}>${tspans.join("")}</text>`;
   }
 }
 
-/** A line of text at `size` (14 by default), to embed in `svg` once placed with `at`. */
+/** A text at `size` (14 by default), lines split at `\n`, to embed in `svg` once placed with `at`. */
 export function text(content: string, size = 14): Text {
   return new Text(content, size);
 }

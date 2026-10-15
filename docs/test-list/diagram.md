@@ -232,6 +232,7 @@ Bun からは `bun:ffi`、Node からは koffi で呼ぶ（`bindings/js/test/bun
 - [x] Node の CommonJS からも `require()` で読み込んで描ける
 - [x] `svg` は埋め込んだ文字列をエスケープし、断片と `text` はそのまま入れる
 - [x] `text` は `.at()` で横（`left`・`cx`・`right`）と縦（`top`・`cy`・`bottom`）の 1 点ずつを指定して置き、どちらかが 1 つでなければ例外になる
+- [x] `text` は `\n` で行を分け、行ごとの `<tspan>` を 1 つの箱として置き、nicevg も同じ大きさに測る
 - [x] `class` を持つノードは `style` の関数が描き、`edges` のコネクタがその辺へつながる（Bun と Node）
 - [x] `style` にないクラスや、`edges` と `connectors` の両方を渡すと例外になる
 - [x] `rootAttrs` はルートの `<svg>` に書かれ、数の値も渡せる。nicevg が書く属性を渡すと例外になる

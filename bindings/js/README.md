@@ -99,6 +99,6 @@ Fixes the diagram, nudges its nodes into a cleaner layout and returns an `Svg`. 
 | Function | |
 |---|---|
 | `` svg`...` `` | SVG markup. Embedded strings are escaped; `svg` fragments, texts and arrays of them go in as they are. |
-| `text(content, size = 14)` | One line of text, with the `width` and `height` nicevg measures it at. |
+| `text(content, size = 14)` | A text, lines split at `\n`, with the `width` and `height` nicevg measures it at: its widest line, and 1.2 font sizes a line. |
 | `text(...).at({ left \| cx \| right, top \| cy \| bottom })` | Places the text so that point of its box sits at those coordinates. |
 | `` svg`...`.at(x, y) `` | The fragment with its origin moved to `x`, `y`. |
