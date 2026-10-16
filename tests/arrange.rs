@@ -572,6 +572,22 @@ fn arranges_a_c4_container_diagram_without_issues_or_dents() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a social app's ER diagram drafted with straight lines between
+///   table centres: 24 tables drawn as custom nodes in five areas, and 32
+///   foreign keys, nine of them to users, two pairs of tables joined
+///   twice and a table referring to itself
+/// When the diagram is arranged
+/// Then the layout is kept, and its quality is recorded
+#[test]
+fn arranges_a_social_app_er_diagram_keeping_its_layout() {
+    let svg = include_str!("fixtures/social-app-er.svg");
+
+    let result = arrange(svg);
+
+    assert_layout_kept(svg, &result);
+    assert_fix_snapshots!(result);
+}
+
 /// Given a tall loan origination DFD drafted with straight lines between
 ///   centres: a nested split and merge of checks, a manual review branch,
 ///   stores beside the processes, and flows skipping several processes
