@@ -1,11 +1,36 @@
-// The simple box and circle styles arrange like a sketch's own rect and circle nodes.
+// The simple box and circle styles arrange like the native library's own rect and circle nodes.
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { type Sketch, type SketchConnector, type SketchNode, type Svg, render } from "nicevg";
+import { type AnalysisReport, type SketchConnector, render } from "nicevg";
 import { box, circle } from "nicevg/style/simple";
+
+import { call } from "../../src/native.ts";
+
+/** A node the native library draws itself, as it takes from Rust: a rect, or a circle in its box. */
+interface BuiltinNode {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  shape?: "circle";
+  label: string;
+  fontSize: number;
+}
+
+interface BuiltinSketch {
+  nodes: BuiltinNode[];
+  connectors: SketchConnector[];
+}
+
+/** What the native library makes of a sketch of its own nodes, which render() no longer takes. */
+function builtin(sketch: BuiltinSketch): AnalysisReport {
+  const reply = JSON.parse(call(new TextEncoder().encode(JSON.stringify(sketch))));
+  return reply.ok.report;
+}
 
 const root = join(import.meta.dir, "..", "..", "..", "..");
 
@@ -14,9 +39,9 @@ const number = (tag: string, name: string) => Number(attr(tag, name) ?? 0);
 const content = (text: string) => text.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").trim();
 
 /** An example diagram's nodes, connectors and labels as a sketch: none of the examples nests nodes. */
-function sketchOf(file: string): Sketch<SketchNode> {
+function sketchOf(file: string): BuiltinSketch {
   const svg = readFileSync(join(root, file), "utf8");
-  const nodes: SketchNode[] = [...svg.matchAll(/<g data-node="([^"]+)"[^>]*>([\s\S]*?)<\/g>/g)].map(([, id, body]) => {
+  const nodes: BuiltinNode[] = [...svg.matchAll(/<g data-node="([^"]+)"[^>]*>([\s\S]*?)<\/g>/g)].map(([, id, body]) => {
     const text = /<text[^>]*>[\s\S]*?<\/text>/.exec(body!)![0];
     const shape = /<(rect|circle)\b[^>]*>/.exec(body!)!;
     const label = { label: content(text), fontSize: number(text, "font-size") };
@@ -49,7 +74,7 @@ function sketchOf(file: string): Sketch<SketchNode> {
 }
 
 /** The same sketch with its nodes drawn by the simple styles. */
-function styled({ nodes, connectors }: Sketch<SketchNode>) {
+function styled({ nodes, connectors }: BuiltinSketch) {
   return {
     nodes: nodes.map(({ shape, ...node }) => ({ ...node, class: shape === "circle" ? "circle" : "box" })),
     connectors,
@@ -58,10 +83,10 @@ function styled({ nodes, connectors }: Sketch<SketchNode>) {
 }
 
 /** What arranging decided, with numbers to a millionth: drawn the two ways, they may differ in the last bits. */
-function layout(image: Svg) {
+function layout(report: AnalysisReport) {
   const round = (value: number) => Math.round(value * 1e6) / 1e6;
   const box = ({ x, y, width, height }: { x: number; y: number; width: number; height: number }) => [x, y, width, height].map(round);
-  const { diagram, issues } = image.report;
+  const { diagram, issues } = report;
   return {
     nodes: diagram.nodes.map((node) => ({ id: node.id, shape: node.shape, bounds: box(node.bounds), labels: node.labelBounds.map(box) })),
     connectors: diagram.connectors.map((c) => ({ from: c.from, to: c.to, points: c.points.map((p) => [round(p.x), round(p.y)]) })),
@@ -80,7 +105,7 @@ describe("simple styles", () => {
     test(`arranges ${file} as nicevg's own nodes do`, () => {
       const sketch = sketchOf(file);
 
-      expect(layout(render(styled(sketch)))).toEqual(layout(render(sketch)));
+      expect(layout(render(styled(sketch)).report)).toEqual(layout(builtin(sketch)));
     });
   }
 });

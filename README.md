@@ -40,14 +40,16 @@ nicevg < diagram.svg > fixed.svg
 
 ```ts
 import { render, svg, text } from "nicevg";
+import { box } from "nicevg/style/simple";
 
 const image = render({
   nodes: [
-    { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+    { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
     { id: "orders", class: "pill", x: 300, y: 160, label: "Orders" },
   ],
   edges: [{ from: "order", to: "orders", label: "save" }],
   style: {
+    box,
     pill: ({ label }) => {
       const name = text(label);
       const w = name.width + 32, h = name.height + 20;

@@ -238,5 +238,6 @@ Bun からは `bun:ffi`、Node からは koffi で呼ぶ（`bindings/js/test/bun
 - [x] `class` を持つノードは `style` の関数が描き、`edges` のコネクタがその辺へつながる（Bun と Node）
 - [x] `style` にないクラスや、`edges` と `connectors` の両方を渡すと例外になる
 - [x] `rootAttrs` はルートの `<svg>` に書かれ、数の値も渡せる。nicevg が書く属性を渡すと例外になる
-- [x] 親子のない例の図（融資審査 DFD、注文 DFD、README の例）を、`class` のないノードで描いても `nicevg/style/simple` の `box`・`circle` で描いても、配置調整の結果（ノードの範囲と形、ラベルの範囲、経路、エッジのラベル、残る問題）が同じになる
+- [x] `class` のないノードは、どのノードかを示す例外になる
+- [x] 親子のない例の図（融資審査 DFD、注文 DFD、README の例）を、ネイティブライブラリの矩形と円（Rust の Sketch）で描いても `nicevg/style/simple` の `box`・`circle` で描いても、配置調整の結果（ノードの範囲と形、ラベルの範囲、経路、エッジのラベル、残る問題）が同じになる
 - [x] その場で書いたスタイルは、そのクラスのノードの型を引数に受け取り、スタイルのないクラスやノードにない項目は型エラーになる

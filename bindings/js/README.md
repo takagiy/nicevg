@@ -34,14 +34,16 @@ It reads the SVG from stdin and writes the fixed one to stdout. The issues it co
 
 ```ts
 import { render, svg, text } from "nicevg";
+import { box } from "nicevg/style/simple";
 
 const image = render({
   nodes: [
-    { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+    { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
     { id: "orders", class: "pill", x: 300, y: 160, label: "Orders" },
   ],
   edges: [{ from: "order", to: "orders", label: "save" }],
   style: {
+    box,
     pill: ({ label }) => {
       const name = text(label);
       const w = name.width + 32, h = name.height + 20;
@@ -71,11 +73,8 @@ Fixes the diagram, nudges its nodes into a cleaner layout and returns an `Svg`. 
 | Node field | |
 |---|---|
 | `id`, `x`, `y` | Its id and its top left corner. |
-| `width`, `height` | Its size. Not used with `class`. |
-| `label`, `fontSize` | Its text, lines split at `\n`. |
-| `shape` | `"rect"` (the default) or `"circle"`. |
+| `class` | The `style` that draws it; every node has one. Other fields you add are passed to that style. |
 | `parent` | The id of the node it sits inside. |
-| `class` | The `style` that draws it. Other fields you add are passed to that style. |
 | `allowOverlap` | `true` if it overlaps other nodes on purpose. |
 
 | Edge field | |
@@ -103,4 +102,4 @@ Fixes the diagram, nudges its nodes into a cleaner layout and returns an `Svg`. 
 | `text(...).at({ left \| cx \| right, top \| cy \| bottom })` | Places the text so that point of its box sits at those coordinates. |
 | `` svg`...`.at(x, y) `` | The fragment with its origin moved to `x`, `y`. |
 
-`nicevg/style/simple` has `box` and `circle`, styles that draw nodes the way nodes with no `class` are drawn, growing to fit their label as fixing grows those: `import { box, circle } from "nicevg/style/simple"`, then `style: { box, circle }`.
+`nicevg/style/simple` has `box` and `circle`, white shapes outlined in black with the label centred, growing to fit their label: `import { box, circle } from "nicevg/style/simple"`, then `style: { box, circle }`. Their nodes take `width`, `height`, `label` (lines split at `\n`) and `fontSize`; a circle sits in the middle of its `width` and `height`.

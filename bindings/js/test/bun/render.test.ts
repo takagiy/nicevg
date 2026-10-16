@@ -6,22 +6,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { NicevgError, type Bounds, type Sketch, Svg, render } from "nicevg";
+import { box } from "nicevg/style/simple";
 
 const fixtures = join(import.meta.dir, "..", "..", "..", "..", "tests", "fixtures");
 
-const twoBoxes: Sketch = {
+const twoBoxes = {
   nodes: [
-    { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
-    { id: "bill", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
+    { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+    { id: "bill", class: "box", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
   ],
   connectors: [{ from: "order", to: "bill", label: "invoice" }],
+  style: { box },
 };
 
 /** A connector that bends where moving `mail` up would straighten it. */
-const bent: Sketch = {
+const bent = {
   nodes: [
-    { id: "notify", x: 30, y: 100, width: 120, height: 56, label: "Notify" },
-    { id: "mail", x: 280, y: 52, width: 120, height: 56, label: "Mail" },
+    { id: "notify", class: "box", x: 30, y: 100, width: 120, height: 56, label: "Notify" },
+    { id: "mail", class: "box", x: 280, y: 52, width: 120, height: 56, label: "Mail" },
   ],
   connectors: [
     {
@@ -35,6 +37,7 @@ const bent: Sketch = {
       ],
     },
   ],
+  style: { box },
 };
 
 const isOrthogonal = (points: { x: number; y: number }[]) =>
@@ -68,9 +71,10 @@ describe("render", () => {
   test("moves overlapping nodes apart", () => {
     const svg = render({
       nodes: [
-        { id: "a", x: 0, y: 0, width: 100, height: 50 },
-        { id: "b", x: 50, y: 20, width: 100, height: 50 },
+        { id: "a", class: "box", x: 0, y: 0, width: 100, height: 50 },
+        { id: "b", class: "box", x: 50, y: 20, width: 100, height: 50 },
       ],
+      style: { box },
     });
 
     const [a, b] = [boundsOf(svg, "a"), boundsOf(svg, "b")];
@@ -109,19 +113,20 @@ describe("render", () => {
   });
 
   /**
-   * Given a node without its width, and a connector to a node the sketch lacks
+   * Given a node without its class, and a connector to a node the sketch lacks
    * When each is rendered
    * Then each throws a NicevgError saying what is wrong and where
    */
   test("throws an error saying what is wrong", () => {
-    const missingWidth = { nodes: [{ id: "a", x: 0, y: 0, height: 50 }] } as unknown as Sketch;
-    const dangling: Sketch = {
-      nodes: [{ id: "a", x: 0, y: 0, width: 100, height: 50 }],
+    const missingClass = { nodes: [{ id: "a", x: 0, y: 0, width: 100, height: 50 }] } as unknown as Sketch;
+    const dangling = {
+      nodes: [{ id: "a", class: "box", x: 0, y: 0, width: 100, height: 50 }],
       connectors: [{ from: "a", to: "ghost" }],
+      style: { box },
     };
 
-    expect(() => render(missingWidth)).toThrow(NicevgError);
-    expect(() => render(missingWidth)).toThrow(/nodes\[0\].*width/);
+    expect(() => render(missingClass)).toThrow(NicevgError);
+    expect(() => render(missingClass)).toThrow(/nodes\[0\].class/);
     expect(() => render(dangling)).toThrow(/connectors\[0\]\.to.*"ghost"/);
   });
 });

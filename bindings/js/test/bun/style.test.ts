@@ -2,7 +2,8 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { NicevgError, type Sketch, type Style, render, svg, text } from "nicevg";
+import { NicevgError, type Style, render, svg, text } from "nicevg";
+import { box } from "nicevg/style/simple";
 
 /** A data store open on its right: its id, a dividing line, then its name. */
 const store: Style = ({ no, label }) => {
@@ -17,13 +18,14 @@ const store: Style = ({ no, label }) => {
     ${name.at({ left: sep + 12, cy: h / 2 })}`;
 };
 
-const dfd: Sketch = {
+// Kept in a variable, each class needs `as const` to stay its own name rather than a string.
+const dfd = {
   nodes: [
-    { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
-    { id: "orders", class: "store", x: 300, y: 160, no: "D1", label: "注文" },
+    { id: "order", class: "box" as const, x: 20, y: 20, width: 120, height: 56, label: "Order" },
+    { id: "orders", class: "store" as const, x: 300, y: 160, no: "D1", label: "注文" },
   ],
   edges: [{ from: "order", to: "orders", label: "order" }],
-  style: { store },
+  style: { box, store },
 };
 
 describe("svg and text", () => {
@@ -121,7 +123,7 @@ describe("render with style", () => {
    * Then each throws a NicevgError saying what is wrong
    */
   test("rejects a class with no style and edges given twice", () => {
-    expect(() => render({ ...dfd, style: {} })).toThrow('nodes[1].class: no style named "store"');
+    expect(() => render({ ...dfd, style: {} as never })).toThrow('nodes[0].class: no style named "box"');
     expect(() => render({ ...dfd, connectors: dfd.edges })).toThrow(NicevgError);
   });
 
@@ -155,12 +157,13 @@ describe("render with style", () => {
   test("types each style's node by the nodes of its class", () => {
     const image = render({
       nodes: [
-        { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+        { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
         { id: "orders", class: "store", x: 300, y: 160, no: "D1", label: "注文" },
         { id: "user", class: "actor", x: 20, y: 200, name: "User" },
       ],
       edges: [{ from: "order", to: "orders" }],
       style: {
+        box,
         store: ({ no, label }) => svg`${text(no).at({ left: 0, top: 0 })}${text(label).at({ left: 40, top: 0 })}`,
         actor: ({ name }) => svg`${text(name).at({ left: 0, top: 0 })}`,
       },
