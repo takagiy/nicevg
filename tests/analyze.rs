@@ -31,6 +31,7 @@ fn recognizes_an_annotated_node_with_its_box_and_label() {
             label_bounds: vec![bounds(47.0, 39.0, 66.0, 17.0)],
             parent_id: None,
             allow_overlap: false,
+            custom: false,
         }]
     );
 }

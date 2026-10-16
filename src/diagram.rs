@@ -32,6 +32,10 @@ pub struct DiagramNode {
     pub parent_id: Option<String>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub allow_overlap: bool,
+    /// Drawn as a picture of its own: its texts are kept clear of, but not
+    /// checked to fit, since its drawing decides its size.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub custom: bool,
 }
 
 impl DiagramNode {
@@ -242,6 +246,37 @@ pub(crate) fn non_empty(value: &str) -> Option<&str> {
     (!value.is_empty()).then_some(value)
 }
 
+/// The elements inside the element at `path`, leaving out the nodes nested
+/// in it and what they hold.
+fn picture_elements<'a>(document: &'a Document, path: &[usize]) -> Vec<(Path, &'a Element)> {
+    let descendants = document.descendants(path);
+    let nested: Vec<Path> = descendants
+        .iter()
+        .filter(|(_, element)| element.name == "g" && !element.attr("data-node").is_empty())
+        .map(|(path, _)| path.clone())
+        .collect();
+    descendants
+        .into_iter()
+        .filter(|(path, _)| !nested.iter().any(|node| path.starts_with(node)))
+        .collect()
+}
+
+/// A custom node's shape and extent: the rect or circle marked data-bounds
+/// in its picture, or else the box around the picture.
+pub fn custom_extent(document: &Document, path: &[usize]) -> Option<(Option<Shape>, Bounds)> {
+    let picture = picture_elements(document, path);
+    let marked = picture
+        .iter()
+        .find(|(_, element)| is_node_shape(element) && element.has_attr("data-bounds"));
+    match marked {
+        Some((shape_path, element)) => Some((
+            (element.name == "circle").then_some(Shape::Circle),
+            shape_bounds(document, shape_path),
+        )),
+        None => Some((None, content_bounds(document, path)?)),
+    }
+}
+
 struct Recognized {
     path: Path,
     id: String,
@@ -249,6 +284,7 @@ struct Recognized {
     bounds: Bounds,
     labels: Vec<Path>,
     allow_overlap: bool,
+    custom: bool,
 }
 
 /// Whether a node group is drawn as it is: its contents are a picture, not
@@ -261,15 +297,8 @@ fn is_custom(group: &Element) -> bool {
 /// ellipses, lines, polylines, polygons, paths and texts, leaving out the
 /// nodes nested in it.
 pub fn content_bounds(document: &Document, path: &[usize]) -> Option<Bounds> {
-    let descendants = document.descendants(path);
-    let nested: Vec<&Path> = descendants
+    let bounds: Vec<Bounds> = picture_elements(document, path)
         .iter()
-        .filter(|(_, element)| element.name == "g" && !element.attr("data-node").is_empty())
-        .map(|(path, _)| path)
-        .collect();
-    let bounds: Vec<Bounds> = descendants
-        .iter()
-        .filter(|(path, _)| !nested.iter().any(|node| path.starts_with(node)))
         .filter_map(|(path, element)| match element.name.as_str() {
             "rect" => Some(rect_bounds(document, path)),
             "circle" => Some(circle_bounds(document, path)),
@@ -320,13 +349,20 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
                 .map_or_else(|| format!("node-{}", index + 1), str::to_owned);
             let allow_overlap = group.attr("data-allow-overlap") == "true";
             if annotated && is_custom(group) {
+                let (shape, bounds) = custom_extent(document, path)?;
+                let picture = picture_elements(document, path);
                 return Some(Recognized {
                     path: path.clone(),
                     id,
-                    shape: None,
-                    bounds: content_bounds(document, path)?,
-                    labels: Vec::new(),
+                    shape,
+                    bounds,
+                    labels: picture
+                        .into_iter()
+                        .filter(|(_, element)| element.name == "text")
+                        .map(|(text, _)| text)
+                        .collect(),
                     allow_overlap,
+                    custom: true,
                 });
             }
             // A group inside a custom node's picture is part of the picture.
@@ -365,6 +401,7 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
                 bounds: shape_bounds(document, &shape_path),
                 labels,
                 allow_overlap,
+                custom: false,
             })
         })
         .collect()
@@ -390,6 +427,7 @@ pub fn read(document: &Document) -> Diagram {
                 label_bounds: node.labels.iter().map(|label| text_bounds(document, label)).collect(),
                 parent_id,
                 allow_overlap: node.allow_overlap,
+                custom: node.custom,
             }
         })
         .collect();

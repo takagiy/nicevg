@@ -5,13 +5,15 @@
  *
  * ```ts
  * import { render } from "nicevg";
+ * import { box } from "nicevg/style/simple";
  *
  * const svg = render({
  *   nodes: [
- *     { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
- *     { id: "bill", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
+ *     { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+ *     { id: "bill", class: "box", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
  *   ],
- *   connectors: [{ from: "order", to: "bill", label: "invoice" }],
+ *   edges: [{ from: "order", to: "bill", label: "invoice" }],
+ *   style: { box },
  * });
  * await svg.write("diagram.svg");
  * svg.report.diagram.connectors; // where the routes ended up, in the order given
@@ -40,23 +42,6 @@ export interface Bounds {
   height: number;
 }
 
-/** A box, or a circle whose bounds are the square around it. */
-export interface SketchNode {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  shape?: "rect" | "circle";
-  /** Its text, lines split at `\n`: at the top left of a node with children, centred in any other. */
-  label?: string;
-  fontSize?: number;
-  /** The node this one sits inside. */
-  parent?: string;
-  /** Whether it may overlap other nodes on purpose. */
-  allowOverlap?: boolean;
-}
-
 /**
  * A connector from one node to another, along `points` when given. Without
  * them it runs between the nodes' centres, which rendering reroutes from
@@ -74,10 +59,13 @@ export interface SketchConnector {
 
 /**
  * A node drawn by the style its `class` names, with its origin at `x`, `y`.
- * It lies around what the style draws, and rendering moves it but never
- * resizes it. Its other fields, such as `label`, are for the style to use.
+ * It lies around what the style draws, or the rect or circle the style marks
+ * `data-bounds="true"`, and rendering moves it but never resizes it. Its
+ * other fields, such as `label`, are for the style to use: `box` and
+ * `circle` from `nicevg/style/simple` take `width`, `height`, `label` and
+ * `fontSize`.
  */
-export interface StyledNode {
+export interface SketchNode {
   id: string;
   x: number;
   y: number;
@@ -89,16 +77,16 @@ export interface StyledNode {
   [field: string]: unknown;
 }
 
-/** Draws a styled node's picture, from its own origin, with `svg` and `text`. */
-export type Style<Node extends StyledNode = StyledNode> = (node: Node) => SvgFragment;
+/** Draws a node's picture, from its own origin, with `svg` and `text`. */
+export type Style<Node extends SketchNode = SketchNode> = (node: Node) => SvgFragment;
 
 /** A style for each class the nodes name, each given the nodes of its class. */
-export type Styles<Node extends SketchNode | StyledNode> = {
-  [Class in Extract<Node, StyledNode>["class"]]: Style<Extract<Node, { class: Class }>>;
+export type Styles<Node extends SketchNode> = {
+  [Class in Node["class"]]: Style<Extract<Node, { class: Class }>>;
 };
 
 /** A diagram as nodes and the edges (connectors) between them. */
-export interface Sketch<Node extends SketchNode | StyledNode = SketchNode | StyledNode> {
+export interface Sketch<Node extends SketchNode = SketchNode> {
   nodes: readonly Node[];
   edges?: SketchConnector[];
   /** The same as `edges`, its name before; pass one or the other. */
@@ -113,7 +101,7 @@ export interface Sketch<Node extends SketchNode | StyledNode = SketchNode | Styl
 }
 
 /** A diagram to render: a sketch, SVG text following nicevg's SVG contract, or an Svg rendered before. */
-export type Input<Node extends SketchNode | StyledNode = SketchNode | StyledNode> = Sketch<Node> | { svg: string } | Svg;
+export type Input<Node extends SketchNode = SketchNode> = Sketch<Node> | { svg: string } | Svg;
 
 export interface DiagramNode {
   id: string;
@@ -122,6 +110,8 @@ export interface DiagramNode {
   labelBounds: Bounds[];
   parentId?: string;
   allowOverlap?: boolean;
+  /** Drawn by a style: its texts are kept clear of, but not checked to fit. */
+  custom?: boolean;
 }
 
 export interface DiagramConnector {
@@ -201,7 +191,7 @@ export class NicevgError extends Error {
  * routes through nodes, stray labels and more), routes the connectors given
  * no points, and moves nodes a little where that reads better.
  */
-export function render<const Node extends SketchNode | StyledNode>(input: Input<Node>): Svg {
+export function render<const Node extends SketchNode>(input: Input<Node>): Svg {
   const request = new TextEncoder().encode(
     JSON.stringify(input instanceof Svg ? { svg: input.toString() } : "svg" in input ? input : sketchRequest(input)),
   );
@@ -214,8 +204,8 @@ export function render<const Node extends SketchNode | StyledNode>(input: Input<
   return new Svg(reply.ok.svg, reply.ok.changes, reply.ok.report);
 }
 
-/** The sketch as the native library reads it: styled nodes drawn, edges as connectors. */
-function sketchRequest<Node extends SketchNode | StyledNode>({ nodes, edges, connectors, style, rootAttrs }: Sketch<Node>) {
+/** The sketch as the native library reads it: nodes drawn by their styles, edges as connectors. */
+function sketchRequest<Node extends SketchNode>({ nodes, edges, connectors, style, rootAttrs }: Sketch<Node>) {
   // Each style is called only with nodes of its own class.
   const styles = (style ?? {}) as Record<string, Style>;
   if (edges && connectors) {
@@ -223,8 +213,8 @@ function sketchRequest<Node extends SketchNode | StyledNode>({ nodes, edges, con
   }
   return {
     nodes: nodes.map((node, index) => {
-      if (!("class" in node)) {
-        return node;
+      if (typeof node.class !== "string") {
+        throw new NicevgError(`nodes[${index}].class: every node needs the class of the style that draws it`);
       }
       const draw = Object.hasOwn(styles, node.class) ? styles[node.class] : undefined;
       if (!draw) {

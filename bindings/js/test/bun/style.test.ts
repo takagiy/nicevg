@@ -2,7 +2,8 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { NicevgError, type Sketch, type Style, render, svg, text } from "nicevg";
+import { NicevgError, type Style, render, svg, text } from "nicevg";
+import { box } from "nicevg/style/simple";
 
 /** A data store open on its right: its id, a dividing line, then its name. */
 const store: Style = ({ no, label }) => {
@@ -17,13 +18,14 @@ const store: Style = ({ no, label }) => {
     ${name.at({ left: sep + 12, cy: h / 2 })}`;
 };
 
-const dfd: Sketch = {
+// Kept in a variable, each class needs `as const` to stay its own name rather than a string.
+const dfd = {
   nodes: [
-    { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
-    { id: "orders", class: "store", x: 300, y: 160, no: "D1", label: "注文" },
+    { id: "order", class: "box" as const, x: 20, y: 20, width: 120, height: 56, label: "Order" },
+    { id: "orders", class: "store" as const, x: 300, y: 160, no: "D1", label: "注文" },
   ],
   edges: [{ from: "order", to: "orders", label: "order" }],
-  style: { store },
+  style: { box, store },
 };
 
 describe("svg and text", () => {
@@ -51,6 +53,39 @@ describe("svg and text", () => {
     expect(String(text("a").at({ right: 50, bottom: 34 }))).toContain('x="50" y="25.5" font-size="14" text-anchor="end"');
     expect(text("注文").width).toBe(28);
     expect(text("ab").width).toBe(17);
+  });
+
+  /**
+   * Given a text with a line break, placed by its centre
+   * When it is written out
+   * Then each line is a tspan centred on its own line, the block centred on the point, as wide as its widest line
+   */
+  test("breaks a text into lines at \\n, the block placed as one", () => {
+    const lines = text("Order\nservice");
+
+    expect(lines.width).toBe(text("service").width);
+    expect(lines.height).toBe(Math.ceil(2 * 14 * 1.2));
+    expect(String(lines.at({ cx: 50, cy: 40 }))).toBe(
+      '<text x="50" font-size="14" text-anchor="middle" dominant-baseline="central"><tspan x="50" y="31.6">Order</tspan><tspan x="50" y="48.4">service</tspan></text>',
+    );
+    expect(String(text("a & b\nc").at({ left: 0, top: 0 }))).toContain(">a &amp; b</tspan>");
+  });
+
+  /**
+   * Given a styled node drawing only a text of three lines
+   * When it is rendered
+   * Then nicevg measures the node as the box text() measured
+   */
+  test("measures a text of several lines the way nicevg does", () => {
+    const note = text("one\nlonger line\nthree");
+    const image = render({
+      nodes: [{ id: "note", class: "note", x: 20, y: 20 }],
+      style: { note: () => svg`${note.at({ left: 0, top: 0 })}` },
+    });
+
+    const { bounds } = image.report.diagram.nodes.find((node) => node.id === "note")!;
+    expect(Math.abs(bounds.width - note.width)).toBeLessThan(1);
+    expect(Math.abs(bounds.height - note.height)).toBeLessThan(1);
   });
 
   /**
@@ -88,7 +123,7 @@ describe("render with style", () => {
    * Then each throws a NicevgError saying what is wrong
    */
   test("rejects a class with no style and edges given twice", () => {
-    expect(() => render({ ...dfd, style: {} })).toThrow('nodes[1].class: no style named "store"');
+    expect(() => render({ ...dfd, style: {} as never })).toThrow('nodes[0].class: no style named "box"');
     expect(() => render({ ...dfd, connectors: dfd.edges })).toThrow(NicevgError);
   });
 
@@ -122,12 +157,13 @@ describe("render with style", () => {
   test("types each style's node by the nodes of its class", () => {
     const image = render({
       nodes: [
-        { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+        { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
         { id: "orders", class: "store", x: 300, y: 160, no: "D1", label: "注文" },
         { id: "user", class: "actor", x: 20, y: 200, name: "User" },
       ],
       edges: [{ from: "order", to: "orders" }],
       style: {
+        box,
         store: ({ no, label }) => svg`${text(no).at({ left: 0, top: 0 })}${text(label).at({ left: 40, top: 0 })}`,
         actor: ({ name }) => svg`${text(name).at({ left: 0, top: 0 })}`,
       },

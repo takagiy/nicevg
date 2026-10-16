@@ -1097,6 +1097,7 @@ mod tests {
             label_bounds: Vec::new(),
             parent_id: None,
             allow_overlap: false,
+            custom: false,
         }
     }
 

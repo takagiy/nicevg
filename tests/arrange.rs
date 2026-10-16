@@ -196,6 +196,39 @@ fn untangles_crossing_connectors() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a service inside a cluster drawn as a custom node with its title
+///   in the picture, pulled up by a connector to an external system 30px
+///   higher that is held in place
+/// When the diagram is arranged
+/// Then the service stays 4px clear of the title, as it does of a built-in
+///   container's
+#[test]
+fn keeps_a_moved_node_off_a_custom_container_s_title() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -20 700 400">
+        <g data-node="cluster" data-custom="true">
+          <g>
+            <rect data-bounds="true" x="20" y="40" width="300" height="200" />
+            <text x="36" y="68" font-size="13">Kubernetes cluster (EKS)</text>
+          </g>
+          <g data-node="auth">
+            <rect x="60" y="90" width="128" height="48" />
+            <text x="124" y="119" text-anchor="middle" font-size="13">Auth service</text>
+          </g>
+        </g>
+        <g data-node="above"><rect x="460" y="4" width="160" height="48" /><text x="540" y="33" text-anchor="middle" font-size="13">Above</text></g>
+        <g data-node="idp"><rect x="460" y="72" width="160" height="48" /><text x="540" y="101" text-anchor="middle" font-size="13">Identity provider</text></g>
+        <g data-node="below"><rect x="460" y="140" width="160" height="48" /><text x="540" y="169" text-anchor="middle" font-size="13">Below</text></g>
+        <path id="oidc" data-from="auth" data-to="idp" d="M 188 114 L 400 114 L 400 96 L 460 96" />
+      </svg>
+    "#;
+
+    let result = arrange(svg);
+    let title = result.report.diagram.node("cluster").expect("cluster").label_bounds[0];
+
+    assert!(node_bounds(&result.report, "auth").y >= title.bottom() + 4.0);
+}
+
 /// Given a service inside a titled cluster, joined to an external system
 ///   whose centre is 30px higher, where the external system is held in
 ///   place between two others only 20px away

@@ -112,6 +112,7 @@ pub fn radius_enclosing(label: &Bounds, box_: &Bounds, padding: f64) -> f64 {
 fn text_fit(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
     nodes
         .iter()
+        .filter(|node| !node.custom)
         .filter_map(|node| {
             let label = enclosing(&node.label_bounds)?;
             let fits = if node.is_circle() {

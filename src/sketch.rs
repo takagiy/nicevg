@@ -10,7 +10,7 @@ use std::fmt::Write;
 
 use serde::Deserialize;
 
-use crate::diagram::content_bounds;
+use crate::diagram::custom_extent;
 use crate::geometry::{Bounds, Point, format_number, point};
 use crate::xml;
 use crate::{AnalysisReport, FixResult};
@@ -286,8 +286,8 @@ fn node_bounds(node: &SketchNode, index: usize, root_attrs: &str) -> Result<Boun
         "<svg xmlns=\"http://www.w3.org/2000/svg\"{root_attrs}>{svg}</svg>"
     ))
     .map_err(|error| invalid(error.0))?;
-    let drawn =
-        content_bounds(&document, &[document.root_index()]).ok_or_else(|| invalid("draws nothing".to_owned()))?;
+    let (_, drawn) =
+        custom_extent(&document, &[document.root_index()]).ok_or_else(|| invalid("draws nothing".to_owned()))?;
     Ok(Bounds {
         x: drawn.x + node.x,
         y: drawn.y + node.y,

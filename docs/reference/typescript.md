@@ -16,17 +16,19 @@ Bun では `bun:ffi`、Node では [koffi](https://koffi.dev/) で nicevg のネ
 
 ```ts
 import { render } from "nicevg";
+import { box, circle } from "nicevg/style/simple";
 
 const svg = render({
   nodes: [
-    { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
-    { id: "bill", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
-    { id: "user", x: 40, y: 200, width: 80, height: 80, shape: "circle", label: "User" },
+    { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+    { id: "bill", class: "box", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
+    { id: "user", class: "circle", x: 40, y: 200, width: 80, height: 80, label: "User" },
   ],
   edges: [
     { from: "order", to: "bill", label: "invoice" },
     { from: "user", to: "order" },
   ],
+  style: { box, circle },
 });
 
 await svg.write("diagram.svg"); // ファイルに書く
@@ -48,12 +50,10 @@ console.log(svg.changes); // 何を直し、何を動かしたか
 
 | 項目 | 内容 |
 |---|---|
-| `nodes[].id`、`x`、`y`、`width`、`height` | ノードの id と、左上の位置と大きさ |
-| `nodes[].shape` | `"rect"`（既定）か `"circle"`。円は外接する正方形を `x`〜`height` で渡す |
-| `nodes[].label`、`fontSize` | 中に書く文字（`\n` で改行）。子を持つノードでは左上に、それ以外では中央に置く |
+| `nodes[].id`、`x`、`y` | ノードの id と、左上の位置（style が描く絵の原点） |
+| `nodes[].class` | 描き方を `style` から選ぶ名前。すべてのノードに要る。ほかの項目は、そのまま style に渡る |
 | `nodes[].parent` | このノードを入れる親ノードの id |
 | `nodes[].allowOverlap` | 意図した重なりなら `true` |
-| `nodes[].class` | 描き方を `style` から選ぶ名前。付けたノードは `width`・`height`・`shape`・`label` を使わず、`style` が描く |
 | `edges[].from`、`to` | 両端のノードの id。`edges` は前の名前の `connectors` でも渡せる（両方は渡せない） |
 | `edges[].points` | 経路の折れ点。省くと、修正と配置調整が両端のノードの辺から辺へ経路を引く |
 | `edges[].label`、`fontSize` | コネクタの脇に置く文字 |
@@ -66,14 +66,16 @@ console.log(svg.changes); // 何を直し、何を動かしたか
 
 ```ts
 import { render, svg, text } from "nicevg";
+import { box } from "nicevg/style/simple";
 
 const image = render({
   nodes: [
-    { id: "customer", x: 20, y: 40, width: 80, height: 40, label: "顧客" },
+    { id: "customer", class: "box", x: 20, y: 40, width: 80, height: 40, label: "顧客" },
     { id: "orders", class: "store", x: 260, y: 40, no: "D1", label: "注文" },
   ],
   edges: [{ from: "customer", to: "orders", label: "注文" }],
   style: {
+    box,
     store: ({ no, label }) => {
       const id = text(no), name = text(label);
       const sep = id.width + 24, w = sep + name.width + 24, h = Math.max(id.height, name.height) + 20;
@@ -90,9 +92,29 @@ const image = render({
 ```
 
 - `` svg`...` `` の中は SVG そのもの。埋め込んだ文字列はエスケープされ、`svg` の断片、`text`、それらの配列はそのまま入る。断片は `.at(x, y)` で原点をずらせる。
-- `text(文字列, 大きさ)` は 1 行の `<text>`。`width`・`height` は nicevg と同じ見積もり。`.at({ 横, 縦 })` で、横は `left`・`cx`・`right`、縦は `top`・`cy`・`bottom` から 1 つずつ選び、文字の箱のその点をその座標に置く。
+- `text(文字列, 大きさ)` は `<text>`。`\n` で行を分け、2 行以上なら行ごとの `<tspan>` で書く。`width`・`height` は nicevg と同じ見積もりで、幅はいちばん広い行、高さは 1 行あたりフォントサイズの 1.2 倍。`.at({ 横, 縦 })` で、横は `left`・`cx`・`right`、縦は `top`・`cy`・`bottom` から 1 つずつ選び、文字の箱のその点をその座標に置く。
 - ノードの範囲は、描いたもの（`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`、`path`、`text`）を囲む矩形。コネクタはその辺から出入りする。曲線と円弧は端点だけで数える。
 - 修正と配置調整はノードを動かすが、大きさは変えない。中の `<text>` はラベルとして検査しないので、収まりは描く側が決める。
+
+## 基本図形の style
+
+`nicevg/style/simple` の `box` と `circle` は、基本の矩形と円を描く style。白い塗りと黒い線で、ラベルは中央に行ごとに置く。ノードは `width`・`height`・`label`（`\n` で改行）・`fontSize` を持ち、円は `width`・`height` の箱の中央に、短いほうの辺を直径として置く。ラベルが内側の余白 12px に収まらなければ、ネイティブライブラリが自分の矩形と円を広げるのと同じだけ、自分で広がる。そのため、配置調整の結果（ノードの範囲と形、経路、ラベルの範囲、残る問題）は、同じ図を Rust の Sketch（rect・circle）で描いたときと同じになる。
+
+```ts
+import { render } from "nicevg";
+import { box, circle } from "nicevg/style/simple";
+
+render({
+  nodes: [
+    { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+    { id: "user", class: "circle", x: 240, y: 20, width: 60, height: 60, label: "User" },
+  ],
+  edges: [{ from: "user", to: "order" }],
+  style: { box, circle },
+});
+```
+
+`box`・`circle` を使うノードは `width`・`height` を持ち、`label`・`fontSize` を持てる（型でも確かめられる）。親を持つノード（包含ノードのタイトル）は、まだ組み込みのノードと同じには描かない。
 
 ## 結果
 

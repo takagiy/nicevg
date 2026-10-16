@@ -8,22 +8,24 @@ import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { NicevgError, type Sketch, Svg, render, svg, text } from "nicevg";
+import { box } from "nicevg/style/simple";
 
 const fixtures = fileURLToPath(new URL("../../../../tests/fixtures/", import.meta.url));
 
-const twoBoxes: Sketch = {
+const twoBoxes = {
   nodes: [
-    { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
-    { id: "bill", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
+    { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+    { id: "bill", class: "box", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
   ],
   connectors: [{ from: "order", to: "bill", label: "invoice" }],
+  style: { box },
 };
 
 /** A connector that bends where moving `mail` up would straighten it. */
-const bent: Sketch = {
+const bent = {
   nodes: [
-    { id: "notify", x: 30, y: 100, width: 120, height: 56, label: "Notify" },
-    { id: "mail", x: 280, y: 52, width: 120, height: 56, label: "Mail" },
+    { id: "notify", class: "box", x: 30, y: 100, width: 120, height: 56, label: "Notify" },
+    { id: "mail", class: "box", x: 280, y: 52, width: 120, height: 56, label: "Mail" },
   ],
   connectors: [
     {
@@ -37,6 +39,7 @@ const bent: Sketch = {
       ],
     },
   ],
+  style: { box },
 };
 
 const isOrthogonal = (points: { x: number; y: number }[]) =>
@@ -102,19 +105,20 @@ describe("render on Node", () => {
   });
 
   /**
-   * Given a node without its width, and a connector to a node the sketch lacks
+   * Given a node without its class, and a connector to a node the sketch lacks
    * When each is rendered
    * Then each throws a NicevgError saying what is wrong and where
    */
   test("throws an error saying what is wrong", () => {
-    const missingWidth = { nodes: [{ id: "a", x: 0, y: 0, height: 50 }] } as unknown as Sketch;
-    const dangling: Sketch = {
-      nodes: [{ id: "a", x: 0, y: 0, width: 100, height: 50 }],
+    const missingClass = { nodes: [{ id: "a", x: 0, y: 0, width: 100, height: 50 }] } as unknown as Sketch;
+    const dangling = {
+      nodes: [{ id: "a", class: "box", x: 0, y: 0, width: 100, height: 50 }],
       connectors: [{ from: "a", to: "ghost" }],
+      style: { box },
     };
 
-    assert.throws(() => render(missingWidth), NicevgError);
-    assert.throws(() => render(missingWidth), /nodes\[0\].*width/);
+    assert.throws(() => render(missingClass), NicevgError);
+    assert.throws(() => render(missingClass), /nodes\[0\].class/);
     assert.throws(() => render(dangling), /connectors\[0\]\.to.*"ghost"/);
   });
 
@@ -126,7 +130,7 @@ describe("render on Node", () => {
   test("draws a styled node with its style", () => {
     const image = render({
       nodes: [
-        { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
+        { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
         { id: "bill", class: "box", x: 300, y: 160, label: "Bill" },
       ],
       edges: [{ from: "order", to: "bill" }],

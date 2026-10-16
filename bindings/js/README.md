@@ -33,14 +33,29 @@ It reads the SVG from stdin and writes the fixed one to stdout. The issues it co
 ### Library
 
 ```ts
-import { render, svg, text } from "nicevg";
+import { render } from "nicevg";
+import { box, circle } from "nicevg/style/simple";
 
 const image = render({
   nodes: [
-    { id: "order", x: 20, y: 20, width: 120, height: 56, label: "Order" },
-    { id: "orders", class: "pill", x: 300, y: 160, label: "Orders" },
+    { id: "user", class: "circle", x: 20, y: 20, width: 60, height: 60, label: "User" },
+    { id: "order", class: "box", x: 200, y: 22, width: 120, height: 56, label: "Order" },
   ],
-  edges: [{ from: "order", to: "orders", label: "save" }],
+  edges: [{ from: "user", to: "order", label: "place" }],
+  style: { box, circle },
+});
+await image.write("diagram.svg");
+```
+
+### Styling
+
+A style is a function that draws its nodes as SVG, with `svg` for the markup and `text` for labels measured the way nicevg measures them.
+
+```ts
+import { render, svg, text } from "nicevg";
+
+const image = render({
+  nodes: [{ id: "orders", class: "pill", x: 20, y: 20, label: "Orders" }],
   style: {
     pill: ({ label }) => {
       const name = text(label);
@@ -71,11 +86,8 @@ Fixes the diagram, nudges its nodes into a cleaner layout and returns an `Svg`. 
 | Node field | |
 |---|---|
 | `id`, `x`, `y` | Its id and its top left corner. |
-| `width`, `height` | Its size. Not used with `class`. |
-| `label`, `fontSize` | Its text, lines split at `\n`. |
-| `shape` | `"rect"` (the default) or `"circle"`. |
+| `class` | The `style` that draws it; every node has one. Other fields you add are passed to that style. |
 | `parent` | The id of the node it sits inside. |
-| `class` | The `style` that draws it. Other fields you add are passed to that style. |
 | `allowOverlap` | `true` if it overlaps other nodes on purpose. |
 
 | Edge field | |
@@ -99,6 +111,8 @@ Fixes the diagram, nudges its nodes into a cleaner layout and returns an `Svg`. 
 | Function | |
 |---|---|
 | `` svg`...` `` | SVG markup. Embedded strings are escaped; `svg` fragments, texts and arrays of them go in as they are. |
-| `text(content, size = 14)` | One line of text, with the `width` and `height` nicevg measures it at. |
+| `text(content, size = 14)` | A text, lines split at `\n`, with the `width` and `height` nicevg measures it at: its widest line, and 1.2 font sizes a line. |
 | `text(...).at({ left \| cx \| right, top \| cy \| bottom })` | Places the text so that point of its box sits at those coordinates. |
 | `` svg`...`.at(x, y) `` | The fragment with its origin moved to `x`, `y`. |
+
+`nicevg/style/simple` has `box` and `circle`, white shapes outlined in black with the label centred, growing to fit their label: `import { box, circle } from "nicevg/style/simple"`, then `style: { box, circle }`. Their nodes take `width`, `height`, `label` (lines split at `\n`) and `fontSize`; a circle sits in the middle of its `width` and `height`.
