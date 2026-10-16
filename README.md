@@ -39,17 +39,30 @@ nicevg < diagram.svg > fixed.svg
 ### TypeScript library
 
 ```ts
-import { render, svg, text } from "nicevg";
-import { box } from "nicevg/style/simple";
+import { render } from "nicevg";
+import { box, circle } from "nicevg/style/simple";
 
 const image = render({
   nodes: [
-    { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
-    { id: "orders", class: "pill", x: 300, y: 160, label: "Orders" },
+    { id: "user", class: "circle", x: 20, y: 20, width: 60, height: 60, label: "User" },
+    { id: "order", class: "box", x: 200, y: 22, width: 120, height: 56, label: "Order" },
   ],
-  edges: [{ from: "order", to: "orders", label: "save" }],
+  edges: [{ from: "user", to: "order", label: "place" }],
+  style: { box, circle },
+});
+await image.write("diagram.svg");
+```
+
+#### Styling
+
+A style is a function that draws its nodes as SVG, with `svg` for the markup and `text` for labels measured the way nicevg measures them.
+
+```ts
+import { render, svg, text } from "nicevg";
+
+const image = render({
+  nodes: [{ id: "orders", class: "pill", x: 20, y: 20, label: "Orders" }],
   style: {
-    box,
     pill: ({ label }) => {
       const name = text(label);
       const w = name.width + 32, h = name.height + 20;
