@@ -38,8 +38,8 @@ import { box, circle } from "nicevg/style/simple";
 
 const image = render({
   nodes: [
-    { id: "user", class: "circle", x: 20, y: 20, width: 60, height: 60, label: "User" },
-    { id: "order", class: "box", x: 200, y: 22, width: 120, height: 56, label: "Order" },
+    { id: "user", class: "circle", x: 20, y: 20, label: "User", fill: "#fef3c7" },
+    { id: "order", class: "box", x: 200, y: 30, label: "Order", fill: "#dbeafe" },
   ],
   edges: [{ from: "user", to: "order", label: "place" }],
   style: { box, circle },
@@ -49,7 +49,7 @@ await image.write("diagram.svg");
 
 ### Styling
 
-A style is a function that draws its nodes as SVG, with `svg` for the markup and `text` for labels measured the way nicevg measures them.
+A style is a function that draws its nodes as SVG.
 
 ```ts
 import { render, svg, text } from "nicevg";
@@ -115,4 +115,4 @@ Fixes the diagram, nudges its nodes into a cleaner layout and returns an `Svg`. 
 | `text(...).at({ left \| cx \| right, top \| cy \| bottom })` | Places the text so that point of its box sits at those coordinates. |
 | `` svg`...`.at(x, y) `` | The fragment with its origin moved to `x`, `y`. |
 
-`nicevg/style/simple` has `box` and `circle`, white shapes outlined in black with the label centred, growing to fit their label: `import { box, circle } from "nicevg/style/simple"`, then `style: { box, circle }`. Their nodes take `width`, `height`, `label` (lines split at `\n`) and `fontSize`; a circle sits in the middle of its `width` and `height`.
+`nicevg/style/simple` has `box` and `circle`, white shapes outlined in black with the label centred, growing to fit their label: `import { box, circle } from "nicevg/style/simple"`, then `style: { box, circle }`. Their nodes take `label` (lines split at `\n`), `fontSize`, and optionally `width` and `height`; without them a node is just big enough for its label, and a circle sits in the middle of its `width` and `height`. `fill`, `stroke`, `strokeWidth` and `strokeDasharray` paint the shape, as the SVG attributes of those names do.

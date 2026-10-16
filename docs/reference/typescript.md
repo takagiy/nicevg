@@ -98,7 +98,7 @@ const image = render({
 
 ## 基本図形の style
 
-`nicevg/style/simple` の `box` と `circle` は、基本の矩形と円を描く style。白い塗りと黒い線で、ラベルは中央に行ごとに置く。ノードは `width`・`height`・`label`（`\n` で改行）・`fontSize` を持ち、円は `width`・`height` の箱の中央に、短いほうの辺を直径として置く。ラベルが内側の余白 12px に収まらなければ、ネイティブライブラリが自分の矩形と円を広げるのと同じだけ、自分で広がる。そのため、配置調整の結果（ノードの範囲と形、経路、ラベルの範囲、残る問題）は、同じ図を Rust の Sketch（rect・circle）で描いたときと同じになる。
+`nicevg/style/simple` の `box` と `circle` は、基本の矩形と円を描く style。白い塗りと黒い線で、ラベルは中央に行ごとに置く。`fill`・`stroke`・`strokeWidth`・`strokeDasharray` を持たせると、同じ名前の SVG 属性として図形に付く（配置調整の結果は変わらない）。ノードは `label`（`\n` で改行）・`fontSize` と、省略できる `width`・`height` を持つ。省略するとラベルが余白 12px でちょうど収まる大きさになる。円は `width`・`height` の箱の中央に、短いほうの辺を直径として置く。ラベルが内側の余白 12px に収まらなければ、ネイティブライブラリが自分の矩形と円を広げるのと同じだけ、自分で広がる。そのため、配置調整の結果（ノードの範囲と形、経路、ラベルの範囲、残る問題）は、同じ図を Rust の Sketch（rect・circle）で描いたときと同じになる。
 
 ```ts
 import { render } from "nicevg";
@@ -114,7 +114,7 @@ render({
 });
 ```
 
-`box`・`circle` を使うノードは `width`・`height` を持ち、`label`・`fontSize` を持てる（型でも確かめられる）。親を持つノード（包含ノードのタイトル）は、まだ組み込みのノードと同じには描かない。
+`box`・`circle` を使うノードは `width`・`height`・`label`・`fontSize` を持てる（型でも確かめられる）。親を持つノード（包含ノードのタイトル）は、まだ組み込みのノードと同じには描かない。
 
 ## 結果
 
