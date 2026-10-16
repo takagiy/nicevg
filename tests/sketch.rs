@@ -366,3 +366,57 @@ fn routes_from_the_data_bounds_even_with_a_picture_reaching_past_them() {
         "{points:?}"
     );
 }
+
+/// A table 120 wide and 96 high drawn by its SVG, with the port `port` on
+/// both sides 62px down.
+fn table_with_port(port: &str) -> String {
+    format!(
+        r#"<rect data-bounds="true" width="120" height="96" fill="white" stroke="black"/><circle data-port="{port}" cx="0" cy="62" r="0"/><circle data-port="{port}" cx="120" cy="62" r="0"/>"#
+    )
+}
+
+/// Given two drawn tables and a connector naming a port of each, with no route
+/// When the sketch is fixed
+/// Then the connector leaves and reaches those ports, which the diagram read back names
+#[test]
+fn routes_a_sketch_connector_between_the_ports_it_names() {
+    let input = sketch(json!({
+        "nodes": [
+            {"id": "article", "x": 20, "y": 20, "svg": table_with_port("author")},
+            {"id": "user", "x": 300, "y": 20, "svg": table_with_port("id")}
+        ],
+        "connectors": [{"from": "article", "fromPort": "author", "to": "user", "toPort": "id"}]
+    }));
+
+    let result = nicevg::fix_sketch(&input).expect("valid sketch");
+
+    let connector = &result.report.diagram.connectors[0];
+    assert_eq!(
+        (connector.from_port.as_deref(), connector.to_port.as_deref()),
+        (Some("author"), Some("id"))
+    );
+    assert_eq!(connector.points, [point(140.0, 82.0), point(300.0, 82.0)]);
+}
+
+/// Given a connector naming a port "email" that the drawn table `user` does not mark
+/// When the sketch is read
+/// Then it is an error naming the connector's end and the port
+#[test]
+fn rejects_a_connector_naming_a_port_its_node_does_not_mark() {
+    let input = sketch(json!({
+        "nodes": [
+            {"id": "article", "x": 20, "y": 20, "svg": table_with_port("author")},
+            {"id": "user", "x": 300, "y": 20, "svg": table_with_port("id")}
+        ],
+        "connectors": [{"from": "article", "fromPort": "author", "to": "user", "toPort": "email"}]
+    }));
+
+    assert_eq!(
+        nicevg::analyze_sketch(&input).unwrap_err(),
+        SketchError::UnknownPort {
+            referrer: "connectors[0].toPort".to_owned(),
+            node: "user".to_owned(),
+            port: "email".to_owned()
+        }
+    );
+}

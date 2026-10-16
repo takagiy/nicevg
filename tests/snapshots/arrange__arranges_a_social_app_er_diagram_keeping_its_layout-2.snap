@@ -2,7 +2,7 @@
 source: tests/arrange.rs
 expression: result.svg.as_str()
 ---
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -40 1828 990" width="1828" height="990" font-family="sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 -52 1860 1002" width="1860" height="1002" font-family="sans-serif">
   <g data-node="posting" data-custom="true">
     <g transform="translate(20 20)">
   <rect data-bounds="true" width="560" height="640" fill="#f0fdf4" stroke="#94a3b8"/>
@@ -14,7 +14,7 @@ expression: result.svg.as_str()
     <text x="107" y="13" font-size="13" text-anchor="middle" dominant-baseline="central">posts</text>
     <text x="8" y="36" font-size="10" text-anchor="start" dominant-baseline="central">PK</text><text x="26" y="36" font-size="12" text-anchor="start" dominant-baseline="central">id</text><text x="206" y="36" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="id" cx="0" cy="36" r="0"/><circle data-port="id" cx="214" cy="36" r="0"/><text x="8" y="56" font-size="10" text-anchor="start" dominant-baseline="central">FK</text><text x="26" y="56" font-size="12" text-anchor="start" dominant-baseline="central">author_id</text><text x="206" y="56" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="author_id" cx="0" cy="56" r="0"/><circle data-port="author_id" cx="214" cy="56" r="0"/><text x="26" y="76" font-size="12" text-anchor="start" dominant-baseline="central">body</text><text x="206" y="76" font-size="12" text-anchor="end" dominant-baseline="central">text</text><circle data-port="body" cx="0" cy="76" r="0"/><circle data-port="body" cx="214" cy="76" r="0"/><text x="8" y="96" font-size="10" text-anchor="start" dominant-baseline="central">FK</text><text x="26" y="96" font-size="12" text-anchor="start" dominant-baseline="central">reply_to_id</text><text x="206" y="96" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="reply_to_id" cx="0" cy="96" r="0"/><circle data-port="reply_to_id" cx="214" cy="96" r="0"/><text x="26" y="116" font-size="12" text-anchor="start" dominant-baseline="central">created_at</text><text x="206" y="116" font-size="12" text-anchor="end" dominant-baseline="central">timestamptz</text><circle data-port="created_at" cx="0" cy="116" r="0"/><circle data-port="created_at" cx="214" cy="116" r="0"/></g>
     </g>
-    <g data-node="comments" data-custom="true">
+    <g data-node="comments" data-custom="true" transform="translate(-20 -20)">
       <g transform="translate(320 60)">
     <rect data-bounds="true" width="151" height="106" fill="white" stroke="#334155"/>
     <rect width="151" height="26" fill="#e2e8f0" stroke="#334155"/>
@@ -35,7 +35,7 @@ expression: result.svg.as_str()
     <text x="103.5" y="13" font-size="13" text-anchor="middle" dominant-baseline="central">reposts</text>
     <text x="8" y="36" font-size="10" text-anchor="start" dominant-baseline="central">FK</text><text x="26" y="36" font-size="12" text-anchor="start" dominant-baseline="central">user_id</text><text x="199" y="36" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="user_id" cx="0" cy="36" r="0"/><circle data-port="user_id" cx="207" cy="36" r="0"/><text x="8" y="56" font-size="10" text-anchor="start" dominant-baseline="central">FK</text><text x="26" y="56" font-size="12" text-anchor="start" dominant-baseline="central">post_id</text><text x="199" y="56" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="post_id" cx="0" cy="56" r="0"/><circle data-port="post_id" cx="207" cy="56" r="0"/><text x="26" y="76" font-size="12" text-anchor="start" dominant-baseline="central">created_at</text><text x="199" y="76" font-size="12" text-anchor="end" dominant-baseline="central">timestamptz</text><circle data-port="created_at" cx="0" cy="76" r="0"/><circle data-port="created_at" cx="207" cy="76" r="0"/></g>
     </g>
-    <g data-node="post_hashtags" data-custom="true">
+    <g data-node="post_hashtags" data-custom="true" transform="translate(0 -20)">
       <g transform="translate(60 360)">
     <rect data-bounds="true" width="158" height="66" fill="white" stroke="#334155"/>
     <rect width="158" height="26" fill="#e2e8f0" stroke="#334155"/>
@@ -75,7 +75,7 @@ expression: result.svg.as_str()
     <text x="110.5" y="13" font-size="13" text-anchor="middle" dominant-baseline="central">mfa_totp_secrets</text>
     <text x="8" y="36" font-size="10" text-anchor="start" dominant-baseline="central">FK</text><text x="26" y="36" font-size="12" text-anchor="start" dominant-baseline="central">user_id</text><text x="213" y="36" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="user_id" cx="0" cy="36" r="0"/><circle data-port="user_id" cx="221" cy="36" r="0"/><text x="26" y="56" font-size="12" text-anchor="start" dominant-baseline="central">secret</text><text x="213" y="56" font-size="12" text-anchor="end" dominant-baseline="central">bytea</text><circle data-port="secret" cx="0" cy="56" r="0"/><circle data-port="secret" cx="221" cy="56" r="0"/><text x="26" y="76" font-size="12" text-anchor="start" dominant-baseline="central">confirmed_at</text><text x="213" y="76" font-size="12" text-anchor="end" dominant-baseline="central">timestamptz</text><circle data-port="confirmed_at" cx="0" cy="76" r="0"/><circle data-port="confirmed_at" cx="221" cy="76" r="0"/></g>
     </g>
-    <g data-node="email_verifications" data-custom="true" transform="translate(7 0)">
+    <g data-node="email_verifications" data-custom="true" transform="translate(9 0)">
       <g transform="translate(660 360)">
     <rect data-bounds="true" width="207" height="106" fill="white" stroke="#334155"/>
     <rect width="207" height="26" fill="#e2e8f0" stroke="#334155"/>
@@ -122,7 +122,7 @@ expression: result.svg.as_str()
     <text x="103.5" y="13" font-size="13" text-anchor="middle" dominant-baseline="central">conversations</text>
     <text x="8" y="36" font-size="10" text-anchor="start" dominant-baseline="central">PK</text><text x="26" y="36" font-size="12" text-anchor="start" dominant-baseline="central">id</text><text x="199" y="36" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="id" cx="0" cy="36" r="0"/><circle data-port="id" cx="207" cy="36" r="0"/><text x="26" y="56" font-size="12" text-anchor="start" dominant-baseline="central">kind</text><text x="199" y="56" font-size="12" text-anchor="end" dominant-baseline="central">text</text><circle data-port="kind" cx="0" cy="56" r="0"/><circle data-port="kind" cx="207" cy="56" r="0"/><text x="26" y="76" font-size="12" text-anchor="start" dominant-baseline="central">title</text><text x="199" y="76" font-size="12" text-anchor="end" dominant-baseline="central">text</text><circle data-port="title" cx="0" cy="76" r="0"/><circle data-port="title" cx="207" cy="76" r="0"/><text x="26" y="96" font-size="12" text-anchor="start" dominant-baseline="central">created_at</text><text x="199" y="96" font-size="12" text-anchor="end" dominant-baseline="central">timestamptz</text><circle data-port="created_at" cx="0" cy="96" r="0"/><circle data-port="created_at" cx="207" cy="96" r="0"/></g>
     </g>
-    <g data-node="conversation_members" data-custom="true">
+    <g data-node="conversation_members" data-custom="true" transform="translate(20 0)">
       <g transform="translate(1500 60)">
     <rect data-bounds="true" width="243" height="86" fill="white" stroke="#334155"/>
     <rect width="243" height="26" fill="#e2e8f0" stroke="#334155"/>
@@ -136,14 +136,14 @@ expression: result.svg.as_str()
     <text x="97" y="13" font-size="13" text-anchor="middle" dominant-baseline="central">messages</text>
     <text x="8" y="36" font-size="10" text-anchor="start" dominant-baseline="central">PK</text><text x="26" y="36" font-size="12" text-anchor="start" dominant-baseline="central">id</text><text x="186" y="36" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="id" cx="0" cy="36" r="0"/><circle data-port="id" cx="194" cy="36" r="0"/><text x="8" y="56" font-size="10" text-anchor="start" dominant-baseline="central">FK</text><text x="26" y="56" font-size="12" text-anchor="start" dominant-baseline="central">conversation_id</text><text x="186" y="56" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="conversation_id" cx="0" cy="56" r="0"/><circle data-port="conversation_id" cx="194" cy="56" r="0"/><text x="8" y="76" font-size="10" text-anchor="start" dominant-baseline="central">FK</text><text x="26" y="76" font-size="12" text-anchor="start" dominant-baseline="central">sender_id</text><text x="186" y="76" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="sender_id" cx="0" cy="76" r="0"/><circle data-port="sender_id" cx="194" cy="76" r="0"/><text x="26" y="96" font-size="12" text-anchor="start" dominant-baseline="central">body</text><text x="186" y="96" font-size="12" text-anchor="end" dominant-baseline="central">text</text><circle data-port="body" cx="0" cy="96" r="0"/><circle data-port="body" cx="194" cy="96" r="0"/></g>
     </g>
-    <g data-node="attachments" data-custom="true">
+    <g data-node="attachments" data-custom="true" transform="translate(20 -20)">
       <g transform="translate(1500 200)">
     <rect data-bounds="true" width="158" height="106" fill="white" stroke="#334155"/>
     <rect width="158" height="26" fill="#e2e8f0" stroke="#334155"/>
     <text x="79" y="13" font-size="13" text-anchor="middle" dominant-baseline="central">attachments</text>
     <text x="8" y="36" font-size="10" text-anchor="start" dominant-baseline="central">PK</text><text x="26" y="36" font-size="12" text-anchor="start" dominant-baseline="central">id</text><text x="150" y="36" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="id" cx="0" cy="36" r="0"/><circle data-port="id" cx="158" cy="36" r="0"/><text x="8" y="56" font-size="10" text-anchor="start" dominant-baseline="central">FK</text><text x="26" y="56" font-size="12" text-anchor="start" dominant-baseline="central">message_id</text><text x="150" y="56" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="message_id" cx="0" cy="56" r="0"/><circle data-port="message_id" cx="158" cy="56" r="0"/><text x="26" y="76" font-size="12" text-anchor="start" dominant-baseline="central">url</text><text x="150" y="76" font-size="12" text-anchor="end" dominant-baseline="central">text</text><circle data-port="url" cx="0" cy="76" r="0"/><circle data-port="url" cx="158" cy="76" r="0"/><text x="26" y="96" font-size="12" text-anchor="start" dominant-baseline="central">mime_type</text><text x="150" y="96" font-size="12" text-anchor="end" dominant-baseline="central">text</text><circle data-port="mime_type" cx="0" cy="96" r="0"/><circle data-port="mime_type" cx="158" cy="96" r="0"/></g>
     </g>
-    <g data-node="message_reactions" data-custom="true">
+    <g data-node="message_reactions" data-custom="true" transform="translate(20 0)">
       <g transform="translate(1500 340)">
     <rect data-bounds="true" width="158" height="86" fill="white" stroke="#334155"/>
     <rect width="158" height="26" fill="#e2e8f0" stroke="#334155"/>
@@ -155,7 +155,7 @@ expression: result.svg.as_str()
     <g transform="translate(1220 520)">
   <rect data-bounds="true" width="560" height="180" fill="#fff7ed" stroke="#94a3b8"/>
   <text x="12" y="16" font-size="13" text-anchor="start" dominant-baseline="central">Notifications</text></g>
-    <g data-node="notifications" data-custom="true" transform="translate(-20 0)">
+    <g data-node="notifications" data-custom="true">
       <g transform="translate(1260 560)">
     <rect data-bounds="true" width="193" height="126" fill="white" stroke="#334155"/>
     <rect width="193" height="26" fill="#e2e8f0" stroke="#334155"/>
@@ -174,7 +174,7 @@ expression: result.svg.as_str()
     <g transform="translate(620 720)">
   <rect data-bounds="true" width="820" height="210" fill="#fefce8" stroke="#94a3b8"/>
   <text x="12" y="16" font-size="13" text-anchor="start" dominant-baseline="central">Integrations</text></g>
-    <g data-node="integrations" data-custom="true">
+    <g data-node="integrations" data-custom="true" transform="translate(0 20)">
       <g transform="translate(660 760)">
     <rect data-bounds="true" width="180" height="126" fill="white" stroke="#334155"/>
     <rect width="180" height="26" fill="#e2e8f0" stroke="#334155"/>
@@ -188,7 +188,7 @@ expression: result.svg.as_str()
     <text x="93.5" y="13" font-size="13" text-anchor="middle" dominant-baseline="central">webhooks</text>
     <text x="8" y="36" font-size="10" text-anchor="start" dominant-baseline="central">PK</text><text x="26" y="36" font-size="12" text-anchor="start" dominant-baseline="central">id</text><text x="179" y="36" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="id" cx="0" cy="36" r="0"/><circle data-port="id" cx="187" cy="36" r="0"/><text x="8" y="56" font-size="10" text-anchor="start" dominant-baseline="central">FK</text><text x="26" y="56" font-size="12" text-anchor="start" dominant-baseline="central">integration_id</text><text x="179" y="56" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="integration_id" cx="0" cy="56" r="0"/><circle data-port="integration_id" cx="187" cy="56" r="0"/><text x="26" y="76" font-size="12" text-anchor="start" dominant-baseline="central">url</text><text x="179" y="76" font-size="12" text-anchor="end" dominant-baseline="central">text</text><circle data-port="url" cx="0" cy="76" r="0"/><circle data-port="url" cx="187" cy="76" r="0"/><text x="26" y="96" font-size="12" text-anchor="start" dominant-baseline="central">secret</text><text x="179" y="96" font-size="12" text-anchor="end" dominant-baseline="central">text</text><circle data-port="secret" cx="0" cy="96" r="0"/><circle data-port="secret" cx="187" cy="96" r="0"/></g>
     </g>
-    <g data-node="webhook_deliveries" data-custom="true">
+    <g data-node="webhook_deliveries" data-custom="true" transform="translate(0 -20)">
       <g transform="translate(1180 760)">
     <rect data-bounds="true" width="221" height="106" fill="white" stroke="#334155"/>
     <rect width="221" height="26" fill="#e2e8f0" stroke="#334155"/>
@@ -196,36 +196,36 @@ expression: result.svg.as_str()
     <text x="8" y="36" font-size="10" text-anchor="start" dominant-baseline="central">PK</text><text x="26" y="36" font-size="12" text-anchor="start" dominant-baseline="central">id</text><text x="213" y="36" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="id" cx="0" cy="36" r="0"/><circle data-port="id" cx="221" cy="36" r="0"/><text x="8" y="56" font-size="10" text-anchor="start" dominant-baseline="central">FK</text><text x="26" y="56" font-size="12" text-anchor="start" dominant-baseline="central">webhook_id</text><text x="213" y="56" font-size="12" text-anchor="end" dominant-baseline="central">uuid</text><circle data-port="webhook_id" cx="0" cy="56" r="0"/><circle data-port="webhook_id" cx="221" cy="56" r="0"/><text x="26" y="76" font-size="12" text-anchor="start" dominant-baseline="central">status</text><text x="213" y="76" font-size="12" text-anchor="end" dominant-baseline="central">integer</text><circle data-port="status" cx="0" cy="76" r="0"/><circle data-port="status" cx="221" cy="76" r="0"/><text x="26" y="96" font-size="12" text-anchor="start" dominant-baseline="central">delivered_at</text><text x="213" y="96" font-size="12" text-anchor="end" dominant-baseline="central">timestamptz</text><circle data-port="delivered_at" cx="0" cy="96" r="0"/><circle data-port="delivered_at" cx="221" cy="96" r="0"/></g>
     </g>
   </g>
-  <path id="connector-0" data-from="password_credentials" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 103 L 881 103"/>
-  <path id="connector-1" data-from="oauth_identities" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 253 L 912 253 L 912 114 L 881 114"/>
-  <path id="connector-2" data-from="webauthn_credentials" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 393 L 905 393 L 905 132 L 881 132"/>
-  <path id="connector-3" data-from="mfa_totp_secrets" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 771 220 L 771 186"/>
-  <path id="connector-4" data-from="email_verifications" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 667 413 L 646 413 L 646 173 L 660 173"/>
-  <path id="connector-5" data-from="sessions" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 533 L 889 533 L 889 154.5 L 881 154.5"/>
-  <path id="connector-6" data-from="posts" data-from-port="author_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 221 60 L 221 36 L 697 36 L 697 60"/>
-  <path id="connector-7" data-from="posts" data-from-port="reply_to_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 114 60 L 114 52 L 167 52 L 167 60"/>
-  <path id="connector-8" data-from="comments" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 320 113 L 274 113"/>
-  <path id="connector-9" data-from="comments" data-from-port="author_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 471 113 L 493 113 L 493 78 L 660 78"/>
-  <path id="connector-10" data-from="likes" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 164 306 L 164 314 L 558 314 L 558 98 L 660 98"/>
-  <path id="connector-11" data-from="likes" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 164 220 L 164 186"/>
-  <path id="connector-12" data-from="reposts" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 527 263 L 535 263 L 535 88 L 660 88"/>
-  <path id="connector-13" data-from="reposts" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 320 263 L 298 263 L 298 155 L 274 155"/>
-  <path id="connector-14" data-from="post_hashtags" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 60 393 L 36 393 L 36 154.5 L 60 154.5"/>
-  <path id="connector-15" data-from="post_hashtags" data-from-port="hashtag_id" data-to="hashtags" data-to-port="id" fill="none" stroke="black" d="M 218 393 L 320 393"/>
-  <path id="connector-16" data-from="follows" data-from-port="follower_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 274 529 L 574 529 L 574 110 L 660 110"/>
-  <path id="connector-17" data-from="follows" data-from-port="followee_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 167 543 L 770.5 123"/>
-  <path id="connector-18" data-from="conversation_members" data-from-port="conversation_id" data-to="conversations" data-to-port="id" fill="none" stroke="black" d="M 1500 103 L 1467 103"/>
-  <path id="connector-19" data-from="conversation_members" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1622 60 L 1622 0 L 771 0 L 771 60"/>
-  <path id="connector-20" data-from="messages" data-from-port="conversation_id" data-to="conversations" data-to-port="id" fill="none" stroke="black" d="M 1357 200 L 1357 166"/>
-  <path id="connector-21" data-from="messages" data-from-port="sender_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1260 253 L 1240 253 L 1240 36 L 807 36 L 807 60"/>
-  <path id="connector-22" data-from="attachments" data-from-port="message_id" data-to="messages" data-to-port="id" fill="none" stroke="black" d="M 1500 253 L 1454 253"/>
-  <path id="connector-23" data-from="message_reactions" data-from-port="message_id" data-to="messages" data-to-port="id" fill="none" stroke="black" d="M 1500 369 L 1357 369 L 1357 306"/>
-  <path id="connector-24" data-from="message_reactions" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1500 397 L 1200 397 L 1200 52 L 844 52 L 844 60"/>
-  <path id="connector-25" data-from="notifications" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1240 602 L 630 602 L 630 161 L 660 161"/>
-  <path id="connector-26" data-from="notifications" data-from-port="actor_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1356.5 623 L 770.5 123"/>
-  <path id="connector-27" data-from="notifications" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 1337 686 L 1337 712 L 0 712 L 0 123 L 60 123"/>
-  <path id="connector-28" data-from="push_subscriptions" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1578 560 L 1578 500 L 1788 500 L 1788 -20 L 734 -20 L 734 60"/>
-  <path id="connector-29" data-from="integrations" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 660 823 L 600 823 L 600 132 L 660 132"/>
-  <path id="connector-30" data-from="webhooks" data-from-port="integration_id" data-to="integrations" data-to-port="id" fill="none" stroke="black" d="M 920 813 L 840 813"/>
-  <path id="connector-31" data-from="webhook_deliveries" data-from-port="webhook_id" data-to="webhooks" data-to-port="id" fill="none" stroke="black" d="M 1180 813 L 1107 813"/>
+  <path id="connector-0" data-from="password_credentials" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 96 L 881 96"/>
+  <path id="connector-1" data-from="oauth_identities" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 256 L 905 256 L 905 96 L 881 96"/>
+  <path id="connector-2" data-from="webauthn_credentials" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 396 L 889 396 L 889 96 L 881 96"/>
+  <path id="connector-3" data-from="mfa_totp_secrets" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 660 256 L 656 256 L 656 96 L 660 96"/>
+  <path id="connector-4" data-from="email_verifications" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 669 416 L 640 416 L 640 96 L 660 96"/>
+  <path id="connector-5" data-from="sessions" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 536 L 604 536 L 604 96 L 660 96"/>
+  <path id="connector-6" data-from="posts" data-from-port="author_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 274 116 L 292 116 L 292 154 L 493 154 L 493 96 L 660 96"/>
+  <path id="connector-7" data-from="posts" data-from-port="reply_to_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 60 156 L 58 156 L 58 96 L 60 96"/>
+  <path id="connector-8" data-from="comments" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 300 96 L 274 96"/>
+  <path id="connector-9" data-from="comments" data-from-port="author_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 451 116 L 473 116 L 473 96 L 660 96"/>
+  <path id="connector-10" data-from="likes" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 267 256 L 282 256 L 282 194 L 524 194 L 524 96 L 660 96"/>
+  <path id="connector-11" data-from="likes" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 60 276 L 42 276 L 42 96 L 60 96"/>
+  <path id="connector-12" data-from="reposts" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 527 256 L 540 256 L 540 96 L 660 96"/>
+  <path id="connector-13" data-from="reposts" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 320 276 L 282 276 L 282 314 L 26 314 L 26 96 L 60 96"/>
+  <path id="connector-14" data-from="post_hashtags" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 60 376 L 0 376 L 0 96 L 60 96"/>
+  <path id="connector-15" data-from="post_hashtags" data-from-port="hashtag_id" data-to="hashtags" data-to-port="id" fill="none" stroke="black" d="M 218 396 L 320 396"/>
+  <path id="connector-16" data-from="follows" data-from-port="follower_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 274 536 L 556 536 L 556 96 L 660 96"/>
+  <path id="connector-17" data-from="follows" data-from-port="followee_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 274 556 L 572 556 L 572 96 L 660 96"/>
+  <path id="connector-18" data-from="conversation_members" data-from-port="conversation_id" data-to="conversations" data-to-port="id" fill="none" stroke="black" d="M 1520 96 L 1467 96"/>
+  <path id="connector-19" data-from="conversation_members" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1520 116 L 1484 116 L 1484 -16 L 897 -16 L 897 96 L 881 96"/>
+  <path id="connector-20" data-from="messages" data-from-port="conversation_id" data-to="conversations" data-to-port="id" fill="none" stroke="black" d="M 1260 256 L 1236 256 L 1236 96 L 1260 96"/>
+  <path id="connector-21" data-from="messages" data-from-port="sender_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1260 276 L 1200 276 L 1200 40 L 912 40 L 912 96 L 881 96"/>
+  <path id="connector-22" data-from="attachments" data-from-port="message_id" data-to="messages" data-to-port="id" fill="none" stroke="black" d="M 1520 236 L 1454 236"/>
+  <path id="connector-23" data-from="message_reactions" data-from-port="message_id" data-to="messages" data-to-port="id" fill="none" stroke="black" d="M 1520 376 L 1485 376 L 1485 236 L 1454 236"/>
+  <path id="connector-24" data-from="message_reactions" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1520 396 L 1115 396 L 1115 156 L 912 156 L 912 96 L 881 96"/>
+  <path id="connector-25" data-from="notifications" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1453 616 L 1461 616 L 1461 712 L 624 712 L 624 96 L 660 96"/>
+  <path id="connector-26" data-from="notifications" data-from-port="actor_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1260 636 L 1157 636 L 1157 0 L 905 0 L 905 96 L 881 96"/>
+  <path id="connector-27" data-from="notifications" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 1260 656 L 1200 656 L 1200 674 L -20 674 L -20 52 L 282 52 L 282 96 L 274 96"/>
+  <path id="connector-28" data-from="push_subscriptions" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 1655 616 L 1800 616 L 1800 -32 L 889 -32 L 889 96 L 881 96"/>
+  <path id="connector-29" data-from="integrations" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 660 836 L 588 836 L 588 96 L 660 96"/>
+  <path id="connector-30" data-from="webhooks" data-from-port="integration_id" data-to="integrations" data-to-port="id" fill="none" stroke="black" d="M 920 816 L 840 816"/>
+  <path id="connector-31" data-from="webhook_deliveries" data-from-port="webhook_id" data-to="webhooks" data-to-port="id" fill="none" stroke="black" d="M 1180 796 L 1107 796"/>
 </svg>

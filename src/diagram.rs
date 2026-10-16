@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::arrow::{drawn_connectors, names_an_end};
 use crate::geometry::{Bounds, Point, enclosing, number_list, parse_number, point, points_bounds};
 use crate::pathdata;
+use crate::route::Side;
 use crate::text::{label_bounds, label_text_index, text_bounds};
 use crate::xml::{Document, Element, Path};
 
@@ -36,6 +37,18 @@ pub struct DiagramNode {
     /// checked to fit, since its drawing decides its size.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub custom: bool,
+    /// The named points its picture marks for connector ends to meet.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ports: Vec<Port>,
+}
+
+/// A point a custom node's picture marks `data-port` for connector ends.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Port {
+    pub name: String,
+    pub point: Point,
+    /// The side of the node's bounds it lies on, which connectors leave it out of.
+    pub side: Side,
 }
 
 impl DiagramNode {
@@ -45,11 +58,18 @@ impl DiagramNode {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiagramConnector {
     pub id: String,
     pub from: String,
     pub to: String,
     pub points: Vec<Point>,
+    /// The port of `from` it leaves, when it names one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_port: Option<String>,
+    /// The port of `to` it reaches, when it names one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_port: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -285,6 +305,7 @@ struct Recognized {
     labels: Vec<Path>,
     allow_overlap: bool,
     custom: bool,
+    ports: Vec<Port>,
 }
 
 /// Whether a node group is drawn as it is: its contents are a picture, not
@@ -351,6 +372,22 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
             if annotated && is_custom(group) {
                 let (shape, bounds) = custom_extent(document, path)?;
                 let picture = picture_elements(document, path);
+                let ports = picture
+                    .iter()
+                    .filter(|(_, element)| element.name == "circle" && element.has_attr("data-port"))
+                    .map(|(port, element)| {
+                        let offset = translation(document, port);
+                        let at = point(
+                            number_attribute(element, "cx") + offset.x,
+                            number_attribute(element, "cy") + offset.y,
+                        );
+                        Port {
+                            name: element.attr("data-port").to_owned(),
+                            point: at,
+                            side: Side::nearest(&bounds, at),
+                        }
+                    })
+                    .collect();
                 return Some(Recognized {
                     path: path.clone(),
                     id,
@@ -363,6 +400,7 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
                         .collect(),
                     allow_overlap,
                     custom: true,
+                    ports,
                 });
             }
             // A group inside a custom node's picture is part of the picture.
@@ -402,6 +440,7 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
                 labels,
                 allow_overlap,
                 custom: false,
+                ports: Vec::new(),
             })
         })
         .collect()
@@ -428,6 +467,7 @@ pub fn read(document: &Document) -> Diagram {
                 parent_id,
                 allow_overlap: node.allow_overlap,
                 custom: node.custom,
+                ports: node.ports.clone(),
             }
         })
         .collect();
@@ -436,11 +476,16 @@ pub fn read(document: &Document) -> Diagram {
     let phase = tracing::info_span!("read_connectors").entered();
     let connectors = drawn_connectors(document)
         .into_iter()
-        .map(|drawn| DiagramConnector {
-            id: drawn.id,
-            from: drawn.from,
-            to: drawn.to,
-            points: drawn.points,
+        .map(|drawn| {
+            let shaft = document.element(&drawn.shaft);
+            DiagramConnector {
+                from_port: non_empty(shaft.attr("data-from-port")).map(str::to_owned),
+                to_port: non_empty(shaft.attr("data-to-port")).map(str::to_owned),
+                id: drawn.id,
+                from: drawn.from,
+                to: drawn.to,
+                points: drawn.points,
+            }
         })
         .collect();
 

@@ -2053,3 +2053,236 @@ fn pushes_another_connector_s_label_aside_to_keep_a_line_straight() {
     assert!(label.bottom() <= 150.0, "{label:?}");
     assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
 }
+
+/// `article` with the port "author" on its bottom, left of the middle, and `user`
+/// below and to the right with the port "id" on its left, joined by
+/// `connector` (none when empty).
+fn tables_with_ports(connector: &str) -> String {
+    format!(
+        r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="author" cx="30" cy="96" r="0"/>
+          </g>
+        </g>
+        <g data-node="user" data-custom="true">
+          <g transform="translate(300 200)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="id" cx="0" cy="38" r="0"/>
+          </g>
+        </g>
+        {connector}
+      </svg>
+    "#
+    )
+}
+
+/// Given a connector from the port "author" at the bottom of `article` to
+///   the port "id" on the left of `user`, drawn as a straight line between
+///   their centres
+/// When the diagram is fixed
+/// Then it leaves "author" downwards and reaches "id" from the left
+#[test]
+fn routes_a_connector_from_and_to_the_ports_it_names() {
+    let svg = tables_with_ports(
+        r#"<path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="id" d="M 80 68 L 360 248"/>"#,
+    );
+
+    let result = fix(&svg);
+
+    let points = connector_points(&result.report, "wrote");
+    let (start, next) = (points[0], points[1]);
+    let (end, last) = (points[points.len() - 1], points[points.len() - 2]);
+    assert_eq!(start, Point { x: 50.0, y: 116.0 });
+    assert!(next.x == start.x && next.y > start.y, "{points:?}");
+    assert_eq!(end, Point { x: 300.0, y: 238.0 });
+    assert!(last.y == end.y && last.x < end.x, "{points:?}");
+}
+
+/// Given a connector leaving the port "author" of `article` and drawn into
+///   the left of `user` 12px below its port "id", with no other issue
+/// When the diagram is fixed
+/// Then it is rerouted to reach "id"
+#[test]
+fn reroutes_a_connector_reaching_its_node_off_the_port_it_names() {
+    let svg = tables_with_ports(
+        r#"<path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="id" d="M 50 116 L 50 250 L 300 250"/>"#,
+    );
+    assert!(has_issue(&analyze(&svg), "connector-end-off-port"));
+
+    let result = fix(&svg);
+
+    let points = connector_points(&result.report, "wrote");
+    assert_eq!(points[points.len() - 1], Point { x: 300.0, y: 238.0 }, "{points:?}");
+}
+
+/// Given `article` marking its port "author" on its left and then on its
+///   right, and a connector from "author" to `user` to the right, drawn as
+///   a straight line between their centres
+/// When the diagram is fixed
+/// Then it leaves from the right one, which needs no way round `article`
+#[test]
+fn routes_from_the_place_of_a_port_that_makes_the_better_route() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="author" cx="0" cy="62" r="0"/>
+            <circle data-port="author" cx="120" cy="62" r="0"/>
+          </g>
+        </g>
+        <g data-node="user" data-custom="true">
+          <g transform="translate(300 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+          </g>
+        </g>
+        <path id="wrote" data-from="article" data-from-port="author" data-to="user" d="M 80 68 L 360 68"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+
+    let points = connector_points(&result.report, "wrote");
+    assert_eq!(points[0], Point { x: 140.0, y: 82.0 }, "{points:?}");
+}
+
+/// Given `user` with the port "id" near the top of its left side, a
+///   connector into "id" from `article` far below, and one from `editor`,
+///   to the left and above `article`, into `user` at no port, both drawn
+///   as straight lines between centres
+/// When the diagram is fixed
+/// Then `editor`'s connector meets the left of `user` at the even slot the
+///   end at "id" leaves free, instead of the one beside it
+#[test]
+fn spreads_a_free_end_around_one_its_port_holds_on_the_same_side() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 440">
+        <g data-node="editor"><rect x="20" y="150" width="120" height="56"/><text x="80" y="183" text-anchor="middle" font-size="14">Editor</text></g>
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 300)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="author" cx="120" cy="48" r="0"/>
+          </g>
+        </g>
+        <g data-node="user" data-custom="true">
+          <g transform="translate(300 160)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="id" cx="0" cy="30" r="0"/>
+          </g>
+        </g>
+        <path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="id" d="M 80 348 L 360 208"/>
+        <path id="edited" data-from="editor" data-to="user" d="M 80 178 L 360 208"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+
+    let (wrote, edited) = (
+        connector_points(&result.report, "wrote"),
+        connector_points(&result.report, "edited"),
+    );
+    assert_eq!(wrote[wrote.len() - 1], Point { x: 300.0, y: 190.0 }, "{wrote:?}");
+    assert_eq!(edited[edited.len() - 1], Point { x: 300.0, y: 224.0 }, "{edited:?}");
+}
+
+/// Given a connector into a port "email" that `user` does not declare, and
+///   the same connector naming no port, both drawn as a straight line
+///   between centres
+/// When each diagram is fixed
+/// Then both take the same route
+#[test]
+fn routes_an_end_naming_an_unknown_port_as_one_naming_none() {
+    let unknown = tables_with_ports(
+        r#"<path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="email" d="M 80 68 L 360 248"/>"#,
+    );
+    let none = tables_with_ports(
+        r#"<path id="wrote" data-from="article" data-from-port="author" data-to="user" d="M 80 68 L 360 248"/>"#,
+    );
+
+    let (unknown, none) = (fix(&unknown), fix(&none));
+
+    assert_eq!(
+        connector_points(&unknown.report, "wrote"),
+        connector_points(&none.report, "wrote")
+    );
+}
+
+/// Given two connectors from `follows` to `user`, both drawn as a straight
+///   line between their centres
+/// When the diagram is fixed
+/// Then each is rerouted to run from side to side, and no end is left
+///   inside a node
+#[test]
+fn reroutes_each_of_two_connectors_joining_the_same_nodes() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200">
+        <g data-node="follows"><rect x="20" y="20" width="120" height="56"/><text x="80" y="53" text-anchor="middle" font-size="14">Follows</text></g>
+        <g data-node="user"><rect x="300" y="100" width="120" height="56"/><text x="360" y="133" text-anchor="middle" font-size="14">User</text></g>
+        <path id="follower" data-from="follows" data-to="user" d="M 80 48 L 360 128"/>
+        <path id="followee" data-from="follows" data-to="user" d="M 80 48 L 360 128"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+
+    for id in ["follower", "followee"] {
+        let points = connector_points(&result.report, id);
+        assert!(is_orthogonal(&points), "{id}: {points:?}");
+    }
+    assert!(
+        !has_issue(&result.report, "connector-endpoint-inside"),
+        "{:?}",
+        issue_codes(&result.report)
+    );
+}
+
+/// Given eight tables in two columns to the left of `user`, each joined
+///   to the one place of its port "id" by a straight line between centres
+/// When the diagram is fixed
+/// Then every one reaches "id" along an orthogonal route, merging with the
+///   others on the way in, and no issue is left
+#[test]
+fn routes_every_connector_into_a_port_they_share() {
+    let tables: Vec<(String, f64, f64)> = (0..8)
+        .map(|k| {
+            (
+                format!("t{k}"),
+                20.0 + f64::from(k % 2) * 160.0,
+                20.0 + f64::from(k / 2) * 80.0,
+            )
+        })
+        .collect();
+    let svg = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 360">{}<g data-node="user" data-custom="true"><g transform="translate(500 100)"><rect data-bounds="true" width="120" height="96"/><circle data-port="id" cx="0" cy="20" r="0"/></g></g>{}</svg>"#,
+        tables
+            .iter()
+            .map(|(id, x, y)| format!(
+                r#"<g data-node="{id}" data-custom="true"><g transform="translate({x} {y})"><rect data-bounds="true" width="100" height="60"/><circle data-port="user_id" cx="100" cy="30" r="0"/></g></g>"#
+            ))
+            .collect::<String>(),
+        tables
+            .iter()
+            .map(|(id, x, y)| format!(
+                r#"<path id="{id}-user" data-from="{id}" data-from-port="user_id" data-to="user" data-to-port="id" d="M {} {} L 560 148"/>"#,
+                x + 50.0,
+                y + 30.0
+            ))
+            .collect::<String>(),
+    );
+
+    let result = fix(&svg);
+
+    for (id, _, _) in &tables {
+        let points = connector_points(&result.report, &format!("{id}-user"));
+        assert!(is_orthogonal(&points), "{id}: {points:?}");
+        assert_eq!(
+            points[points.len() - 1],
+            Point { x: 500.0, y: 120.0 },
+            "{id}: {points:?}"
+        );
+    }
+    assert_eq!(issue_codes(&result.report), Vec::<String>::new());
+}

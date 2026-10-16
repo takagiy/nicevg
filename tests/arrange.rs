@@ -572,20 +572,70 @@ fn arranges_a_c4_container_diagram_without_issues_or_dents() {
     assert_fix_snapshots!(result);
 }
 
+const SOCIAL_APP_ER: &str = include_str!("fixtures/social-app-er.svg");
+
+/// The social app's ER diagram arranged, once for every test that reads it.
+fn social_app_er_arranged() -> &'static FixResult {
+    static ARRANGED: std::sync::OnceLock<FixResult> = std::sync::OnceLock::new();
+    ARRANGED.get_or_init(|| arrange(SOCIAL_APP_ER))
+}
+
 /// Given a social app's ER diagram drafted with straight lines between
 ///   table centres: 24 tables drawn as custom nodes in five areas, and 32
-///   foreign keys, nine of them to users, two pairs of tables joined
-///   twice and a table referring to itself
+///   foreign keys, each from its column's port to the port of the column
+///   it refers to, nine of them to users, two pairs of tables joined twice
+///   and a table referring to itself
 /// When the diagram is arranged
 /// Then the layout is kept, and its quality is recorded
 #[test]
 fn arranges_a_social_app_er_diagram_keeping_its_layout() {
-    let svg = include_str!("fixtures/social-app-er.svg");
+    let result = social_app_er_arranged();
 
-    let result = arrange(svg);
-
-    assert_layout_kept(svg, &result);
+    assert_layout_kept(SOCIAL_APP_ER, result);
     assert_fix_snapshots!(result);
+}
+
+/// Given the social app's ER diagram
+/// When it is arranged
+/// Then every foreign key leaves the row of its column and reaches the row
+///   of the column it refers to
+#[test]
+fn draws_each_foreign_key_of_the_social_app_from_its_column_to_the_one_it_refers_to() {
+    let report = &social_app_er_arranged().report;
+    let at_port = |node: &str, port: Option<&str>, end: Point| {
+        report
+            .diagram
+            .node(node)
+            .expect(node)
+            .ports
+            .iter()
+            .any(|place| Some(place.name.as_str()) == port && place.point == end)
+    };
+
+    let off: Vec<&str> = report
+        .diagram
+        .connectors
+        .iter()
+        .filter(|connector| {
+            let (start, end) = (connector.points[0], connector.points[connector.points.len() - 1]);
+            !at_port(&connector.from, connector.from_port.as_deref(), start)
+                || !at_port(&connector.to, connector.to_port.as_deref(), end)
+        })
+        .map(|connector| connector.id.as_str())
+        .collect();
+
+    assert_eq!(off, Vec::<&str>::new());
+}
+
+/// Given the social app's ER diagram, with two pairs of tables joined by
+///   two foreign keys each
+/// When it is arranged
+/// Then no issue is left
+#[test]
+fn arranges_the_social_app_er_diagram_without_issues() {
+    let report = &social_app_er_arranged().report;
+
+    assert_eq!(issue_codes(report), Vec::<String>::new());
 }
 
 /// Given a tall loan origination DFD drafted with straight lines between
@@ -707,4 +757,93 @@ fn leaves_a_diagram_with_nothing_to_improve_unchanged() {
 
     assert_eq!(result.svg, fix(svg).svg);
     assert!(change_codes(&result).iter().all(|code| code != "arrange-node"));
+}
+
+/// `article` with the port "author" on its right and `user` to its right
+/// with the port "id" on its left 14px lower, joined port to port by a
+/// connector stepping down between them.
+const PORTS_A_LITTLE_APART: &str = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200">
+    <g data-node="article" data-custom="true">
+      <g transform="translate(20 20)">
+        <rect data-bounds="true" width="120" height="96"/>
+        <circle data-port="author" cx="120" cy="62" r="0"/>
+      </g>
+    </g>
+    <g data-node="user" data-custom="true">
+      <g transform="translate(300 20)">
+        <rect data-bounds="true" width="120" height="96"/>
+        <circle data-port="id" cx="0" cy="76" r="0"/>
+      </g>
+    </g>
+    <path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="id"
+      d="M 140 82 L 220 82 L 220 96 L 300 96"/>
+  </svg>
+"#;
+
+/// Given a connector between two ports 14px apart in height
+/// When the diagram is arranged and a node moves
+/// Then the connector still leaves "author" and reaches "id" where they
+///   are now
+#[test]
+fn keeps_connector_ends_at_their_ports_when_a_node_moves() {
+    let result = arrange(PORTS_A_LITTLE_APART);
+    let report = &result.report;
+    let port = |node: &str| report.diagram.node(node).expect(node).ports[0].point;
+    let moved = ["article", "user"]
+        .iter()
+        .any(|id| node_bounds(report, id).y != node_bounds(&analyze(PORTS_A_LITTLE_APART), id).y);
+    assert!(moved, "no node moved");
+
+    let points = connector_points(report, "wrote");
+
+    assert_eq!(
+        (points[0], points[points.len() - 1]),
+        (port("article"), port("user")),
+        "{points:?}"
+    );
+}
+
+/// Given a straight connector between two ports facing each other a
+///   quarter of the way down their sides, the only connector on either
+/// When the diagram is arranged
+/// Then nothing changes: off the middle of their sides is where those
+///   ports are
+#[test]
+fn leaves_a_connector_between_ports_off_the_middle_of_their_sides_as_it_is() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="id" cx="120" cy="24" r="0"/>
+          </g>
+        </g>
+        <g data-node="user" data-custom="true">
+          <g transform="translate(300 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="id" cx="0" cy="24" r="0"/>
+          </g>
+        </g>
+        <path id="same" data-from="article" data-from-port="id" data-to="user" data-to-port="id" d="M 140 44 L 300 44"/>
+      </svg>
+    "#;
+
+    let result = arrange(svg);
+
+    assert_eq!(change_codes(&result), Vec::<String>::new());
+}
+
+/// Given a connector between two facing ports 14px apart in height
+/// When the diagram is arranged
+/// Then a node moves so the ports line up, and the connector runs straight
+#[test]
+fn lines_up_facing_ports_a_little_apart_to_straighten_their_connector() {
+    let result = arrange(PORTS_A_LITTLE_APART);
+
+    let report = &result.report;
+    let port = |node: &str| report.diagram.node(node).expect(node).ports[0].point;
+    let points = connector_points(report, "wrote");
+    assert_eq!(points, [port("article"), port("user")]);
+    assert_eq!(points[0].y, points[1].y);
 }

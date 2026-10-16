@@ -1098,6 +1098,7 @@ mod tests {
             parent_id: None,
             allow_overlap: false,
             custom: false,
+            ports: Vec::new(),
         }
     }
 
@@ -1149,6 +1150,8 @@ mod tests {
                 from: "a".to_owned(),
                 to: "b".to_owned(),
                 points: vec![point(100.0, 24.0), point(150.0, 24.0)],
+                from_port: None,
+                to_port: None,
             }],
             ..diagram(row.clone())
         };
@@ -1222,6 +1225,8 @@ mod tests {
                     from: "source".to_owned(),
                     to: "target".to_owned(),
                     points: vec![point(0.0, y), point(150.0, y)],
+                    from_port: None,
+                    to_port: None,
                 })
                 .collect(),
             ..diagram(vec![node("source", -100.0, 100.0), node("target", 150.0, 100.0)])

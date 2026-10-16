@@ -690,3 +690,136 @@ fn reports_a_connector_end_running_along_the_side_it_ends_on() {
         [["order", "orders"]]
     );
 }
+
+/// Two tables, `article` with a port "author" on each side at its middle
+/// row and `user` with a port "id" on each side at its top row, and a
+/// connector between them drawn as `d`.
+fn tables_joined_by(d: &str, to_port: &str) -> String {
+    format!(
+        r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 160">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="author" cx="0" cy="62" r="0"/>
+            <circle data-port="author" cx="120" cy="62" r="0"/>
+          </g>
+        </g>
+        <g data-node="user" data-custom="true">
+          <g transform="translate(300 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="id" cx="0" cy="38" r="0"/>
+            <circle data-port="id" cx="120" cy="38" r="0"/>
+          </g>
+        </g>
+        <path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="{to_port}" d="{d}"/>
+      </svg>
+    "#
+    )
+}
+
+/// Given a connector leaving its port "author" but reaching the side of
+///   `user` below its port "id"
+/// When the diagram is analyzed
+/// Then the end is reported as off its port, and the start is not
+#[test]
+fn reports_a_connector_end_off_the_port_it_names() {
+    let svg = tables_joined_by("M 140 82 L 300 82", "id");
+
+    let report = analyze(svg.as_str());
+
+    assert_eq!(
+        issues_json(&report)
+            .into_iter()
+            .filter(|issue| issue["code"] == "connector-end-off-port")
+            .collect::<Vec<_>>(),
+        [json!({
+            "code": "connector-end-off-port",
+            "message": "Connector \"wrote\" ends off port \"id\" of node \"user\".",
+            "elements": ["wrote", "user"],
+            "details": { "endpoint": "end", "port": "id" },
+        })]
+    );
+}
+
+/// Given a connector naming a port "email" that `user` does not declare
+/// When the diagram is analyzed
+/// Then the end is reported as naming an unknown port, not as off it
+#[test]
+fn reports_a_connector_end_naming_a_port_its_node_lacks() {
+    let svg = tables_joined_by("M 140 82 L 220 82 L 220 58 L 300 58", "email");
+
+    let report = analyze(svg.as_str());
+
+    assert_eq!(
+        issues_json(&report)
+            .into_iter()
+            .filter(|issue| issue["code"].as_str().is_some_and(|code| code.contains("port")))
+            .collect::<Vec<_>>(),
+        [json!({
+            "code": "connector-unknown-port",
+            "message": "Connector \"wrote\" ends at port \"email\", which node \"user\" does not have.",
+            "elements": ["wrote", "user"],
+            "details": { "endpoint": "end", "port": "email" },
+        })]
+    );
+}
+
+/// `article` and `comment` joined to the port "id" of `user`, the two
+/// connectors meeting 40px before it and running on together into it.
+const MERGING_INTO_ONE_PORT: &str = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 280">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="author" cx="120" cy="62" r="0"/>
+          </g>
+        </g>
+        <g data-node="comment" data-custom="true">
+          <g transform="translate(20 160)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="author" cx="120" cy="42" r="0"/>
+          </g>
+        </g>
+        <g data-node="user" data-custom="true">
+          <g transform="translate(300 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="id" cx="0" cy="38" r="0"/>
+          </g>
+        </g>
+        <path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="id"
+          d="M 140 82 L 260 82 L 260 58 L 300 58"/>
+        <path id="commented" data-from="comment" data-from-port="author" data-to="user" data-to-port="id"
+          d="M 140 202 L 260 202 L 260 58 L 300 58"/>
+      </svg>
+    "#;
+
+/// Given two connectors from `article` and `comment` to the port "id" of
+///   `user`, joining 40px before it and running on together into it
+/// When the diagram is analyzed
+/// Then their shared run is not reported as an overlap
+#[test]
+fn does_not_report_connectors_merging_into_one_port_as_overlapping() {
+    let svg = MERGING_INTO_ONE_PORT;
+
+    let report = analyze(svg);
+
+    assert_eq!(
+        issues_with_code(&report, "connector-overlap"),
+        Vec::<Vec<String>>::new()
+    );
+}
+
+/// Given two connectors joining 40px before the port "id" of `user`, one
+///   turning onto the other there
+/// When the diagram is analyzed
+/// Then the turn where they join is not reported as a near miss
+#[test]
+fn does_not_report_the_turn_where_connectors_merge_into_a_port_as_a_near_miss() {
+    let report = analyze(MERGING_INTO_ONE_PORT);
+
+    assert_eq!(
+        issues_with_code(&report, "connector-near-miss"),
+        Vec::<Vec<String>>::new()
+    );
+}

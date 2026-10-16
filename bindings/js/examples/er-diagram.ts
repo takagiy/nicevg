@@ -133,19 +133,23 @@ const edges = [
   { from: "webhook_deliveries.webhook_id", to: "webhooks.id" },
 ];
 
-// shortcut: render() does not read ports yet, so each edge goes to its table; pass `edges` as they are once it does.
-const node = (end: string) => end.split(".")[0]!;
-
 const image = render({
   nodes,
-  edges: edges.map((edge) => ({ from: node(edge.from), to: node(edge.to) })),
+  edges,
   style: { table, area },
   rootAttrs: { "font-family": "sans-serif" },
 });
 
-// A white background over the whole viewBox, first so everything draws over it.
+// A white background over the whole viewBox, first so everything draws over it, and an arrowhead
+// at the end of each foreign key, on the key it refers to.
+const arrow = `<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="black"/></marker></defs>`;
 process.stdout.write(
-  String(image).replace(/(<svg[^>]*viewBox="(\S+) (\S+) (\S+) (\S+)"[^>]*>)/, '$1\n  <rect x="$2" y="$3" width="$4" height="$5" fill="white"/>'),
+  String(image)
+    .replace(
+      /(<svg[^>]*viewBox="(\S+) (\S+) (\S+) (\S+)"[^>]*>)/,
+      `$1\n  ${arrow}\n  <rect x="$2" y="$3" width="$4" height="$5" fill="white"/>`,
+    )
+    .replace(/<path (id="connector-\d+" [^>]*)\/>/g, '<path $1 marker-end="url(#arrow)"/>'),
 );
 for (const issue of image.report.issues) {
   console.error(`${issue.code}: ${issue.message}`);

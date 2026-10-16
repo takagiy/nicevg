@@ -90,6 +90,12 @@ pub struct SketchConnector {
     pub label: Option<String>,
     #[serde(default)]
     pub font_size: Option<f64>,
+    /// The port of `from` it leaves, one its drawing marks `data-port`.
+    #[serde(default)]
+    pub from_port: Option<String>,
+    /// The port of `to` it reaches.
+    #[serde(default)]
+    pub to_port: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -103,6 +109,13 @@ pub enum SketchError {
     InvalidSvg { referrer: String, message: String },
     /// The root attribute `name` is not an XML name, or one nicevg writes.
     InvalidRootAttribute { name: String, message: String },
+    /// The field at `referrer` (such as `connectors[0].toPort`) names a
+    /// port that the drawing of `node` does not mark.
+    UnknownPort {
+        referrer: String,
+        node: String,
+        port: String,
+    },
 }
 
 impl std::fmt::Display for SketchError {
@@ -119,6 +132,12 @@ impl std::fmt::Display for SketchError {
             }
             SketchError::InvalidSvg { referrer, message } => write!(formatter, "{referrer}: {message}"),
             SketchError::InvalidRootAttribute { name, message } => write!(formatter, "rootAttrs.{name}: {message}"),
+            SketchError::UnknownPort { referrer, node, port } => {
+                write!(
+                    formatter,
+                    "{referrer} refers to port \"{port}\", which node \"{node}\" does not mark"
+                )
+            }
         }
     }
 }
@@ -164,8 +183,25 @@ pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
 
     let root_attrs = root_attributes(&sketch.root_attrs)?;
     let mut boxes: HashMap<&str, Bounds> = HashMap::new();
+    let mut ports: HashMap<&str, Vec<String>> = HashMap::new();
     for (index, node) in sketch.nodes.iter().enumerate() {
-        boxes.insert(node.id.as_str(), node_bounds(node, index, &root_attrs)?);
+        let (bounds, marked) = node_bounds(node, index, &root_attrs)?;
+        boxes.insert(node.id.as_str(), bounds);
+        ports.insert(node.id.as_str(), marked);
+    }
+    for (index, connector) in sketch.connectors.iter().enumerate() {
+        for (field, end, port) in [
+            ("fromPort", &connector.from, &connector.from_port),
+            ("toPort", &connector.to, &connector.to_port),
+        ] {
+            if let Some(port) = port.as_ref().filter(|port| !ports[end.as_str()].contains(port)) {
+                return Err(SketchError::UnknownPort {
+                    referrer: format!("connectors[{index}].{field}"),
+                    node: end.clone(),
+                    port: port.clone(),
+                });
+            }
+        }
     }
 
     let mut children: HashMap<&str, Vec<&SketchNode>> = HashMap::new();
@@ -209,11 +245,17 @@ pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
             .map(|(index, p)| format!("{} {} {}", if index == 0 { "M" } else { "L" }, number(p.x), number(p.y)))
             .collect::<Vec<_>>()
             .join(" ");
+        let port = |name: &str, port: &Option<String>| {
+            port.as_deref()
+                .map_or_else(String::new, |port| format!(r#" data-{name}-port="{}""#, escape(port)))
+        };
         let _ = writeln!(
             body,
-            r#"  <path id="{id}" data-from="{}" data-to="{}" fill="none" stroke="black" d="{d}"/>"#,
+            r#"  <path id="{id}" data-from="{}"{} data-to="{}"{} fill="none" stroke="black" d="{d}"/>"#,
             escape(&connector.from),
-            escape(&connector.to)
+            port("from", &connector.from_port),
+            escape(&connector.to),
+            port("to", &connector.to_port)
         );
         if let Some(label) = &connector.label {
             let (first, last) = (route[0], route[route.len() - 1]);
@@ -264,18 +306,22 @@ fn connector_id(index: usize) -> String {
 }
 
 /// Where a node lies: the box around its picture, or its given size.
-fn node_bounds(node: &SketchNode, index: usize, root_attrs: &str) -> Result<Bounds, SketchError> {
+/// A node's box, and the ports its drawing marks.
+fn node_bounds(node: &SketchNode, index: usize, root_attrs: &str) -> Result<(Bounds, Vec<String>), SketchError> {
     let referrer = format!("nodes[{index}]");
     let Some(svg) = &node.svg else {
         let (Some(width), Some(height)) = (node.width, node.height) else {
             return Err(SketchError::MissingSize { referrer });
         };
-        return Ok(Bounds {
-            x: node.x,
-            y: node.y,
-            width,
-            height,
-        });
+        return Ok((
+            Bounds {
+                x: node.x,
+                y: node.y,
+                width,
+                height,
+            },
+            Vec::new(),
+        ));
     };
     let invalid = |message: String| SketchError::InvalidSvg {
         referrer: format!("{referrer}.svg"),
@@ -288,11 +334,20 @@ fn node_bounds(node: &SketchNode, index: usize, root_attrs: &str) -> Result<Boun
     .map_err(|error| invalid(error.0))?;
     let (_, drawn) =
         custom_extent(&document, &[document.root_index()]).ok_or_else(|| invalid("draws nothing".to_owned()))?;
-    Ok(Bounds {
-        x: drawn.x + node.x,
-        y: drawn.y + node.y,
-        ..drawn
-    })
+    let ports = document
+        .descendants(&[document.root_index()])
+        .into_iter()
+        .filter(|(_, element)| element.name == "circle" && element.has_attr("data-port"))
+        .map(|(_, element)| element.attr("data-port").to_owned())
+        .collect();
+    Ok((
+        Bounds {
+            x: drawn.x + node.x,
+            y: drawn.y + node.y,
+            ..drawn
+        },
+        ports,
+    ))
 }
 
 static XML_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z_][A-Za-z0-9_.:-]*$").expect("valid pattern"));

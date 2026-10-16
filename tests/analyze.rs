@@ -3,7 +3,7 @@
 
 mod support;
 
-use nicevg::{DiagramConnector, DiagramNode, Shape, UnsupportedElement};
+use nicevg::{DiagramConnector, DiagramNode, Shape, Side, UnsupportedElement};
 use support::*;
 
 /// Given an SVG group explicitly marked as a diagram node
@@ -32,6 +32,7 @@ fn recognizes_an_annotated_node_with_its_box_and_label() {
             parent_id: None,
             allow_overlap: false,
             custom: false,
+            ports: vec![],
         }]
     );
 }
@@ -130,6 +131,8 @@ fn recognizes_an_annotated_connector_between_nodes() {
             from: "submit".to_owned(),
             to: "review".to_owned(),
             points: vec![point(120.0, 48.0), point(200.0, 48.0)],
+            from_port: None,
+            to_port: None,
         }]
     );
 }
@@ -173,6 +176,8 @@ fn recognizes_an_annotated_group_of_a_line_and_a_polygon_head_as_a_connector() {
             from: "submit".to_owned(),
             to: "review".to_owned(),
             points: vec![point(120.0, 48.0), point(260.0, 48.0)],
+            from_port: None,
+            to_port: None,
         }]
     );
     assert!(report.issues.is_empty(), "{:?}", report.issues);
@@ -288,5 +293,166 @@ fn reports_standalone_freeform_shapes_as_unsupported() {
             id: "mechanism-wheel".to_owned(),
             tag_name: "circle".to_owned()
         }]
+    );
+}
+
+/// Given a custom node whose picture marks a point on the left of its
+///   bounds as the port "author"
+/// When the SVG is analyzed
+/// Then the node has a port named "author" at that point
+#[test]
+fn reads_a_marked_point_in_a_custom_node_s_picture_as_a_named_port() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="160" height="96" fill="white" stroke="black"/>
+            <text x="8" y="62" font-size="12">author</text>
+            <circle data-port="author" cx="0" cy="62" r="0"/>
+          </g>
+        </g>
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    let ports = &report.diagram.node("article").expect("article").ports;
+    assert_eq!(
+        ports
+            .iter()
+            .map(|port| (port.name.as_str(), port.point))
+            .collect::<Vec<_>>(),
+        [("author", point(20.0, 82.0))]
+    );
+}
+
+/// Given a custom node with a port on each side of its bounds
+/// When the SVG is analyzed
+/// Then each port faces out of the side it lies on
+#[test]
+fn faces_a_port_out_of_the_side_of_the_bounds_it_lies_on() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+        <g data-node="check" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="80" fill="white" stroke="black"/>
+            <circle data-port="in" cx="60" cy="0" r="0"/>
+            <circle data-port="yes" cx="120" cy="40" r="0"/>
+            <circle data-port="no" cx="60" cy="80" r="0"/>
+            <circle data-port="back" cx="0" cy="40" r="0"/>
+          </g>
+        </g>
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    let ports = &report.diagram.node("check").expect("check").ports;
+    assert_eq!(
+        ports
+            .iter()
+            .map(|port| (port.name.as_str(), port.side))
+            .collect::<Vec<_>>(),
+        [
+            ("in", Side::Top),
+            ("yes", Side::Right),
+            ("no", Side::Bottom),
+            ("back", Side::Left)
+        ]
+    );
+}
+
+/// Given a custom node with a port just inside its right side and one just
+///   outside its left side
+/// When the SVG is analyzed
+/// Then each port faces out of the side nearest to it
+#[test]
+fn faces_a_port_off_the_bounds_out_of_the_nearest_side() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+        <g data-node="row" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="80" fill="white" stroke="black"/>
+            <circle data-port="inside" cx="112" cy="20" r="0"/>
+            <circle data-port="outside" cx="-4" cy="60" r="0"/>
+          </g>
+        </g>
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    let ports = &report.diagram.node("row").expect("row").ports;
+    assert_eq!(
+        ports
+            .iter()
+            .map(|port| (port.name.as_str(), port.side))
+            .collect::<Vec<_>>(),
+        [("inside", Side::Right), ("outside", Side::Left)]
+    );
+}
+
+/// Given a custom node marking the same port name on its left and right
+/// When the SVG is analyzed
+/// Then the node has both points as places of that one port
+#[test]
+fn reads_points_of_the_same_name_as_places_of_one_port() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="160" height="96" fill="white" stroke="black"/>
+            <circle data-port="author" cx="0" cy="62" r="0"/>
+            <circle data-port="author" cx="160" cy="62" r="0"/>
+          </g>
+        </g>
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    let ports = &report.diagram.node("article").expect("article").ports;
+    assert_eq!(
+        ports
+            .iter()
+            .map(|port| (port.name.as_str(), port.point, port.side))
+            .collect::<Vec<_>>(),
+        [
+            ("author", point(20.0, 82.0), Side::Left),
+            ("author", point(180.0, 82.0), Side::Right)
+        ]
+    );
+}
+
+/// Given a connector naming the port it leaves and the port it reaches
+/// When the SVG is analyzed
+/// Then the report's connector carries both as fromPort and toPort
+#[test]
+fn reports_the_ports_a_connector_names() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 140">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="author" cx="120" cy="62" r="0"/>
+          </g>
+        </g>
+        <g data-node="user" data-custom="true">
+          <g transform="translate(260 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="id" cx="0" cy="62" r="0"/>
+          </g>
+        </g>
+        <path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="id"
+          d="M 140 82 L 260 82"/>
+      </svg>
+    "#;
+
+    let report = serde_json::to_value(analyze(svg)).expect("serializes");
+
+    let connector = &report["diagram"]["connectors"][0];
+    assert_eq!(
+        (&connector["fromPort"], &connector["toPort"]),
+        (&"author".into(), &"id".into())
     );
 }
