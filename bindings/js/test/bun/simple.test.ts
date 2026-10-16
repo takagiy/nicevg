@@ -106,6 +106,6 @@ describe("simple styles", () => {
       const sketch = sketchOf(file);
 
       expect(layout(render(styled(sketch)).report)).toEqual(layout(builtin(sketch)));
-    });
+    }, 120_000); // arranges the diagram twice: 40s on the macOS Intel runner
   }
 });
