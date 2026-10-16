@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { type AnalysisReport, type SketchConnector, render } from "nicevg";
+import { type AnalysisReport, type Bounds, type SketchConnector, render } from "nicevg";
 import { box, circle } from "nicevg/style/simple";
 
 import { call } from "../../src/native.ts";
@@ -108,4 +108,55 @@ describe("simple styles", () => {
       expect(layout(render(styled(sketch)).report)).toEqual(layout(builtin(sketch)));
     }, 120_000); // arranges the diagram twice: 40s on the macOS Intel runner
   }
+
+  /**
+   * Given a box and a circle with a label and no size
+   * When they are rendered
+   * Then each lies from its x and y, just big enough to keep its label 12px inside
+   */
+  test("fits a node given no size to its label", () => {
+    const image = render({
+      nodes: [
+        { id: "order", class: "box", x: 20, y: 20, label: "Order\nservice" },
+        { id: "user", class: "circle", x: 200, y: 20, label: "User" },
+      ],
+      style: { box, circle },
+    });
+
+    const node = (id: string) => image.report.diagram.nodes.find((node) => node.id === id)!;
+    const insets = ({ bounds, labelBounds: [label] }: { bounds: Bounds; labelBounds: Bounds[] }) => ({
+      across: Math.min(label!.x - bounds.x, bounds.x + bounds.width - label!.x - label!.width),
+      down: Math.min(label!.y - bounds.y, bounds.y + bounds.height - label!.y - label!.height),
+    });
+    const order = node("order"), user = node("user");
+    expect([order.bounds.x, order.bounds.y, user.bounds.x, user.bounds.y]).toEqual([20, 20, 200, 20]);
+    expect(insets(order).across).toBeCloseTo(12);
+    expect(insets(order).down).toBeCloseTo(12);
+    const [label, r] = [user.labelBounds[0]!, user.bounds.width / 2];
+    const corner = Math.hypot(label.width / 2, Math.max(user.bounds.y + r - label.y, label.y + label.height - user.bounds.y - r));
+    expect(r - corner).toBeGreaterThanOrEqual(12);
+    expect(r - corner).toBeLessThan(13);
+  });
+
+  /**
+   * Given a box and a circle painted with a fill, a stroke, its width and dashes, and the same two unpainted
+   * When they are drawn and rendered
+   * Then the painted shapes carry the paint, the unpainted are white outlined in black, and both lie alike
+   */
+  test("paints a node with the fill and stroke given", () => {
+    const paint = { fill: "#eef", stroke: "navy", strokeWidth: 2, strokeDasharray: "4 2" };
+    const nodes = [
+      { id: "order", class: "box" as const, x: 20, y: 20, label: "Order" },
+      { id: "user", class: "circle" as const, x: 200, y: 20, label: "User" },
+    ];
+    const bounds = (image: ReturnType<typeof render>) => image.report.diagram.nodes.map((node) => node.bounds);
+
+    for (const shape of [box({ label: "Order", ...paint }), circle({ label: "User", ...paint })]) {
+      expect(String(shape)).toContain('fill="#eef" stroke="navy" stroke-width="2" stroke-dasharray="4 2"');
+    }
+    expect(String(box({ label: "Order" }))).toContain('fill="white" stroke="black"/>');
+    expect(bounds(render({ nodes: nodes.map((node) => ({ ...node, ...paint })), style: { box, circle } }))).toEqual(
+      bounds(render({ nodes, style: { box, circle } })),
+    );
+  });
 });

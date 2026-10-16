@@ -62,8 +62,8 @@ export interface SketchConnector {
  * It lies around what the style draws, or the rect or circle the style marks
  * `data-bounds="true"`, and rendering moves it but never resizes it. Its
  * other fields, such as `label`, are for the style to use: `box` and
- * `circle` from `nicevg/style/simple` take `width`, `height`, `label` and
- * `fontSize`.
+ * `circle` from `nicevg/style/simple` take `label`, `fontSize` and, when
+ * the label alone should not size them, `width` and `height`.
  */
 export interface SketchNode {
   id: string;

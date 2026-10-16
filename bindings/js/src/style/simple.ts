@@ -1,6 +1,6 @@
 /**
  * Boxes and circles drawn the way nicevg draws a sketch's rect and circle
- * nodes: white, outlined in black, the label centred in lines. A label
+ * nodes: white, outlined in black unless painted, the label centred in lines. A label
  * too big for its node grows it as fixing grows those, so a diagram
  * drawn with these styles arranges as the same diagram without them.
  *
@@ -8,19 +8,29 @@
  * import { render } from "nicevg";
  * import { box, circle } from "nicevg/style/simple";
  *
- * render({ nodes: [{ id: "a", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" }], style: { box, circle } });
+ * render({ nodes: [{ id: "a", class: "box", x: 20, y: 20, label: "Order" }], style: { box, circle } });
  * ```
  */
 
 import { type SvgFragment, WIDE, svg } from "../draw.ts";
 
-/** A node a simple style draws: the box it takes, and its text. */
+/** A node a simple style draws: the box it takes, just big enough for its label when not given, and its text. */
 export interface SimpleNode {
-  width: number;
-  height: number;
+  width?: number;
+  height?: number;
   /** Its text, lines split at `\n`, centred. */
   label?: string;
   fontSize?: number;
+  /** The shape's paint, as the SVG attributes of the same names: white, outlined 1px in black, unless given. */
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  strokeDasharray?: string;
+}
+
+/** The shape's paint attributes. */
+function paint({ fill = "white", stroke = "black", strokeWidth, strokeDasharray }: SimpleNode): SvgFragment {
+  return svg`fill="${fill}" stroke="${stroke}"${strokeWidth === undefined ? "" : svg` stroke-width="${strokeWidth}"`}${strokeDasharray === undefined ? "" : svg` stroke-dasharray="${strokeDasharray}"`}`;
 }
 
 const LINE_HEIGHT = 1.2;
@@ -70,25 +80,38 @@ function label(content: string, cx: number, cy: number, size: number): { markup:
   };
 }
 
-/** A box, grown to keep its label 12px inside it. */
-export function box({ width, height, label: content, fontSize = 14 }: SimpleNode): SvgFragment {
+/** How far a label centred on a point reaches from it across and down. */
+function reach(content: string | undefined, size: number): [number, number] {
   if (content === undefined) {
-    return svg`<rect data-bounds="true" x="0" y="0" width="${width}" height="${height}" fill="white" stroke="black"/>`;
+    return [0, 0];
+  }
+  const { x, y, width, height } = label(content, 0, 0, size).bounds;
+  return [Math.max(-x, x + width), Math.max(-y, y + height)];
+}
+
+/** A box, grown to keep its label 12px inside it. */
+export function box({ label: content, fontSize = 14, ...node }: SimpleNode): SvgFragment {
+  const [dx, dy] = reach(content, fontSize);
+  const { width = 2 * (dx + PADDING), height = 2 * (dy + PADDING) } = node;
+  if (content === undefined) {
+    return svg`<rect data-bounds="true" x="0" y="0" width="${width}" height="${height}" ${paint(node)}/>`;
   }
   const text = label(content, width / 2, height / 2, fontSize);
   const left = Math.min(0, text.bounds.x - PADDING);
   const top = Math.min(0, text.bounds.y - PADDING);
   const right = Math.max(width, text.bounds.x + text.bounds.width + PADDING);
   const bottom = Math.max(height, text.bounds.y + text.bounds.height + PADDING);
-  return svg`<rect data-bounds="true" x="${left}" y="${top}" width="${right - left}" height="${bottom - top}" fill="white" stroke="black"/>${text.markup}`;
+  return svg`<rect data-bounds="true" x="${left}" y="${top}" width="${right - left}" height="${bottom - top}" ${paint(node)}/>${text.markup}`;
 }
 
 /** A circle in the middle of the box it is given, grown to keep its label 12px inside it. */
-export function circle({ width, height, label: content, fontSize = 14 }: SimpleNode): SvgFragment {
+export function circle({ label: content, fontSize = 14, ...node }: SimpleNode): SvgFragment {
+  const diameter = 2 * Math.ceil(Math.hypot(...reach(content, fontSize)) + PADDING);
+  const { width = diameter, height = diameter } = node;
   const [cx, cy] = [width / 2, height / 2];
   let radius = Math.min(width, height) / 2;
   if (content === undefined) {
-    return svg`<circle data-bounds="true" cx="${cx}" cy="${cy}" r="${radius}" fill="white" stroke="black"/>`;
+    return svg`<circle data-bounds="true" cx="${cx}" cy="${cy}" r="${radius}" ${paint(node)}/>`;
   }
   const text = label(content, cx, cy, fontSize);
   const dx = Math.max(Math.abs(text.bounds.x - cx), Math.abs(text.bounds.x + text.bounds.width - cx));
@@ -97,5 +120,5 @@ export function circle({ width, height, label: content, fontSize = 14 }: SimpleN
   if (needed > radius) {
     radius = Math.ceil(needed);
   }
-  return svg`<circle data-bounds="true" cx="${cx}" cy="${cy}" r="${radius}" fill="white" stroke="black"/>${text.markup}`;
+  return svg`<circle data-bounds="true" cx="${cx}" cy="${cy}" r="${radius}" ${paint(node)}/>${text.markup}`;
 }
