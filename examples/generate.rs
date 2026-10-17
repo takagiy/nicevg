@@ -2171,7 +2171,7 @@ struct Hand {
     /// Each rewrite's weight is multiplied by its own of these.
     tastes: [f64; 8],
     /// A part is likelier the fewer connections it has, as one over one
-    /// more than them to this power.
+    /// more than them to this power; below zero, the more it has.
     focus: f64,
     /// The share of picks that take any part, simple or not.
     wander: f64,
@@ -2194,18 +2194,22 @@ impl Hand {
     };
 
     fn new(rng: &mut Rng) -> Hand {
-        // Between a third and three times as keen, evenly on a log scale.
+        // Between a sixth and six times as keen, evenly on a log scale.
         let mut tastes = [1.0; 8];
         for taste in &mut tastes {
-            *taste = 3f64.powf(rng.unit() * 2.0 - 1.0);
+            *taste = 6f64.powf(rng.unit() * 2.0 - 1.0);
         }
         Hand {
             tastes,
-            focus: 0.5 + rng.unit() * 2.5,
-            wander: 0.05 + rng.unit() * 0.25,
-            // From 0.4 to 1.3, evenly on a log scale but leaning low.
-            room: 0.4 * (1.3f64 / 0.4).powf(rng.unit().powf(1.6)),
-            reach: 1.0 + rng.unit() * 3.0,
+            // From reaching for busy parts, so hubs gather more (-2), through
+            // picking any part alike (0), to keeping hard to simple ones (6).
+            focus: rng.unit() * 8.0 - 2.0,
+            wander: rng.unit() * 0.5,
+            // From 0.3 to 1.6, evenly on a log scale but leaning low.
+            room: 0.3 * (1.6f64 / 0.3).powf(rng.unit().powf(1.6)),
+            // From half as likely (three links away preferred) to six times,
+            // evenly on a log scale.
+            reach: 0.5 * 12f64.powf(rng.unit()),
         }
     }
 
@@ -2928,7 +2932,21 @@ fn place_boxed(g: &mut Grower, rng: &mut Rng, [ahead, side, other_side, back]: [
             if rng.chance(0.35) {
                 directions.swap(0, 1 + rng.below(2));
             }
-            t.beside(rng, item, &anchor, &directions);
+            // Then the corners between them, so what crowds round one box
+            // spreads round it rather than along four arms.
+            let [first, second, third, fourth] = directions;
+            let corner = |a: (f64, f64), b: (f64, f64)| (a.0 + b.0, a.1 + b.1);
+            let around = [
+                first,
+                second,
+                third,
+                fourth,
+                corner(first, second),
+                corner(first, third),
+                corner(fourth, second),
+                corner(fourth, third),
+            ];
+            t.beside(rng, item, &anchor, &around);
         }
         let at: Vec<(String, (f64, f64))> = items
             .iter()
