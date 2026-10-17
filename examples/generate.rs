@@ -2932,20 +2932,17 @@ fn place_boxed(g: &mut Grower, rng: &mut Rng, [ahead, side, other_side, back]: [
             if rng.chance(0.35) {
                 directions.swap(0, 1 + rng.below(2));
             }
-            // Then the corners between them, so what crowds round one box
-            // spreads round it rather than along four arms.
-            let [first, second, third, fourth] = directions;
-            let corner = |a: (f64, f64), b: (f64, f64)| (a.0 + b.0, a.1 + b.1);
-            let around = [
-                first,
-                second,
-                third,
-                fourth,
-                corner(first, second),
-                corner(first, third),
-                corner(fourth, second),
-                corner(fourth, third),
-            ];
+            // Then the corners between each two at right angles, in the same
+            // order, so what crowds round one box spreads round it rather
+            // than along four arms.
+            let mut around = directions.to_vec();
+            for (i, a) in directions.iter().enumerate() {
+                for b in &directions[i + 1..] {
+                    if a.0 * b.0 + a.1 * b.1 == 0.0 {
+                        around.push((a.0 + b.0, a.1 + b.1));
+                    }
+                }
+            }
             t.beside(rng, item, &anchor, &around);
         }
         let at: Vec<(String, (f64, f64))> = items
