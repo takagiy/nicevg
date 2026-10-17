@@ -10,6 +10,8 @@
 //! cargo run --release --example generate -- --kind er --size large --mess messy --count 20 --seed 7 --out drafts
 //! ```
 //!
+//! `--spec` drafts the diagrams JSON specs describe (nodes, groups and
+//! edges, as converters write them from datasets) instead of made-up ones.
 //! `--mess` picks how rough: `tidy`, `sloppy`, `messy` or `wild`. Each file
 //! is `<kind>-<size>-<mess>-<seed>.svg`. The same arguments always give
 //! the same files. Each draft is read back with `nicevg::analyze`, and its
@@ -20,6 +22,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
+use serde::Deserialize;
 
 #[derive(Parser)]
 struct Args {
@@ -41,6 +44,25 @@ struct Args {
     /// Where to write the drafts.
     #[arg(long)]
     out: PathBuf,
+    /// Draft the diagrams these specs describe (a JSON file, or a
+    /// directory of them) instead of made-up ones; kind and size are then
+    /// the spec's own.
+    #[arg(long)]
+    spec: Option<PathBuf>,
+    /// How to lay a spec out: where its nodes were drawn, when it says,
+    /// else in layers wrapped onto rows when a flow runs long.
+    #[arg(long)]
+    layout: Option<Layout>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
+enum Layout {
+    /// Where the spec's own positions put each node.
+    Drawn,
+    /// In layers, a flow left to right in one long band.
+    Layered,
+    /// In layers, a long flow wrapped onto rows that turn back and forth.
+    Wrapped,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
@@ -277,6 +299,8 @@ struct Draft {
     nodes: Vec<Node>,
     containers: Vec<Container>,
     edges: Vec<Edge>,
+    /// Names written under a node rather than in it, as BPMN names events.
+    captions: Vec<(usize, String)>,
 }
 
 const FONT: f64 = 13.0;
@@ -291,6 +315,7 @@ impl Draft {
             nodes: Vec::new(),
             containers: Vec::new(),
             edges: Vec::new(),
+            captions: Vec::new(),
         }
     }
 
@@ -949,7 +974,9 @@ fn node_svg(out: &mut String, n: &Node, indent: &str) {
                 r#"{indent}  <text x="{cx}" y="{top}" text-anchor="middle" font-size="{FONT}">"#
             );
             for (i, line) in n.lines.iter().enumerate() {
-                let (size, dy) = if i == 0 { (FONT, 0.0) } else { (11.0, 18.0) };
+                // A C4 tag such as [Person] is set small; a wrapped name keeps its size.
+                let size = if line.starts_with('[') { 11.0 } else { FONT };
+                let dy = if i == 0 { 0.0 } else { 18.0 };
                 let _ = write!(
                     out,
                     r#"<tspan x="{cx}" dy="{dy}" font-size="{size}">{}</tspan>"#,
@@ -1016,6 +1043,7 @@ const STYLE: &str = r##"  <style>
     .decision rect { fill: #fae8ff; stroke: #86198f; }
     .table rect { fill: #ffffff; stroke: #334155; }
     .table rect.head { fill: #e2e8f0; }
+    .event circle { fill: #fef3c7; stroke: #92400e; stroke-width: 1.5; }
     .flow { fill: none; stroke: #475569; stroke-width: 1.4; marker-end: url(#arrow); }
     .flow-label { font-size: 11px; fill: #334155; font-style: italic; }
   </style>
@@ -1106,6 +1134,17 @@ fn write_svg(rng: &mut Rng, d: &Draft) -> String {
             node_svg(&mut out, n, "  ");
         }
     }
+    for (node, caption) in &d.captions {
+        let n = &d.nodes[*node];
+        let _ = writeln!(
+            out,
+            r#"  <text data-label="{}-name" x="{}" y="{}" text-anchor="middle" font-size="11">{}</text>"#,
+            n.id,
+            n.centre().0,
+            n.y + n.h + 14.0,
+            escape(caption)
+        );
+    }
     for (i, (e, points)) in d.edges.iter().zip(&routes).enumerate() {
         let id = format!("f{}", i + 1);
         let path = points
@@ -1151,6 +1190,352 @@ fn write_svg(rng: &mut Rng, d: &Draft) -> String {
     out
 }
 
+/// A diagram given as its structure only: nodes, the groups they sit in and
+/// the edges between them, as a converter writes it from a dataset.
+#[derive(Deserialize)]
+struct Spec {
+    title: String,
+    /// `flow` lays the diagram out left to right, in a lane for each group;
+    /// any other kind runs top to bottom, showing groups only as drawn.
+    kind: String,
+    nodes: Vec<SpecNode>,
+    #[serde(default)]
+    groups: Vec<SpecGroup>,
+    edges: Vec<SpecEdge>,
+}
+
+#[derive(Deserialize)]
+struct SpecNode {
+    id: String,
+    label: String,
+    #[serde(default)]
+    shape: SpecShape,
+    /// A table's columns, each a port on both sides of its row.
+    #[serde(default)]
+    columns: Vec<String>,
+    #[serde(default)]
+    group: Option<String>,
+    /// Where the node's centre was drawn, when the dataset says.
+    #[serde(default)]
+    x: Option<f64>,
+    #[serde(default)]
+    y: Option<f64>,
+}
+
+#[derive(Clone, Copy, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum SpecShape {
+    #[default]
+    Rect,
+    Circle,
+    Decision,
+    Table,
+}
+
+#[derive(Deserialize)]
+struct SpecGroup {
+    id: String,
+    title: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SpecEdge {
+    from: String,
+    to: String,
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default)]
+    from_port: Option<String>,
+    #[serde(default)]
+    to_port: Option<String>,
+}
+
+/// Each node's layer: the longest way to it from a node nothing leads to,
+/// leaving out the edges that close a cycle.
+fn layers(count: usize, edges: &[(usize, usize)]) -> Vec<usize> {
+    fn walk(v: usize, out: &[Vec<usize>], state: &mut [u8], kept: &mut [Vec<usize>]) {
+        state[v] = 1;
+        for &w in &out[v] {
+            match state[w] {
+                0 => {
+                    kept[v].push(w);
+                    walk(w, out, state, kept);
+                }
+                // On the walk's own path: this edge closes a cycle.
+                1 => {}
+                _ => kept[v].push(w),
+            }
+        }
+        state[v] = 2;
+    }
+    let mut out: Vec<Vec<usize>> = vec![Vec::new(); count];
+    for (a, b) in edges {
+        if a != b {
+            out[*a].push(*b);
+        }
+    }
+    let mut state = vec![0u8; count];
+    let mut kept: Vec<Vec<usize>> = vec![Vec::new(); count];
+    for v in 0..count {
+        if state[v] == 0 {
+            walk(v, &out, &mut state, &mut kept);
+        }
+    }
+    let mut layer = vec![0; count];
+    for _ in 0..count {
+        let mut changed = false;
+        for v in 0..count {
+            for &w in &kept[v] {
+                if layer[w] < layer[v] + 1 {
+                    layer[w] = layer[v] + 1;
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    layer
+}
+
+/// The nodes of each layer, ordered to sit near what they join in the
+/// layers beside: a sweep down and back up by mean position.
+fn ordered(layer: &[usize], edges: &[(usize, usize)]) -> Vec<Vec<usize>> {
+    let depth = layer.iter().max().map_or(0, |deepest| deepest + 1);
+    let mut rows: Vec<Vec<usize>> = vec![Vec::new(); depth];
+    for (v, l) in layer.iter().enumerate() {
+        rows[*l].push(v);
+    }
+    let positions = |rows: &[Vec<usize>]| {
+        let mut place = vec![0.0; layer.len()];
+        for row in rows {
+            for (i, v) in row.iter().enumerate() {
+                place[*v] = i as f64;
+            }
+        }
+        place
+    };
+    let sweep: Vec<usize> = (1..depth).chain((0..depth.saturating_sub(1)).rev()).collect();
+    for l in sweep {
+        let place = positions(&rows);
+        let mean = |v: usize| {
+            let near: Vec<f64> = edges
+                .iter()
+                .filter_map(|(a, b)| match (*a == v, *b == v) {
+                    (true, false) => Some(*b),
+                    (false, true) => Some(*a),
+                    _ => None,
+                })
+                .filter(|w| layer[*w].abs_diff(l) == 1)
+                .map(|w| place[w])
+                .collect();
+            if near.is_empty() {
+                place[v]
+            } else {
+                near.iter().sum::<f64>() / near.len() as f64
+            }
+        };
+        let mut keyed: Vec<(f64, usize)> = rows[l].iter().map(|v| (mean(*v), *v)).collect();
+        keyed.sort_by(|a, b| a.0.total_cmp(&b.0));
+        rows[l] = keyed.into_iter().map(|(_, v)| v).collect();
+    }
+    rows
+}
+
+/// A label broken into lines of about 22 characters, at most three.
+fn wrapped(label: &str) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for word in label.split_whitespace() {
+        match lines.last_mut() {
+            Some(line) if line.chars().count() + word.chars().count() < 22 => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_owned()),
+        }
+    }
+    lines.truncate(3);
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+/// How many nodes of a layer go side by side when it runs top to bottom.
+const PER_ROW: usize = 5;
+/// How many layers of a flow go side by side before it wraps.
+const WRAP: usize = 6;
+/// How much farther apart drawn positions are put.
+const DRAWN_SCALE: f64 = 1.6;
+
+/// Lays a spec out in layers, the way an agent drawing it would.
+fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> Draft {
+    let mut d = Draft::new(&spec.title, mess);
+    let index: BTreeMap<&str, usize> = spec.nodes.iter().enumerate().map(|(i, n)| (n.id.as_str(), i)).collect();
+    let edges: Vec<(usize, usize)> = spec
+        .edges
+        .iter()
+        .filter_map(|e| Some((*index.get(e.from.as_str())?, *index.get(e.to.as_str())?)))
+        .collect();
+    let layer = layers(spec.nodes.len(), &edges);
+    let rows = ordered(&layer, &edges);
+    let flow = spec.kind == "flow";
+    let drawn = spec.nodes.iter().all(|n| n.x.is_some() && n.y.is_some());
+    let layout = match layout {
+        Some(Layout::Drawn) | None if drawn => Layout::Drawn,
+        Some(Layout::Layered) => Layout::Layered,
+        _ => Layout::Wrapped,
+    };
+    let left = spec.nodes.iter().filter_map(|n| n.x).fold(f64::INFINITY, f64::min);
+    let top_drawn = spec.nodes.iter().filter_map(|n| n.y).fold(f64::INFINITY, f64::min);
+    let wrap = layout == Layout::Wrapped && flow && rows.len() > WRAP;
+    // Nodes in no group share a last lane.
+    let lane_of = |n: &SpecNode| {
+        n.group
+            .as_ref()
+            .and_then(|g| spec.groups.iter().position(|group| &group.id == g))
+            .unwrap_or(spec.groups.len())
+    };
+    let lanes = spec.groups.len() + 1;
+    // Each lane is as tall as its most crowded layer.
+    let mut lane_rows = vec![1usize; lanes];
+    for row in &rows {
+        let mut counts = vec![0usize; lanes];
+        for v in row {
+            counts[lane_of(&spec.nodes[*v])] += 1;
+        }
+        for (most, count) in lane_rows.iter_mut().zip(counts) {
+            *most = (*most).max(count);
+        }
+    }
+    let mut lane_top = Vec::with_capacity(lanes);
+    let mut top = 120.0;
+    for rows in &lane_rows {
+        lane_top.push(top);
+        top += *rows as f64 * 120.0 + 50.0;
+    }
+    // A wrapped flow repeats its lanes on each row of layers.
+    let band = top - 120.0 + 60.0;
+    let mut block_of = vec![0usize; spec.nodes.len()];
+    let mut row_top = 140.0;
+    let mut placed: Vec<Option<usize>> = vec![None; spec.nodes.len()];
+    for (l, row) in rows.iter().enumerate() {
+        let mut in_lane = vec![0usize; lanes];
+        let tallest = row
+            .iter()
+            .map(|v| HEAD + spec.nodes[*v].columns.len().max(1) as f64 * ROW)
+            .fold(60.0, f64::max);
+        for (i, v) in row.iter().enumerate() {
+            let n = &spec.nodes[*v];
+            let at = if layout == Layout::Drawn {
+                // Spread out: the agent's boxes, sized to their text, are
+                // larger than the modeller's.
+                (
+                    (n.x.unwrap_or(left) - left) * DRAWN_SCALE + 160.0,
+                    (n.y.unwrap_or(top_drawn) - top_drawn) * DRAWN_SCALE + 140.0,
+                )
+            } else if flow {
+                let lane = lane_of(n);
+                let sub = in_lane[lane];
+                in_lane[lane] += 1;
+                let (block, column) = if wrap {
+                    let column = l % WRAP;
+                    // Odd rows run back the other way, as a hand would.
+                    (l / WRAP, if (l / WRAP) % 2 == 1 { WRAP - 1 - column } else { column })
+                } else {
+                    (0, l)
+                };
+                block_of[*v] = block;
+                (
+                    160.0 + column as f64 * 210.0,
+                    lane_top[lane] + 50.0 + sub as f64 * 120.0 + block as f64 * band,
+                )
+            } else {
+                // A wide layer wraps onto the rows below it.
+                let width = if n.shape == SpecShape::Table { 300.0 } else { 230.0 };
+                let below = (i / PER_ROW) as f64 * (tallest + 80.0);
+                (160.0 + (i % PER_ROW) as f64 * width, row_top + below + tallest / 2.0)
+            };
+            let (class, shape, lines) = match n.shape {
+                SpecShape::Table => {
+                    let lines = std::iter::once(n.label.clone())
+                        .chain(n.columns.iter().cloned())
+                        .collect();
+                    ("table", Shape::Table, lines)
+                }
+                SpecShape::Circle => ("event", Shape::Circle, vec![String::new()]),
+                SpecShape::Decision => {
+                    let label = if n.label.is_empty() { "?" } else { n.label.as_str() };
+                    ("decision", Shape::Rect, wrapped(label))
+                }
+                SpecShape::Rect => (if flow { "task" } else { "box" }, Shape::Rect, wrapped(&n.label)),
+            };
+            let node = d.add(rng, class, shape, lines, at);
+            if n.shape == SpecShape::Circle && !n.label.is_empty() {
+                d.captions.push((node, n.label.chars().take(30).collect()));
+            }
+            placed[*v] = Some(node);
+        }
+        let wraps = if flow { 1 } else { row.len().div_ceil(PER_ROW).max(1) };
+        row_top += wraps as f64 * (tallest + 80.0);
+    }
+    let column = |node: usize, port: &Option<String>| {
+        let port = port.as_ref()?;
+        spec.nodes[node].columns.iter().position(|c| c == port)
+    };
+    for e in &spec.edges {
+        let (Some(&a), Some(&b)) = (index.get(e.from.as_str()), index.get(e.to.as_str())) else {
+            continue;
+        };
+        let (Some(from), Some(to)) = (placed[a], placed[b]) else {
+            continue;
+        };
+        let ports = [column(a, &e.from_port), column(b, &e.to_port)];
+        let label = e.label.as_ref().map(|l| l.chars().take(30).collect());
+        if from != to && !d.edges.iter().any(|x| x.from == from && x.to == to) {
+            d.edges.push(Edge { from, to, label, ports });
+        }
+    }
+    // Lanes, or the boxes a modeller drew round nodes where they drew them.
+    if flow || layout == Layout::Drawn {
+        let blocks = block_of.iter().max().map_or(1, |last| last + 1);
+        for (g, group) in spec.groups.iter().enumerate() {
+            for block in 0..blocks {
+                let members: Vec<usize> = spec
+                    .nodes
+                    .iter()
+                    .enumerate()
+                    .filter(|(v, n)| lane_of(n) == g && block_of[*v] == block)
+                    .filter_map(|(v, _)| placed[v])
+                    .collect();
+                if !members.is_empty() {
+                    d.containers.push(Container {
+                        id: format!("g{}-{}", g + 1, block + 1),
+                        title: group.title.chars().take(40).collect(),
+                        members,
+                    });
+                }
+            }
+        }
+    }
+    d
+}
+
+/// A spec drafted at `level`: laid out, then given the level's slips.
+fn generate_from(spec: &Spec, name: &str, level: Level, seed: u64, layout: Option<Layout>) -> String {
+    // The name keeps each spec's drafts apart for the same seed.
+    let salt = name.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3)
+    });
+    let mut rng = Rng::new(seed ^ salt ^ ((level as u64) << 56));
+    let mut draft = from_spec(&mut rng, spec, level.mess(), layout);
+    draft.spread();
+    draft.crowd(&mut rng);
+    write_svg(&mut rng, &draft)
+}
+
 fn generate(kind: Kind, size: Size, level: Level, seed: u64) -> String {
     let mut rng = Rng::new(seed ^ ((kind as u64) << 40) ^ ((size as u64) << 48) ^ ((level as u64) << 56));
     let mess = level.mess();
@@ -1178,28 +1563,63 @@ fn main() {
     let sizes = args
         .size
         .map_or_else(|| Size::value_variants().to_vec(), |size| vec![size]);
+    if let Some(spec) = &args.spec {
+        let mut files: Vec<PathBuf> = if spec.is_dir() {
+            std::fs::read_dir(spec)
+                .expect("the spec directory is readable")
+                .filter_map(|entry| Some(entry.ok()?.path()))
+                .filter(|path| path.extension().is_some_and(|e| e == "json"))
+                .collect()
+        } else {
+            vec![spec.clone()]
+        };
+        files.sort();
+        for file in files {
+            let stem = file
+                .file_stem()
+                .map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+            let text = std::fs::read_to_string(&file).expect("the spec is readable");
+            let parsed: Spec =
+                serde_json::from_str(&text).unwrap_or_else(|error| panic!("{}: {error}", file.display()));
+            for level in &levels {
+                for seed in args.seed..args.seed + args.count {
+                    let name = format!("{stem}-{level:?}-{seed}.svg").to_lowercase();
+                    write_checked(
+                        &args.out,
+                        &name,
+                        &generate_from(&parsed, &stem, *level, seed, args.layout),
+                    );
+                }
+            }
+        }
+        return;
+    }
     for kind in &kinds {
         for size in &sizes {
             for (level, seed) in levels
                 .iter()
                 .flat_map(|level| (args.seed..args.seed + args.count).map(move |seed| (*level, seed)))
             {
-                let svg = generate(*kind, *size, level, seed);
                 let name = format!("{kind:?}-{size:?}-{level:?}-{seed}.svg").to_lowercase();
-                std::fs::write(args.out.join(&name), &svg).expect("the draft can be written");
-                // Every draft must be a diagram nicevg reads.
-                let report = nicevg::analyze(&svg).unwrap_or_else(|error| panic!("{name}: {error}"));
-                let mut codes: BTreeMap<&str, usize> = BTreeMap::new();
-                for issue in &report.issues {
-                    *codes.entry(issue.code.as_str()).or_default() += 1;
-                }
-                println!(
-                    "{name}: {} nodes, {} connectors, {} issues {codes:?}",
-                    report.diagram.nodes.len(),
-                    report.diagram.connectors.len(),
-                    report.issues.len()
-                );
+                write_checked(&args.out, &name, &generate(*kind, *size, level, seed));
             }
         }
     }
+}
+
+/// Writes a draft, reads it back with nicevg, which it must be able to,
+/// and prints its issues by code.
+fn write_checked(out: &std::path::Path, name: &str, svg: &str) {
+    std::fs::write(out.join(name), svg).expect("the draft can be written");
+    let report = nicevg::analyze(svg).unwrap_or_else(|error| panic!("{name}: {error}"));
+    let mut codes: BTreeMap<&str, usize> = BTreeMap::new();
+    for issue in &report.issues {
+        *codes.entry(issue.code.as_str()).or_default() += 1;
+    }
+    println!(
+        "{name}: {} nodes, {} connectors, {} issues {codes:?}",
+        report.diagram.nodes.len(),
+        report.diagram.connectors.len(),
+        report.issues.len()
+    );
 }
