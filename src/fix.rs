@@ -767,9 +767,11 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             *load.entry(key).or_insert(0.0) += 1.0;
             load
         });
-    let choose_all = |previous: &HashMap<&str, Sides>| -> HashMap<&str, Sides> {
+    // Each choice comes with the loads it saw on the sides of its ends.
+    type Chosen<'a> = HashMap<&'a str, (Sides, [f64; 8])>;
+    let choose_all = |previous: &Chosen| -> Chosen {
         let load = reroutes.iter().fold(settled_load.clone(), |mut load, reroute| {
-            if let Some(chosen) = previous.get(reroute.connector.id.as_str()) {
+            if let Some((chosen, _)) = previous.get(reroute.connector.id.as_str()) {
                 for key in [
                     side_key(&reroute.source.bounds, chosen.start),
                     side_key(&reroute.target.bounds, chosen.end),
@@ -782,7 +784,8 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
         reroutes
             .iter()
             .map(|reroute| {
-                let own = previous.get(reroute.connector.id.as_str());
+                let before = previous.get(reroute.connector.id.as_str());
+                let own = before.map(|(sides, _)| sides);
                 let load_of = |bounds: &Bounds, side: crate::route::Side| {
                     let key = side_key(bounds, side);
                     let mine = own.map_or(0.0, |own| {
@@ -791,6 +794,23 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
                     });
                     load.get(&key).copied().unwrap_or(0.0) - mine
                 };
+                let mut loads = [0.0; 8];
+                for (index, side) in Side::ALL.iter().enumerate() {
+                    loads[index] = load_of(&reroute.source.bounds, *side);
+                    loads[index + 4] = load_of(&reroute.target.bounds, *side);
+                }
+                // Loads only grow, and each side's terminal costs more by
+                // what its load grew: sides whose loads grew least of their
+                // node's still make the cheapest route.
+                if let Some((sides, seen)) = before {
+                    let grown: Vec<f64> = loads.iter().zip(seen).map(|(now, then)| now - then).collect();
+                    let least =
+                        |range: std::ops::Range<usize>| grown[range].iter().copied().fold(f64::INFINITY, f64::min);
+                    let index = |side: Side| Side::ALL.iter().position(|s| *s == side).expect("one of all sides");
+                    if grown[index(sides.start)] <= least(0..4) && grown[4 + index(sides.end)] <= least(4..8) {
+                        return (reroute.connector.id.as_str(), (*sides, loads));
+                    }
+                }
                 let sides = choose_sides(
                     &reroute.source.bounds,
                     &reroute.target.bounds,
@@ -800,7 +820,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
                     &rails_for(reroute.connector),
                     &load_of,
                 );
-                (reroute.connector.id.as_str(), sides)
+                (reroute.connector.id.as_str(), (sides, loads))
             })
             .collect()
     };
@@ -841,7 +861,10 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             reroute.target,
         )
     };
-    let chosen = choose_all(&choose_all(&HashMap::new()));
+    let chosen: HashMap<&str, Sides> = choose_all(&choose_all(&HashMap::new()))
+        .into_iter()
+        .map(|(id, (sides, _))| (id, sides))
+        .collect();
     // An end whose port has several places takes the one its route costs
     // least from, among the connectors that stay, with each free end at the
     // middle of the side chosen for it.
@@ -891,8 +914,10 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             let pins = starts
                 .iter()
                 .flat_map(|start| ends.iter().map(move |end| [*start, *end]))
-                .min_by(|a, b| cost(*a).total_cmp(&cost(*b)))
-                .expect("a place for each end");
+                .map(|pins| (cost(pins), pins))
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .expect("a place for each end")
+                .1;
             Reroute { pins, ..*reroute }
         })
         .collect();

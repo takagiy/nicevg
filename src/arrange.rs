@@ -9,16 +9,15 @@
 //! the node started.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::LazyLock;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::Relaxed;
+use std::sync::{Arc, LazyLock, Mutex, mpsc};
 
 use regex::Regex;
 
 use crate::diagram::{Diagram, DiagramConnector, DiagramNode, ancestor_ids, holds_end, node_group};
 use crate::fix::{Changes, Draft, FixChange, FixResult, PASSES, fix_after_moves, fix_further, spread_close_runs};
 use crate::geometry::{
-    Bounds, Point, format_number, hypot, intersection, parse_number, point, segment_intersects_interior, segments,
+    Bounds, Point, format_number, hypot, intersection, parse_number, point, points_bounds, segment_intersects_interior,
+    segments,
 };
 use crate::route::{Fade, SHORT_END, SHORT_END_FADE, chords_cross, crossings, route_cost, routes_cost, turns};
 use crate::xml::Element;
@@ -28,6 +27,10 @@ use crate::{AnalysisReport, SvgInputError, parse};
 const MAX_SHIFT: f64 = 60.0;
 const NUDGES: [f64; 2] = [20.0, 40.0];
 const MAX_STEPS: usize = 12;
+/// How far around a node and its connectors a change makes moving the node
+/// worth trying again. Measured on the example diagrams: 10px already
+/// misses moves that 15px and 20px find.
+const MOVE_REACH: f64 = 20.0;
 /// Joins the ids of nodes whose connectors a candidate reroutes together.
 const TOGETHER: &str = "\u{1f}";
 
@@ -99,9 +102,13 @@ pub fn arrange(svg: &str) -> Result<FixResult, SvgInputError> {
         result: fixed,
         offsets: HashMap::new(),
     };
-    // The scope waits for the threads freeing old candidates, so none outlives
-    // the call: a host that unloads the library after it would crash them.
-    let best = std::thread::scope(|frees| improve(&context, start, MAX_STEPS, frees));
+    // The scope waits for the workers and the threads freeing old
+    // candidates, so none outlives the call: a host that unloads the library
+    // after it would crash them.
+    let best = std::thread::scope(|scope| {
+        let workers = Workers::new(scope);
+        improve(&context, start, MAX_STEPS, scope, &workers, HashMap::new(), Vec::new())
+    });
     Ok(spread_close_runs(best.result).written())
 }
 
@@ -130,10 +137,13 @@ struct Move {
 
 #[tracing::instrument(name = "arrange_step", skip_all, fields(steps_left = steps, candidates = tracing::field::Empty))]
 fn improve<'scope>(
-    context: &Context,
+    context: &'scope Context,
     state: State,
     steps: usize,
     frees: &'scope std::thread::Scope<'scope, '_>,
+    workers: &Workers<'scope>,
+    tried: Tried,
+    changed: Vec<Bounds>,
 ) -> State {
     if steps == 0 {
         return state;
@@ -144,13 +154,33 @@ fn improve<'scope>(
         next.result.report().issues.len() <= state.result.report().issues.len()
             && total_jogs(&next.result.report().diagram) <= total_jogs(&state.result.report().diagram)
     };
+    // A move that did not help last step, away from everything the step
+    // changed, would not help now either: it is not tried again.
+    let diagram = &state.result.report().diagram;
+    let key = |(id, step): &(String, Move)| (id.clone(), step.dx as i64, step.dy as i64);
+    let (retried, skipped): (Vec<_>, Vec<_>) = candidates.into_iter().partition(|candidate| {
+        tried.get(&key(candidate)).is_none_or(|gain| *gain < 0.0)
+            || reach(diagram, &candidate.0)
+                .iter()
+                .any(|reach| changed.iter().any(|area| touches_area(reach, area)))
+    });
+    let evaluated = evaluate_all(context, &state, &retried, workers);
+    let tried: Tried = skipped
+        .iter()
+        .map(|candidate| (key(candidate), tried[&key(candidate)]))
+        .chain(retried.iter().zip(&evaluated).map(|(candidate, next)| {
+            let gain = next
+                .as_ref()
+                .filter(|next| keeps(next))
+                .map_or(f64::INFINITY, |next| next.score - state.score);
+            (key(candidate), gain)
+        }))
+        .collect();
     // Candidates are compared after one pass of fixing; the passes that
     // follow go to the best one, and to the next ones only while those
     // passes leave it no better than now.
-    let (mut compared, dropped): (Vec<State>, Vec<State>) = evaluate_all(context, &state, &candidates)
-        .into_iter()
-        .flatten()
-        .partition(|next| keeps(next));
+    let (mut compared, dropped): (Vec<State>, Vec<State>) =
+        evaluated.into_iter().flatten().partition(|next| keeps(next));
     compared.sort_by(|a, b| a.score.total_cmp(&b.score));
     let mut compared = compared.into_iter();
     let best = compared
@@ -168,20 +198,118 @@ fn improve<'scope>(
     // thread free them while the next step goes on.
     frees.spawn(move || drop((compared, dropped)));
     match best {
-        Some(next) => improve(context, next, steps - 1, frees),
+        Some(next) => {
+            let changed = changed_areas(diagram, &next.result.report().diagram);
+            improve(context, next, steps - 1, frees, workers, tried, changed)
+        }
         None => state,
     }
 }
 
-/// Evaluates the candidates on as many threads as are available, each
-/// taking the next candidate left as soon as it is free, since some take
-/// many times longer than others; the outcome does not depend on which
-/// thread evaluates which.
+/// What each move tried scored against the state it was tried from (lower
+/// is better), infinite when it was ruled out; by node ids and rounded step.
+type Tried = HashMap<(String, i64, i64), f64>;
+
+/// Whether two areas overlap or touch; a straight segment's area is a line.
+fn touches_area(first: &Bounds, second: &Bounds) -> bool {
+    first.x <= second.right() && second.x <= first.right() && first.y <= second.bottom() && second.y <= first.bottom()
+}
+
+/// Where moving the nodes `id` names could change anything: around them
+/// and each segment of their connectors.
+fn reach(diagram: &Diagram, id: &str) -> Vec<Bounds> {
+    let ids: HashSet<&str> = id.split(TOGETHER).collect();
+    diagram
+        .nodes
+        .iter()
+        .filter(|node| ids.contains(node.id.as_str()))
+        .map(|node| node.bounds)
+        .chain(
+            diagram
+                .connectors
+                .iter()
+                .filter(|c| ids.contains(c.from.as_str()) || ids.contains(c.to.as_str()))
+                .flat_map(|c| segments(&c.points))
+                .filter_map(|(a, b)| points_bounds(&[a, b])),
+        )
+        .map(|bounds| bounds.inflate(MOVE_REACH))
+        .collect()
+}
+
+/// The nodes, labels and connector segments that differ between two
+/// diagrams, where they were and where they are.
+fn changed_areas(before: &Diagram, after: &Diagram) -> Vec<Bounds> {
+    let nodes = after.nodes.iter().filter_map(|node| {
+        let old = before.node(&node.id).map(|old| old.bounds);
+        (old != Some(node.bounds)).then(|| vec![old, Some(node.bounds)])
+    });
+    let labels = after.labels.iter().filter_map(|label| {
+        let old = before
+            .labels
+            .iter()
+            .find(|old| old.id == label.id)
+            .map(|old| old.bounds);
+        (old != Some(label.bounds)).then(|| vec![old, Some(label.bounds)])
+    });
+    let connectors = after.connectors.iter().filter_map(|connector| {
+        let old = before
+            .connector(&connector.id)
+            .map_or_else(Vec::new, |old| segments(&old.points));
+        let new = segments(&connector.points);
+        (old != new).then(|| {
+            let only = |these: &[(Point, Point)], those: &[(Point, Point)]| -> Vec<Option<Bounds>> {
+                these
+                    .iter()
+                    .filter(|segment| !those.contains(segment))
+                    .map(|(a, b)| points_bounds(&[*a, *b]))
+                    .collect()
+            };
+            [only(&old, &new), only(&new, &old)].concat()
+        })
+    });
+    nodes.chain(labels).chain(connectors).flatten().flatten().collect()
+}
+
+/// Threads kept for the whole arrangement, each taking the next job
+/// queued as soon as it is free, so no step waits for threads to start.
+struct Workers<'scope> {
+    jobs: mpsc::Sender<Job<'scope>>,
+}
+
+type Job<'scope> = Box<dyn FnOnce() + Send + 'scope>;
+
+impl<'scope> Workers<'scope> {
+    fn new(scope: &'scope std::thread::Scope<'scope, '_>) -> Workers<'scope> {
+        let threads = std::thread::available_parallelism().map_or(1, |count| count.get());
+        let (jobs, queue) = mpsc::channel::<Job<'scope>>();
+        let queue = Arc::new(Mutex::new(queue));
+        for _ in 0..threads {
+            let queue = Arc::clone(&queue);
+            scope.spawn(move || {
+                // The queue closes when the arrangement drops its workers. The
+                // lock is let go before the job runs, for others to take theirs.
+                loop {
+                    let job = queue.lock().expect("job queue lock").recv();
+                    let Ok(job) = job else { break };
+                    job();
+                }
+            });
+        }
+        Workers { jobs }
+    }
+}
+
+/// Evaluates the candidates on the workers, the likely longest first,
+/// since some take many times longer than others; the outcome does not
+/// depend on which thread evaluates which.
 #[tracing::instrument(skip_all)]
-fn evaluate_all(context: &Context, state: &State, candidates: &[(String, Move)]) -> Vec<Option<State>> {
-    let threads = std::thread::available_parallelism().map_or(1, |count| count.get());
-    // The likely longest first, so no thread is left with a long one at
-    // the end: a move reroutes the connectors of the nodes it moves.
+fn evaluate_all<'scope>(
+    context: &'scope Context,
+    state: &State,
+    candidates: &[(String, Move)],
+    workers: &Workers<'scope>,
+) -> Vec<Option<State>> {
+    // A move reroutes the connectors of the nodes it moves.
     let diagram = &state.result.report().diagram;
     let work = |(id, _): &(String, Move)| {
         let ids: HashSet<&str> = id.split(TOGETHER).collect();
@@ -193,31 +321,22 @@ fn evaluate_all(context: &Context, state: &State, candidates: &[(String, Move)])
     };
     let mut order: Vec<usize> = (0..candidates.len()).collect();
     order.sort_by_key(|index| std::cmp::Reverse(work(&candidates[*index])));
-    let next = AtomicUsize::new(0);
     let parent = tracing::Span::current();
-    let mut evaluated: Vec<(usize, Option<State>)> = std::thread::scope(|scope| {
-        let handles: Vec<_> = (0..threads.min(candidates.len()))
-            .map(|_| {
-                let (parent, next, order) = (parent.clone(), &next, &order);
-                scope.spawn(move || {
-                    let thread =
-                        tracing::info_span!(parent: &parent, "evaluate_thread", candidates = tracing::field::Empty)
-                            .entered();
-                    let mut evaluated = Vec::new();
-                    while let Some(&index) = order.get(next.fetch_add(1, Relaxed)) {
-                        let (id, step) = &candidates[index];
-                        evaluated.push((index, evaluate(context, state, id, *step)));
-                    }
-                    thread.record("candidates", evaluated.len());
-                    evaluated
-                })
-            })
-            .collect();
-        handles
-            .into_iter()
-            .flat_map(|handle| handle.join().expect("an evaluation thread finishes"))
-            .collect()
-    });
+    let shared = Arc::new(state.clone());
+    let (results, received) = mpsc::channel();
+    for index in order {
+        let (state, results, parent) = (Arc::clone(&shared), results.clone(), parent.clone());
+        let (id, step) = candidates[index].clone();
+        let job: Job<'scope> = Box::new(move || {
+            let _thread = tracing::info_span!(parent: &parent, "evaluate_thread").entered();
+            // The step only stops listening once every result is in.
+            let _ = results.send((index, evaluate(context, &state, &id, step)));
+        });
+        workers.jobs.send(job).expect("the workers run while arranging");
+    }
+    drop(results);
+    let mut evaluated: Vec<(usize, Option<State>)> = received.iter().collect();
+    assert_eq!(evaluated.len(), candidates.len(), "every evaluation finishes");
     evaluated.sort_unstable_by_key(|(index, _)| *index);
     evaluated.into_iter().map(|(_, evaluated)| evaluated).collect()
 }
