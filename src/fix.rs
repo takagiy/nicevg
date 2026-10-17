@@ -808,19 +808,25 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
         // Routes into the same port as this one merge into it: their last
         // stretch there is no route to keep clear of.
         let pinned: Vec<Point> = reroute.pins.iter().flatten().map(|(at, _)| *at).collect();
-        let occupied: Vec<Vec<Point>> = occupied
-            .iter()
-            .map(|route| {
-                let (mut first, mut last) = (0, route.len());
-                if route.first().is_some_and(|start| pinned.contains(start)) {
-                    first = 1;
-                }
-                if route.last().is_some_and(|end| pinned.contains(end)) {
-                    last = last.saturating_sub(1);
-                }
-                route.get(first..last.max(first)).unwrap_or_default().to_vec()
-            })
-            .collect();
+        let merging: Vec<Vec<Point>>;
+        let occupied = if pinned.is_empty() {
+            occupied
+        } else {
+            merging = occupied
+                .iter()
+                .map(|route| {
+                    let (mut first, mut last) = (0, route.len());
+                    if route.first().is_some_and(|start| pinned.contains(start)) {
+                        first = 1;
+                    }
+                    if route.last().is_some_and(|end| pinned.contains(end)) {
+                        last = last.saturating_sub(1);
+                    }
+                    route.get(first..last.max(first)).unwrap_or_default().to_vec()
+                })
+                .collect();
+            &merging
+        };
         end_on_shapes(
             route_connector(
                 &reroute.source.bounds,
@@ -828,7 +834,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
                 &obstacles_for(reroute.connector),
                 &pushable_for(reroute.connector),
                 ports,
-                &occupied,
+                occupied,
                 &rails_for(reroute.connector),
             ),
             reroute.source,
@@ -1142,7 +1148,20 @@ pub(crate) fn spread_close_runs(result: Draft) -> Draft {
             .map(|bounds| bounds.inflate(CLEARANCE))
             .collect()
     };
-    let obstacles: Vec<Vec<Bounds>> = diagram.connectors.iter().map(obstacles_for).collect();
+    // What each connector keeps clear of: the nodes and labels around it,
+    // and its own end nodes, which only its middle segments keep clear of.
+    let obstacles: Vec<[Vec<Bounds>; 2]> = diagram
+        .connectors
+        .iter()
+        .map(|connector| {
+            let ends = [&connector.from, &connector.to]
+                .into_iter()
+                .filter_map(|id| diagram.node(id))
+                .map(|node| node.bounds.inflate(CLEARANCE))
+                .collect();
+            [obstacles_for(connector), ends]
+        })
+        .collect();
     // How much a trial changes what the routes cost: only the routes it
     // moved cost differently, on their own and against the others.
     let change = |routes: &[Vec<Point>], trial: &[Vec<Point>]| -> f64 {
@@ -1229,11 +1248,12 @@ pub(crate) fn spread_close_runs(result: Draft) -> Draft {
 /// Moves middle segment `k` of route `index` onto `line`, pushing on by two
 /// lanes, in the same direction `away`, any other route's middle segment
 /// beyond it that it would run within two lanes of. Fails when a route would
-/// turn back on itself, run into the clearance of a node or label, or have
-/// to push a route's first or last segment.
+/// turn back on itself, run into the clearance of a node or label, run its
+/// moved segment into the clearance of its own end nodes, or have to push
+/// a route's first or last segment.
 fn push(
     routes: &mut [Vec<Point>],
-    obstacles: &[Vec<Bounds>],
+    obstacles: &[[Vec<Bounds>; 2]],
     index: usize,
     k: usize,
     line: f64,
@@ -1258,7 +1278,10 @@ fn push(
         .windows(2)
         .zip(moved.windows(2))
         .all(|(old, new)| new[0] != new[1] && heading(old[0], old[1]) == heading(new[0], new[1]));
-    if !keeps_headings || !route_is_clear(&moved[k - 1..=k + 2], &obstacles[index]) {
+    if !keeps_headings
+        || !route_is_clear(&moved[k - 1..=k + 2], &obstacles[index][0])
+        || !route_is_clear(&moved[k..=k + 1], &obstacles[index][1])
+    {
         return false;
     }
     let segment = (moved[k], moved[k + 1]);
@@ -2047,6 +2070,36 @@ mod tests {
             (p - q).abs() >= 16.0 && (q - r).abs() >= 16.0 && (p - r).abs() >= 16.0,
             "{p} {q} {r}"
         );
+    }
+
+    /// Given `posts` with a connector from its port "reply_to_id" round to
+    ///   its port "id", both on its left, turning 8px out, and a straight
+    ///   connector running down 12px further left
+    /// When their close runs are spread once the layout is settled
+    /// Then the loop still turns at least 8px clear of `posts`: it is not
+    ///   pushed against its own node to get away from the other connector
+    #[test]
+    fn keeps_a_run_pushed_away_from_a_neighbour_clear_of_its_own_node() {
+        let fixed = fix(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 340">
+              <g data-node="posts" data-custom="true"><g transform="translate(100 100)">
+                <rect data-bounds="true" width="120" height="96"/>
+                <circle data-port="id" cx="0" cy="24" r="0"/>
+                <circle data-port="reply_to_id" cx="0" cy="72" r="0"/>
+              </g></g>
+              <g data-node="above"><rect x="54" y="0" width="52" height="40"/></g>
+              <g data-node="below"><rect x="54" y="260" width="52" height="40"/></g>
+              <path id="reply" data-from="posts" data-from-port="reply_to_id" data-to="posts" data-to-port="id" d="M 100 172 L 92 172 L 92 124 L 100 124"/>
+              <path id="down" data-from="above" data-to="below" d="M 80 40 L 80 260"/>
+            </svg>"#)
+        .unwrap();
+        let reply = |result: &FixResult| result.report.diagram.connector("reply").unwrap().points.clone();
+        assert_eq!(reply(&fixed)[1].x, 92.0, "{:?}", reply(&fixed));
+
+        let spread =
+            spread_close_runs(Draft::new(parse(&fixed.svg).unwrap(), Changes::default(), Vec::new())).written();
+
+        let turn = reply(&spread)[1].x;
+        assert!(100.0 - turn >= 8.0, "{:?}", reply(&spread));
     }
 
     /// Given two boxes joined by a straight connector with no issue

@@ -1,5 +1,6 @@
 ---
 source: tests/arrange.rs
+assertion_line: 595
 expression: result.svg.as_str()
 ---
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 -52 1860 1002" width="1860" height="1002" font-family="sans-serif">
@@ -199,17 +200,17 @@ expression: result.svg.as_str()
   <path id="connector-0" data-from="password_credentials" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 96 L 881 96"/>
   <path id="connector-1" data-from="oauth_identities" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 256 L 905 256 L 905 96 L 881 96"/>
   <path id="connector-2" data-from="webauthn_credentials" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 396 L 889 396 L 889 96 L 881 96"/>
-  <path id="connector-3" data-from="mfa_totp_secrets" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 660 256 L 656 256 L 656 96 L 660 96"/>
-  <path id="connector-4" data-from="email_verifications" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 669 416 L 640 416 L 640 96 L 660 96"/>
+  <path id="connector-3" data-from="mfa_totp_secrets" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 660 256 L 646 256 L 646 96 L 660 96"/>
+  <path id="connector-4" data-from="email_verifications" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 669 416 L 630 416 L 630 96 L 660 96"/>
   <path id="connector-5" data-from="sessions" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 920 536 L 604 536 L 604 96 L 660 96"/>
   <path id="connector-6" data-from="posts" data-from-port="author_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 274 116 L 292 116 L 292 154 L 493 154 L 493 96 L 660 96"/>
-  <path id="connector-7" data-from="posts" data-from-port="reply_to_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 60 156 L 58 156 L 58 96 L 60 96"/>
+  <path id="connector-7" data-from="posts" data-from-port="reply_to_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 60 156 L 52 156 L 52 96 L 60 96"/>
   <path id="connector-8" data-from="comments" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 300 96 L 274 96"/>
   <path id="connector-9" data-from="comments" data-from-port="author_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 451 116 L 473 116 L 473 96 L 660 96"/>
   <path id="connector-10" data-from="likes" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 267 256 L 282 256 L 282 194 L 524 194 L 524 96 L 660 96"/>
-  <path id="connector-11" data-from="likes" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 60 276 L 42 276 L 42 96 L 60 96"/>
+  <path id="connector-11" data-from="likes" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 60 276 L 36 276 L 36 96 L 60 96"/>
   <path id="connector-12" data-from="reposts" data-from-port="user_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 527 256 L 540 256 L 540 96 L 660 96"/>
-  <path id="connector-13" data-from="reposts" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 320 276 L 282 276 L 282 314 L 26 314 L 26 96 L 60 96"/>
+  <path id="connector-13" data-from="reposts" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 320 276 L 282 276 L 282 314 L 20 314 L 20 96 L 60 96"/>
   <path id="connector-14" data-from="post_hashtags" data-from-port="post_id" data-to="posts" data-to-port="id" fill="none" stroke="black" d="M 60 376 L 0 376 L 0 96 L 60 96"/>
   <path id="connector-15" data-from="post_hashtags" data-from-port="hashtag_id" data-to="hashtags" data-to-port="id" fill="none" stroke="black" d="M 218 396 L 320 396"/>
   <path id="connector-16" data-from="follows" data-from-port="follower_id" data-to="users" data-to-port="id" fill="none" stroke="black" d="M 274 536 L 556 536 L 556 96 L 660 96"/>

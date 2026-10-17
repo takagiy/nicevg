@@ -1,6 +1,8 @@
 //! Mechanical layout checks. Each check maps the diagram to the issues it
 //! finds; `inspect` concatenates them in a fixed order.
 
+use std::borrow::Cow;
+
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
@@ -518,7 +520,10 @@ fn named_ends(connector: &DiagramConnector) -> [(&str, Option<&str>, Option<&Poi
 /// The routes of two connectors with the run they share into a port they
 /// both end at cut off, so that merging there does not read as running
 /// along each other; both routes as they are when they share no port end.
-pub(crate) fn before_merging(first: &DiagramConnector, second: &DiagramConnector) -> (Vec<Point>, Vec<Point>) {
+fn before_merging<'a>(
+    first: &'a DiagramConnector,
+    second: &'a DiagramConnector,
+) -> (Cow<'a, [Point]>, Cow<'a, [Point]>) {
     let shared = named_ends(first).into_iter().find_map(|(node, port, point, last)| {
         let (port, point) = (port?, point?);
         named_ends(second)
@@ -531,10 +536,10 @@ pub(crate) fn before_merging(first: &DiagramConnector, second: &DiagramConnector
                     .then_some((last, other_last))
             })
     });
-    let (mut a, mut b) = (first.points.clone(), second.points.clone());
     let Some((a_last, b_last)) = shared else {
-        return (a, b);
+        return (Cow::Borrowed(&first.points), Cow::Borrowed(&second.points));
     };
+    let (mut a, mut b) = (first.points.clone(), second.points.clone());
     // Both run into the port at their last point while the run is cut.
     if !a_last {
         a.reverse();
@@ -573,7 +578,7 @@ pub(crate) fn before_merging(first: &DiagramConnector, second: &DiagramConnector
     if !b_last {
         b.reverse();
     }
-    (a, b)
+    (Cow::Owned(a), Cow::Owned(b))
 }
 
 fn connector_overlaps(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
