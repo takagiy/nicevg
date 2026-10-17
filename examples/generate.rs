@@ -1309,6 +1309,11 @@ struct SpecEdge {
     to_port: Option<String>,
 }
 
+/// The group the group `id` sits in, if any.
+fn parent_of(groups: &[SpecGroup], id: &str) -> Option<String> {
+    groups.iter().find(|g| g.id == id).and_then(|g| g.parent.clone())
+}
+
 /// Each node's layer: the longest way to it from a node nothing leads to,
 /// leaving out the edges that close a cycle.
 fn layers(count: usize, edges: &[(usize, usize)]) -> Vec<usize> {
@@ -1451,6 +1456,15 @@ const DRAWN_SCALE: f64 = 1.6;
 
 /// Lays a spec out in layers, the way an agent drawing it would.
 fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> Draft {
+    // Groups nest: following parents must come out of the groups, or
+    // every walk up them below would go round for ever.
+    for group in &spec.groups {
+        let mut at = group.parent.clone();
+        for _ in 0..=spec.groups.len() {
+            at = at.and_then(|id| parent_of(&spec.groups, &id));
+        }
+        assert!(at.is_none(), "{}: group parents loop", group.id);
+    }
     let mut d = Draft::new(&spec.title, mess);
     let index: BTreeMap<&str, usize> = spec.nodes.iter().enumerate().map(|(i, n)| (n.id.as_str(), i)).collect();
     let edges: Vec<(usize, usize)> = spec
@@ -1606,7 +1620,7 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
                 if spec.groups[g].id == id {
                     return true;
                 }
-                at = spec.groups.iter().find(|x| x.id == id).and_then(|x| x.parent.clone());
+                at = parent_of(&spec.groups, &id);
             }
             false
         };
@@ -2762,10 +2776,10 @@ const GROUP_TITLE: f64 = 18.0;
 fn place_boxed(g: &mut Grower, rng: &mut Rng, [ahead, side, other_side, back]: [(f64, f64); 4]) {
     let depth = |g: &Grower, id: &str| {
         let mut depth = 0;
-        let mut at = g.spec.groups.iter().find(|x| x.id == id).and_then(|x| x.parent.clone());
+        let mut at = parent_of(&g.spec.groups, id);
         while let Some(p) = at {
             depth += 1;
-            at = g.spec.groups.iter().find(|x| x.id == p).and_then(|x| x.parent.clone());
+            at = parent_of(&g.spec.groups, &p);
         }
         depth
     };
@@ -2780,7 +2794,7 @@ fn place_boxed(g: &mut Grower, rng: &mut Rng, [ahead, side, other_side, back]: [
         }
         let mut at = node.group.clone();
         while let Some(id) = at {
-            let parent = g.spec.groups.iter().find(|x| x.id == id).and_then(|x| x.parent.clone());
+            let parent = parent_of(&g.spec.groups, &id);
             if &parent == level {
                 return Some(id);
             }
