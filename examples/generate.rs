@@ -12,6 +12,10 @@
 //!
 //! `--spec` drafts the diagrams JSON specs describe (nodes, groups and
 //! edges, as converters write them from datasets) instead of made-up ones.
+//! `--grow` grows flow, dfd and er diagrams from a few nodes by rewriting a
+//! part at a time (a step split, a check that branches, a store, a junction
+//! table), instead of drawing each kind from one fixed plan; their files
+//! are `<kind>-<size>-<mess>-grown-<seed>.svg`.
 //! `--mess` picks how rough: `tidy`, `sloppy`, `messy` or `wild`. Each file
 //! is `<kind>-<size>-<mess>-<seed>.svg`. The same arguments always give
 //! the same files. Each draft is read back with `nicevg::analyze`, and its
@@ -53,6 +57,11 @@ struct Args {
     /// else in layers wrapped onto rows when a flow runs long.
     #[arg(long)]
     layout: Option<Layout>,
+    /// Grow flow, dfd and er diagrams from a few nodes by rewriting a part
+    /// at a time, instead of drawing them from a fixed plan; laid out as
+    /// specs are. Other kinds are left out.
+    #[arg(long)]
+    grow: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
@@ -744,6 +753,9 @@ fn singular(table: &str) -> String {
         format!("{stem}y")
     } else if let Some(stem) = table.strip_suffix("sses") {
         format!("{stem}ss")
+    } else if let Some(stem) = table.strip_suffix("uses").filter(|stem| !stem.ends_with('o')) {
+        // statuses, not warehouses
+        format!("{stem}us")
     } else {
         table.strip_suffix('s').unwrap_or(table).to_owned()
     }
@@ -1227,7 +1239,10 @@ struct SpecNode {
 enum SpecShape {
     #[default]
     Rect,
+    /// An event: a small circle with its name written under it.
     Circle,
+    /// A data flow diagram's process: a circle with its name inside.
+    Process,
     Decision,
     Table,
 }
@@ -1352,6 +1367,19 @@ fn ordered(layer: &[usize], edges: &[(usize, usize)]) -> Vec<Vec<usize>> {
     rows
 }
 
+/// Layers running top to bottom, a few small ones after another sharing a
+/// row, so a long chain does not stand as one tall column.
+fn packed(rows: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+    let mut out: Vec<Vec<usize>> = Vec::new();
+    for row in rows {
+        match out.last_mut() {
+            Some(last) if last.len() + row.len() <= PER_ROW => last.extend(row),
+            _ => out.push(row),
+        }
+    }
+    out
+}
+
 /// A label broken into lines of about 22 characters, at most three.
 fn wrapped(label: &str) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
@@ -1396,6 +1424,11 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
         Some(Layout::Layered) => Layout::Layered,
         _ => Layout::Wrapped,
     };
+    let rows = if !flow && layout == Layout::Wrapped {
+        packed(rows)
+    } else {
+        rows
+    };
     let left = spec.nodes.iter().filter_map(|n| n.x).fold(f64::INFINITY, f64::min);
     let top_drawn = spec.nodes.iter().filter_map(|n| n.y).fold(f64::INFINITY, f64::min);
     let wrap = layout == Layout::Wrapped && flow && rows.len() > WRAP;
@@ -1407,25 +1440,32 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
             .unwrap_or(spec.groups.len())
     };
     let lanes = spec.groups.len() + 1;
-    // Each lane is as tall as its most crowded layer.
-    let mut lane_rows = vec![1usize; lanes];
-    for row in &rows {
+    // A wrapped flow lays its layers out in blocks, one under another.
+    let block_of_layer = |l: usize| if wrap { l / WRAP } else { 0 };
+    let blocks = block_of_layer(rows.len().saturating_sub(1)) + 1;
+    // In each block, each lane is as tall as its most crowded layer there;
+    // a lane with nothing in a block takes no room in it.
+    let mut lane_rows = vec![vec![0usize; lanes]; blocks];
+    for (l, row) in rows.iter().enumerate() {
         let mut counts = vec![0usize; lanes];
         for v in row {
             counts[lane_of(&spec.nodes[*v])] += 1;
         }
-        for (most, count) in lane_rows.iter_mut().zip(counts) {
+        for (most, count) in lane_rows[block_of_layer(l)].iter_mut().zip(counts) {
             *most = (*most).max(count);
         }
     }
-    let mut lane_top = Vec::with_capacity(lanes);
+    let mut lane_top = vec![vec![0.0; lanes]; blocks];
     let mut top = 120.0;
-    for rows in &lane_rows {
-        lane_top.push(top);
-        top += *rows as f64 * 120.0 + 50.0;
+    for (tops, rows) in lane_top.iter_mut().zip(&lane_rows) {
+        for (lane_top, rows) in tops.iter_mut().zip(rows) {
+            *lane_top = top;
+            if *rows > 0 {
+                top += *rows as f64 * 120.0 + 50.0;
+            }
+        }
+        top += 60.0;
     }
-    // A wrapped flow repeats its lanes on each row of layers.
-    let band = top - 120.0 + 60.0;
     let mut block_of = vec![0usize; spec.nodes.len()];
     let mut row_top = 140.0;
     let mut placed: Vec<Option<usize>> = vec![None; spec.nodes.len()];
@@ -1458,7 +1498,7 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
                 block_of[*v] = block;
                 (
                     160.0 + column as f64 * 210.0,
-                    lane_top[lane] + 50.0 + sub as f64 * 120.0 + block as f64 * band,
+                    lane_top[block][lane] + 50.0 + sub as f64 * 120.0,
                 )
             } else {
                 // A wide layer wraps onto the rows below it.
@@ -1474,6 +1514,7 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
                     ("table", Shape::Table, lines)
                 }
                 SpecShape::Circle => ("event", Shape::Circle, vec![String::new()]),
+                SpecShape::Process => ("process", Shape::Circle, wrapped(&n.label)),
                 SpecShape::Decision => {
                     let label = if n.label.is_empty() { "?" } else { n.label.as_str() };
                     ("decision", Shape::Rect, wrapped(label))
@@ -1537,6 +1578,1020 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
     d
 }
 
+/// A diagram grown from a few nodes by rewriting a part of it at a time,
+/// the way a draft gains detail: a step split in two, a branch where a
+/// check can fail, a store a process writes to. Each rewrite goes more
+/// likely to a simple part (few connections), so detail spreads over the
+/// diagram; now and then to any part, so hubs grow as well.
+struct Grower {
+    spec: Spec,
+}
+
+impl Grower {
+    fn new(title: &str, kind: &str) -> Grower {
+        Grower {
+            spec: Spec {
+                title: title.to_owned(),
+                kind: kind.to_owned(),
+                nodes: Vec::new(),
+                groups: Vec::new(),
+                edges: Vec::new(),
+            },
+        }
+    }
+
+    fn node(&mut self, label: String, shape: SpecShape, group: Option<String>, columns: Vec<String>) -> String {
+        let id = format!("n{}", self.spec.nodes.len() + 1);
+        self.spec.nodes.push(SpecNode {
+            id: id.clone(),
+            label,
+            shape,
+            columns,
+            group,
+            x: None,
+            y: None,
+        });
+        id
+    }
+
+    /// About how big a node comes out, as `Draft::add` sizes it.
+    fn size_of(n: &SpecNode) -> (f64, f64) {
+        let lines = match n.shape {
+            SpecShape::Circle => vec![String::new()],
+            SpecShape::Table => std::iter::once(n.label.clone())
+                .chain(n.columns.iter().cloned())
+                .collect(),
+            _ => wrapped(&n.label),
+        };
+        let widest = lines.iter().map(|l| l.chars().count()).max().unwrap_or(1) as f64;
+        match n.shape {
+            SpecShape::Circle | SpecShape::Process => {
+                let d = (widest * FONT * 0.62 + 24.0).max(64.0);
+                (d, d)
+            }
+            SpecShape::Table => (
+                (widest * 12.0 * 0.62 + 70.0).max(140.0),
+                HEAD + (lines.len() - 1) as f64 * ROW,
+            ),
+            _ => (
+                (widest * FONT * 0.62 + 32.0).max(96.0),
+                (lines.len() as f64 * 18.0 + 26.0).max(48.0),
+            ),
+        }
+    }
+
+    fn at(&self, id: &str) -> Option<(f64, f64)> {
+        let n = self.get(id);
+        Some((n.x?, n.y?))
+    }
+
+    fn put(&mut self, id: &str, at: (f64, f64)) {
+        let n = self.get_mut(id);
+        (n.x, n.y) = (Some(at.0), Some(at.1));
+    }
+
+    /// Whether a node of `size` centred at `at` keeps `margin` clear of
+    /// every placed node but `id` itself.
+    fn free(&self, id: &str, at: (f64, f64), size: (f64, f64), margin: f64) -> bool {
+        self.spec.nodes.iter().filter(|n| n.id != id).all(|n| {
+            let (Some(x), Some(y)) = (n.x, n.y) else { return true };
+            let (w, h) = Grower::size_of(n);
+            (x - at.0).abs() >= (w + size.0) / 2.0 + margin || (y - at.1).abs() >= (h + size.1) / 2.0 + margin
+        })
+    }
+
+    /// Puts `id` beside `anchor`: the first free place in the directions
+    /// given, in order, each as far out as the two nodes' halves and a gap,
+    /// keeping the anchor's line; then a step farther out, and so on.
+    fn beside(&mut self, rng: &mut Rng, id: &str, anchor: &str, directions: &[(f64, f64)]) {
+        let size = Grower::size_of(self.get(id));
+        let (from, (aw, ah)) = (self.at(anchor).unwrap_or((0.0, 0.0)), Grower::size_of(self.get(anchor)));
+        // How roomy this hand is with this node.
+        let gap = [50.0, 70.0, 90.0, 130.0][rng.below(4)];
+        for farther in 0..16 {
+            let extra = gap + farther as f64 * 60.0;
+            let free: Vec<(f64, f64)> = directions
+                .iter()
+                .map(|(dx, dy)| {
+                    (
+                        from.0 + dx * ((aw + size.0) / 2.0 + extra),
+                        from.1 + dy * ((ah + size.1) / 2.0 + extra),
+                    )
+                })
+                .filter(|at| self.free(id, *at, size, 30.0))
+                .collect();
+            // The first free place that keeps the diagram from growing
+            // into a long strip, else the first free place.
+            if let Some(at) = free.iter().find(|at| self.keeps_shape(**at, size)).or(free.first()) {
+                self.put(id, *at);
+                return;
+            }
+        }
+        // Nowhere near: past everything on the right.
+        let right = self
+            .spec
+            .nodes
+            .iter()
+            .filter_map(|n| Some(n.x? + Grower::size_of(n).0 / 2.0))
+            .fold(0.0, f64::max);
+        self.put(id, (right + gap + size.0 / 2.0, from.1));
+    }
+
+    /// Whether the placed nodes and one of `size` at `at` together stay
+    /// between half as wide as tall and twice as wide.
+    fn keeps_shape(&self, at: (f64, f64), size: (f64, f64)) -> bool {
+        let boxes = self
+            .spec
+            .nodes
+            .iter()
+            .filter_map(|n| Some((n.x?, n.y?, Grower::size_of(n))))
+            .chain(std::iter::once((at.0, at.1, size)));
+        let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for (x, y, (w, h)) in boxes {
+            (left, right) = (left.min(x - w / 2.0), right.max(x + w / 2.0));
+            (top, bottom) = (top.min(y - h / 2.0), bottom.max(y + h / 2.0));
+        }
+        let ratio = (right - left) / (bottom - top).max(1.0);
+        (0.5..=2.0).contains(&ratio)
+    }
+
+    /// Puts `id` between `a` and `b` if there is room there, else off to
+    /// one side of the line between them, else beside `a`.
+    fn between(&mut self, rng: &mut Rng, id: &str, a: &str, b: &str, ahead: (f64, f64)) {
+        let size = Grower::size_of(self.get(id));
+        if let (Some(p), Some(q)) = (self.at(a), self.at(b)) {
+            let mid = ((p.0 + q.0) / 2.0, (p.1 + q.1) / 2.0);
+            let side = (ahead.1, ahead.0);
+            for k in [0.0, 1.0, -1.0, 2.0, -2.0] {
+                let at = (
+                    mid.0 + side.0 * k * (size.0 + 60.0),
+                    mid.1 + side.1 * k * (size.1 + 60.0),
+                );
+                if self.free(id, at, size, 30.0) {
+                    self.put(id, at);
+                    return;
+                }
+            }
+        }
+        let side = (ahead.1, ahead.0);
+        self.beside(rng, id, a, &[ahead, side, (-side.0, -side.1)]);
+    }
+
+    /// The one of the eight compass directions closest to the way from
+    /// `id` to the middle of `others`, if they are placed.
+    fn toward(&self, id: &str, others: &[String]) -> Option<(f64, f64)> {
+        let here = self.at(id)?;
+        let placed: Vec<(f64, f64)> = others.iter().filter_map(|o| self.at(o)).collect();
+        if placed.is_empty() {
+            return None;
+        }
+        let count = placed.len() as f64;
+        let (dx, dy) = (
+            placed.iter().map(|p| p.0).sum::<f64>() / count - here.0,
+            placed.iter().map(|p| p.1).sum::<f64>() / count - here.1,
+        );
+        let angle = (dy.atan2(dx) / std::f64::consts::FRAC_PI_4).round() * std::f64::consts::FRAC_PI_4;
+        Some((angle.cos().round(), angle.sin().round()))
+    }
+
+    /// Where a flow's lane band starts: lanes lie one under another.
+    fn lane_top(&self, group: &Option<String>) -> f64 {
+        let index = group
+            .as_ref()
+            .and_then(|g| self.spec.groups.iter().position(|x| &x.id == g))
+            .unwrap_or(0);
+        index as f64 * (LANE_ROWS as f64 * ROW_GAP + 80.0)
+    }
+
+    /// Which row of its lane `id` sits in.
+    fn row_of(&self, id: &str) -> usize {
+        let n = self.get(id);
+        let top = self.lane_top(&n.group);
+        n.y.map_or(0, |y| {
+            ((y - top - 60.0) / ROW_GAP).round().clamp(0.0, (LANE_ROWS - 1) as f64) as usize
+        })
+    }
+
+    /// Where a node of `id` goes just after `a` along a flow, with `gap`.
+    fn after(&self, a: &str, id: &str, gap: f64) -> f64 {
+        let (aw, w) = (Grower::size_of(self.get(a)).0, Grower::size_of(self.get(id)).0);
+        self.at(a).map_or(0.0, |p| p.0) + (aw + w) / 2.0 + gap
+    }
+
+    /// Moves every placed node whose centre is right of `x` along by `by`.
+    fn make_room(&mut self, x: f64, by: f64) {
+        for n in &mut self.spec.nodes {
+            if let Some(nx) = n.x.filter(|nx| *nx >= x) {
+                n.x = Some(nx + by);
+            }
+        }
+    }
+
+    /// Puts `id` in its lane at `x`: in `row` if free there, else in
+    /// another row of the lane, else in `row` once the nodes from there
+    /// on are moved along to make room, as a hand inserts a step.
+    fn in_lane(&mut self, id: &str, x: f64, row: usize) {
+        let size = Grower::size_of(self.get(id));
+        let top = self.lane_top(&self.get(id).group);
+        let y = |r: usize| top + 60.0 + r as f64 * ROW_GAP;
+        let mut rows: Vec<usize> = (0..LANE_ROWS).collect();
+        rows.sort_by_key(|r| r.abs_diff(row));
+        for r in rows {
+            if self.free(id, (x, y(r)), size, 30.0) {
+                self.put(id, (x, y(r)));
+                return;
+            }
+        }
+        self.make_room(x - size.0 / 2.0 - 20.0, size.0 + 70.0);
+        self.put(id, (x, y(row)));
+    }
+
+    /// Puts `id` at `x` in `row` of its lane, moving the nodes from there
+    /// on along first if they are in the way: a step put between two.
+    fn in_row(&mut self, id: &str, x: f64, row: usize) {
+        let size = Grower::size_of(self.get(id));
+        let y = self.lane_top(&self.get(id).group) + 60.0 + row as f64 * ROW_GAP;
+        if !self.free(id, (x, y), size, 30.0) {
+            self.make_room(x - size.0 / 2.0 - 20.0, size.0 + 70.0);
+        }
+        self.put(id, (x, y));
+    }
+
+    /// Moves each node of a flow right of the nodes that lead to it (but
+    /// for the edges that close a loop), so the flow reads left to right;
+    /// then moves along any node that now crowds the one before it in its
+    /// row.
+    fn forward(&mut self) {
+        let index: BTreeMap<String, usize> = self
+            .spec
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.id.clone(), i))
+            .collect();
+        let edges: Vec<(usize, usize)> = self.spec.edges.iter().map(|e| (index[&e.from], index[&e.to])).collect();
+        let layer = layers(self.spec.nodes.len(), &edges);
+        let mut order: Vec<usize> = (0..self.spec.nodes.len()).collect();
+        order.sort_by_key(|v| layer[*v]);
+        let size: Vec<(f64, f64)> = self.spec.nodes.iter().map(Grower::size_of).collect();
+        for v in order {
+            let least = edges
+                .iter()
+                .filter(|(a, b)| *b == v && layer[*a] < layer[v])
+                .filter_map(|(a, _)| Some(self.spec.nodes[*a].x? + (size[*a].0 + size[v].0) / 2.0 + 40.0))
+                .fold(f64::MIN, f64::max);
+            let n = &mut self.spec.nodes[v];
+            n.x = n.x.map(|x| x.max(least));
+        }
+        // Then, row by row, each node keeps clear of the one before it.
+        let mut rows: BTreeMap<i64, Vec<usize>> = BTreeMap::new();
+        for (v, n) in self.spec.nodes.iter().enumerate() {
+            if let (Some(_), Some(y)) = (n.x, n.y) {
+                rows.entry(y.round() as i64).or_default().push(v);
+            }
+        }
+        for row in rows.values_mut() {
+            row.sort_by(|a, b| {
+                self.spec.nodes[*a]
+                    .x
+                    .unwrap_or(0.0)
+                    .total_cmp(&self.spec.nodes[*b].x.unwrap_or(0.0))
+            });
+            for pair in row.windows(2) {
+                let (a, b) = (pair[0], pair[1]);
+                let least = self.spec.nodes[a].x.unwrap_or(0.0) + (size[a].0 + size[b].0) / 2.0 + 30.0;
+                let n = &mut self.spec.nodes[b];
+                n.x = n.x.map(|x| x.max(least));
+            }
+        }
+    }
+
+    /// How many times wider than tall the placed nodes spread.
+    fn spread_ratio(&self) -> f64 {
+        let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for n in &self.spec.nodes {
+            let (Some(x), Some(y)) = (n.x, n.y) else { continue };
+            let (w, h) = Grower::size_of(n);
+            (left, right) = (left.min(x - w / 2.0), right.max(x + w / 2.0));
+            (top, bottom) = (top.min(y - h / 2.0), bottom.max(y + h / 2.0));
+        }
+        if right < left {
+            1.0
+        } else {
+            (right - left) / (bottom - top).max(1.0)
+        }
+    }
+
+    /// The directions from `id` that lead away from the middle of the
+    /// diagram, most outward first.
+    fn outward(&self, id: &str) -> Vec<(f64, f64)> {
+        let placed: Vec<(f64, f64)> = self.spec.nodes.iter().filter_map(|n| Some((n.x?, n.y?))).collect();
+        let count = placed.len().max(1) as f64;
+        let middle = (
+            placed.iter().map(|p| p.0).sum::<f64>() / count,
+            placed.iter().map(|p| p.1).sum::<f64>() / count,
+        );
+        let here = self.at(id).unwrap_or(middle);
+        let away = (here.0 - middle.0, here.1 - middle.1);
+        let mut directions = vec![(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)];
+        directions.sort_by(|a, b| (b.0 * away.0 + b.1 * away.1).total_cmp(&(a.0 * away.0 + a.1 * away.1)));
+        directions
+    }
+
+    fn get(&self, id: &str) -> &SpecNode {
+        self.spec
+            .nodes
+            .iter()
+            .find(|n| n.id == id)
+            .expect("a grown edge joins grown nodes")
+    }
+
+    fn get_mut(&mut self, id: &str) -> &mut SpecNode {
+        self.spec
+            .nodes
+            .iter_mut()
+            .find(|n| n.id == id)
+            .expect("a grown edge joins grown nodes")
+    }
+
+    fn edge(&mut self, from: &str, to: &str, label: Option<String>) {
+        self.edge_ports(from, to, label, None, None);
+    }
+
+    fn edge_ports(
+        &mut self,
+        from: &str,
+        to: &str,
+        label: Option<String>,
+        from_port: Option<String>,
+        to_port: Option<String>,
+    ) {
+        self.spec.edges.push(SpecEdge {
+            from: from.to_owned(),
+            to: to.to_owned(),
+            label,
+            from_port,
+            to_port,
+        });
+    }
+
+    fn joined(&self, a: &str, b: &str) -> bool {
+        self.spec
+            .edges
+            .iter()
+            .any(|e| (e.from == a && e.to == b) || (e.from == b && e.to == a))
+    }
+
+    fn degree(&self, id: &str) -> usize {
+        self.spec.edges.iter().filter(|e| e.from == id || e.to == id).count()
+    }
+
+    /// One of the nodes `keep` lets through, simple ones likelier.
+    fn simple_node(&self, rng: &mut Rng, keep: impl Fn(&SpecNode) -> bool) -> Option<String> {
+        let candidates: Vec<(String, usize)> = self
+            .spec
+            .nodes
+            .iter()
+            .filter(|n| keep(n))
+            .map(|n| (n.id.clone(), self.degree(&n.id)))
+            .collect();
+        simple(rng, candidates)
+    }
+
+    /// One of the nodes `keep` lets through, simple ones and ones near
+    /// `near` likelier: a hand joins what lies close by.
+    fn nearby_node(&self, rng: &mut Rng, near: &str, keep: impl Fn(&SpecNode) -> bool) -> Option<String> {
+        let here = self.at(near)?;
+        let candidates: Vec<(String, f64)> = self
+            .spec
+            .nodes
+            .iter()
+            .filter(|n| n.id != near && keep(n))
+            .filter_map(|n| {
+                let d = ((n.x? - here.0).powi(2) + (n.y? - here.1).powi(2)).sqrt() / 250.0;
+                let degree = self.degree(&n.id) as f64 + 1.0;
+                Some((n.id.clone(), 1.0 / (degree * degree * (1.0 + d * d).powi(2))))
+            })
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        let weights: Vec<f64> = candidates.iter().map(|(_, w)| *w).collect();
+        let at = weighted(rng, &weights);
+        candidates.into_iter().nth(at).map(|(id, _)| id)
+    }
+
+    /// The place of one of the edges `keep` lets through, those between
+    /// simple nodes likelier.
+    fn simple_edge(&self, rng: &mut Rng, keep: impl Fn(&SpecNode, &SpecNode) -> bool) -> Option<usize> {
+        let candidates: Vec<(usize, usize)> = self
+            .spec
+            .edges
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.from != e.to && keep(self.get(&e.from), self.get(&e.to)))
+            .map(|(i, e)| (i, self.degree(&e.from) + self.degree(&e.to)))
+            .collect();
+        simple(rng, candidates)
+    }
+
+    /// The finished spec, checked: ids unique, every edge between nodes
+    /// it has, and every group a node names among its groups.
+    fn done(self) -> Spec {
+        let mut spec = self.spec;
+        // Placed in drawn pixels; a spec's drawn positions are spread by
+        // DRAWN_SCALE when laid out.
+        for n in &mut spec.nodes {
+            n.x = n.x.map(|x| x / DRAWN_SCALE);
+            n.y = n.y.map(|y| y / DRAWN_SCALE);
+        }
+        let ids: std::collections::BTreeSet<&str> = spec.nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids.len(), spec.nodes.len(), "grown node ids are unique");
+        for e in &spec.edges {
+            assert!(
+                ids.contains(e.from.as_str()) && ids.contains(e.to.as_str()),
+                "grown edges join grown nodes"
+            );
+        }
+        for n in &spec.nodes {
+            if let Some(group) = &n.group {
+                assert!(
+                    spec.groups.iter().any(|g| &g.id == group),
+                    "grown nodes sit in grown groups"
+                );
+            }
+        }
+        spec
+    }
+}
+
+/// One of `candidates`, each with how many connections it has: the fewer,
+/// the likelier (as one over the square of one more). One pick in seven
+/// takes any, so busy parts grow too.
+fn simple<T>(rng: &mut Rng, candidates: Vec<(T, usize)>) -> Option<T> {
+    if candidates.is_empty() {
+        return None;
+    }
+    if rng.chance(1.0 / 7.0) {
+        let at = rng.below(candidates.len());
+        return candidates.into_iter().nth(at).map(|(item, _)| item);
+    }
+    let weights: Vec<f64> = candidates
+        .iter()
+        .map(|(_, d)| 1.0 / ((d + 1) * (d + 1)) as f64)
+        .collect();
+    let mut left = rng.unit() * weights.iter().sum::<f64>();
+    let last = candidates.len() - 1;
+    for (i, ((item, _), w)) in candidates.into_iter().zip(&weights).enumerate() {
+        if left < *w || i == last {
+            return Some(item);
+        }
+        left -= w;
+    }
+    None
+}
+
+/// The place of one of `weights`, each as likely as its weight.
+fn weighted(rng: &mut Rng, weights: &[f64]) -> usize {
+    let mut left = rng.unit() * weights.iter().sum::<f64>();
+    for (i, w) in weights.iter().enumerate() {
+        if left < *w {
+            return i;
+        }
+        left -= w;
+    }
+    weights.len() - 1
+}
+
+/// Names drawn in turn from a shuffled pool, numbered once it runs out.
+struct Pool {
+    names: Vec<String>,
+    next: usize,
+}
+
+impl Pool {
+    fn new(rng: &mut Rng, pool: &[&str]) -> Pool {
+        Pool {
+            names: names(rng, pool, 400),
+            next: 0,
+        }
+    }
+
+    fn take(&mut self) -> String {
+        self.next += 1;
+        self.names[(self.next - 1) % self.names.len()].clone()
+    }
+}
+
+/// Rows a grown flow's lane has room for, and how far apart they are.
+const LANE_ROWS: usize = 3;
+const ROW_GAP: f64 = 110.0;
+
+/// How many nodes a grown diagram of `size` stops at.
+fn grown_nodes(size: Size) -> usize {
+    size.scale(8)
+}
+
+/// Rewrites a diagram until it has `target` nodes; `rewrite` tries one
+/// rewrite and says whether it could.
+fn grow_until(g: &mut Grower, rng: &mut Rng, target: usize, mut rewrite: impl FnMut(&mut Grower, &mut Rng) -> bool) {
+    let mut tries = 0;
+    while g.spec.nodes.len() < target && tries < 10 * target {
+        tries += 1;
+        rewrite(g, rng);
+    }
+}
+
+const QUESTIONS: &[&str] = &[
+    "Valid?",
+    "In stock?",
+    "Paid?",
+    "Approved?",
+    "Complete?",
+    "Urgent?",
+    "Signed?",
+    "Accepted?",
+];
+const FAILED_ENDS: &[&str] = &["Cancelled", "Rejected", "Expired", "Withdrawn"];
+
+/// A process flow in lanes: steps split, checks that branch and merge or
+/// end early, retries, work done in parallel, and steps handed to another
+/// department.
+fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
+    let mut g = Grower::new("Order to delivery — process flow", "flow");
+    let mut steps = Pool::new(rng, STEPS);
+    let lanes = names(rng, LANES, LANES.len());
+    let mut lanes_used = 0;
+    let mut new_lane = |g: &mut Grower| -> Option<String> {
+        let title = lanes.get(lanes_used)?.clone();
+        lanes_used += 1;
+        let id = format!("lane{lanes_used}");
+        g.spec.groups.push(SpecGroup { id: id.clone(), title });
+        Some(id)
+    };
+    let first = new_lane(&mut g);
+    let start = g.node("Start".into(), SpecShape::Circle, first.clone(), Vec::new());
+    let step = g.node(steps.take(), SpecShape::Rect, first.clone(), Vec::new());
+    let end = g.node("Done".into(), SpecShape::Circle, first, Vec::new());
+    g.put(&start, (0.0, 60.0));
+    let gap = |rng: &mut Rng| [40.0, 60.0, 80.0, 110.0][rng.below(4)];
+    let x = g.after(&start, &step, gap(rng));
+    g.in_lane(&step, x, 0);
+    let x = g.after(&step, &end, gap(rng));
+    g.in_lane(&end, x, 0);
+    g.edge(&start, &step, None);
+    g.edge(&step, &end, None);
+    // The row a node takes after `a`: a's own in a's lane, else the top.
+    let row_after = |g: &Grower, a: &str, id: &str| {
+        if g.get(a).group == g.get(id).group {
+            g.row_of(a)
+        } else {
+            0
+        }
+    };
+    let is_step = |n: &SpecNode| n.shape == SpecShape::Rect;
+    // Mostly the lane of the work before; now and then another, or a new
+    // one, more often once the lanes run long.
+    let mut lane_for = |g: &mut Grower, rng: &mut Rng, near: &str| -> Option<String> {
+        let here = g.get(near).group.clone();
+        let weights = if g.spread_ratio() > 3.0 {
+            [4.0, 3.0, 3.0]
+        } else {
+            [7.0, 2.0, 1.0]
+        };
+        match weighted(rng, &weights) {
+            0 => here,
+            1 => {
+                let at = rng.below(g.spec.groups.len());
+                Some(g.spec.groups[at].id.clone())
+            }
+            _ => new_lane(g).or(here),
+        }
+    };
+    grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
+        match weighted(rng, &[3.0, 2.0, 1.0, 1.0, 1.0]) {
+            // A step split in two.
+            0 => {
+                let Some(i) = g.simple_edge(rng, |_, _| true) else {
+                    return false;
+                };
+                let e = g.spec.edges.remove(i);
+                let lane = lane_for(g, rng, &e.from);
+                let t = g.node(steps.take(), SpecShape::Rect, lane, Vec::new());
+                let (x, row) = (g.after(&e.from, &t, gap(rng)), row_after(g, &e.from, &t));
+                g.in_row(&t, x, row);
+                g.edge(&e.from, &t, e.label);
+                g.edge(&t, &e.to, None);
+            }
+            // A check after a step: "no" takes another way back in, or ends early.
+            1 => {
+                let Some(i) = g.simple_edge(rng, |a, _| is_step(a)) else {
+                    return false;
+                };
+                let e = g.spec.edges.remove(i);
+                let lane = g.get(&e.from).group.clone();
+                let d = g.node(
+                    rng.pick(QUESTIONS).into(),
+                    SpecShape::Decision,
+                    lane.clone(),
+                    Vec::new(),
+                );
+                let yes = g.node(steps.take(), SpecShape::Rect, lane, Vec::new());
+                let other = lane_for(g, rng, &e.from);
+                let no = g.node(steps.take(), SpecShape::Rect, other.clone(), Vec::new());
+                // "Yes" goes on along the row, "no" drops to the row below.
+                let row = g.row_of(&e.from);
+                let x = g.after(&e.from, &d, gap(rng));
+                g.in_lane(&d, x, row);
+                let x = g.after(&d, &yes, gap(rng));
+                g.in_lane(&yes, x, row);
+                let x = g.after(&d, &no, gap(rng));
+                let below = if g.get(&no).group == g.get(&d).group {
+                    (g.row_of(&d) + 1).min(LANE_ROWS - 1)
+                } else {
+                    0
+                };
+                g.in_lane(&no, x, below);
+                g.edge(&e.from, &d, e.label);
+                g.edge(&d, &yes, Some("yes".into()));
+                g.edge(&yes, &e.to, None);
+                g.edge(&d, &no, Some("no".into()));
+                if rng.chance(0.3) {
+                    let failed = g.node(rng.pick(FAILED_ENDS).into(), SpecShape::Circle, other, Vec::new());
+                    let (x, row) = (g.after(&no, &failed, gap(rng)), g.row_of(&no));
+                    g.in_lane(&failed, x, row);
+                    g.edge(&no, &failed, None);
+                } else {
+                    g.edge(&no, &e.to, None);
+                }
+            }
+            // A step checked after it and done again until it passes.
+            2 => {
+                let Some(i) = g.simple_edge(rng, |a, _| is_step(a)) else {
+                    return false;
+                };
+                let e = g.spec.edges.remove(i);
+                let lane = g.get(&e.from).group.clone();
+                let d = g.node(rng.pick(QUESTIONS).into(), SpecShape::Decision, lane, Vec::new());
+                let (x, row) = (g.after(&e.from, &d, gap(rng)), g.row_of(&e.from));
+                g.in_lane(&d, x, row);
+                g.edge(&e.from, &d, e.label);
+                g.edge(&d, &e.to, Some("yes".into()));
+                g.edge(&d, &e.from, Some("no".into()));
+            }
+            // Two steps done side by side between a split and a join.
+            3 => {
+                let Some(i) = g.simple_edge(rng, |a, b| is_step(a) || is_step(b)) else {
+                    return false;
+                };
+                let e = g.spec.edges.remove(i);
+                let lane = g.get(&e.from).group.clone();
+                let split = g.node("+".into(), SpecShape::Decision, lane.clone(), Vec::new());
+                let join = g.node("+".into(), SpecShape::Decision, lane.clone(), Vec::new());
+                let one = g.node(steps.take(), SpecShape::Rect, lane, Vec::new());
+                let other = lane_for(g, rng, &e.from);
+                let two = g.node(steps.take(), SpecShape::Rect, other, Vec::new());
+                // One above the other between the split and the join.
+                let row = g.row_of(&e.from);
+                let x = g.after(&e.from, &split, gap(rng));
+                g.in_lane(&split, x, row);
+                let x = g.after(&split, &one, gap(rng));
+                g.in_lane(&one, x, row);
+                let below = if g.get(&two).group == g.get(&split).group {
+                    (row + 1).min(LANE_ROWS - 1)
+                } else {
+                    0
+                };
+                g.in_lane(&two, x, below);
+                let last = if g.at(&one).map_or(0.0, |p| p.0) >= g.at(&two).map_or(0.0, |p| p.0) {
+                    &one
+                } else {
+                    &two
+                };
+                let x = g.after(last, &join, gap(rng));
+                g.in_lane(&join, x, row);
+                g.edge(&e.from, &split, e.label);
+                for t in [&one, &two] {
+                    g.edge(&split, t, None);
+                    g.edge(t, &join, None);
+                }
+                g.edge(&join, &e.to, None);
+            }
+            // A step handed to another department.
+            _ => {
+                let Some(t) = g.simple_node(rng, is_step) else {
+                    return false;
+                };
+                let lane = lane_for(g, rng, &t);
+                if lane == g.get(&t).group {
+                    return false;
+                }
+                g.get_mut(&t).group = lane;
+                let x = g.at(&t).map_or(0.0, |p| p.0);
+                g.in_lane(&t, x, 0);
+            }
+        }
+        true
+    });
+    g.forward();
+    g.done()
+}
+
+/// A data flow diagram: flows split by a process between, processes given
+/// the stores they keep and the outside parties they deal with, fanning
+/// out, and a process broken down into numbered sub-processes.
+fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
+    let mut g = Grower::new("Order handling — data flow diagram", "dfd");
+    let mut processes = Pool::new(rng, PROCESSES);
+    let mut entities = Pool::new(rng, ENTITIES);
+    let mut stores = Pool::new(rng, STORES);
+    let mut numbered = 0;
+    let mut stored = 0;
+    let mut process = |g: &mut Grower, name: String| {
+        numbered += 1;
+        g.node(format!("{numbered} {name}"), SpecShape::Process, None, Vec::new())
+    };
+    let mut store = |g: &mut Grower, name: String| {
+        stored += 1;
+        g.node(format!("D{stored} {name}"), SpecShape::Rect, None, Vec::new())
+    };
+    let flow = |rng: &mut Rng| Some(rng.pick(FLOWS).to_owned());
+    // Which way this diagram reads: work moves ahead, stores sit to the side.
+    let ahead = if rng.chance(0.5) { (1.0, 0.0) } else { (0.0, 1.0) };
+    let side = (ahead.1, ahead.0);
+    let back = (-ahead.0, -ahead.1);
+    let other_side = (-side.0, -side.1);
+    // To the side, but off the line work runs along.
+    let aside = [
+        side,
+        other_side,
+        (side.0 + ahead.0, side.1 + ahead.1),
+        (other_side.0 + ahead.0, other_side.1 + ahead.1),
+        (side.0 - ahead.0, side.1 - ahead.1),
+        (other_side.0 - ahead.0, other_side.1 - ahead.1),
+    ];
+    let first = process(&mut g, processes.take());
+    g.put(&first, (0.0, 0.0));
+    let source = g.node(entities.take(), SpecShape::Rect, None, Vec::new());
+    g.beside(rng, &source, &first, &[back, side, other_side]);
+    let sink = g.node(entities.take(), SpecShape::Rect, None, Vec::new());
+    g.beside(rng, &sink, &first, &[ahead, side, other_side]);
+    let kept = store(&mut g, stores.take());
+    g.beside(rng, &kept, &first, &aside);
+    g.edge(&source, &first, flow(rng));
+    g.edge(&first, &kept, flow(rng));
+    g.edge(&first, &sink, flow(rng));
+    let is_process = |n: &SpecNode| n.shape == SpecShape::Process;
+    // Stores are named "D1 ...", "D2 ...".
+    let is_store = |n: &SpecNode| {
+        n.shape == SpecShape::Rect
+            && n.label
+                .strip_prefix('D')
+                .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+    };
+    let is_party = |n: &SpecNode| n.shape == SpecShape::Rect && !is_store(n);
+    grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
+        match weighted(rng, &[3.0, 3.0, 2.0, 1.0, 1.0]) {
+            // A store a process writes, and now and then another reads.
+            0 => {
+                let Some(p) = g.simple_node(rng, is_process) else {
+                    return false;
+                };
+                let s = store(g, stores.take());
+                g.beside(rng, &s, &p, &aside);
+                g.edge(&p, &s, flow(rng));
+                if rng.chance(0.5)
+                    && let Some(q) = g.nearby_node(rng, &s, |n| is_process(n) && n.id != p)
+                {
+                    g.edge(&s, &q, flow(rng));
+                }
+            }
+            // A process between the ends of a flow.
+            1 => {
+                let Some(i) = g.simple_edge(rng, |a, b| is_process(a) || is_process(b)) else {
+                    return false;
+                };
+                let e = g.spec.edges.remove(i);
+                let q = process(g, processes.take());
+                g.between(rng, &q, &e.from, &e.to, ahead);
+                g.edge(&e.from, &q, e.label);
+                g.edge(&q, &e.to, flow(rng));
+            }
+            // An outside party a process hears from or answers.
+            2 => {
+                let Some(p) = g.simple_node(rng, is_process) else {
+                    return false;
+                };
+                let e = g.node(entities.take(), SpecShape::Rect, None, Vec::new());
+                let outward = g.outward(&p);
+                g.beside(rng, &e, &p, &outward);
+                if rng.chance(0.5) {
+                    g.edge(&e, &p, flow(rng));
+                } else {
+                    g.edge(&p, &e, flow(rng));
+                }
+            }
+            // A process handing work on to two others.
+            3 => {
+                let Some(p) = g.simple_node(rng, is_process) else {
+                    return false;
+                };
+                let mut next_to = p.clone();
+                for k in 0..2 {
+                    let q = process(g, processes.take());
+                    if k == 0 {
+                        g.beside(rng, &q, &p, &[ahead, side, other_side]);
+                    } else {
+                        g.beside(rng, &q, &next_to, &[side, other_side, ahead]);
+                    }
+                    next_to.clone_from(&q);
+                    g.edge(&p, &q, flow(rng));
+                    let end = if rng.chance(0.5) {
+                        g.nearby_node(rng, &q, is_store)
+                    } else {
+                        g.nearby_node(rng, &q, is_party)
+                    };
+                    if let Some(end) = end {
+                        g.edge(&q, &end, flow(rng));
+                    }
+                }
+            }
+            // A process broken down: n becomes n.1, n.2 and n.3 in a row,
+            // the first taking what came in, the last sending what went out.
+            _ => {
+                let Some(p) = g.simple_node(rng, is_process) else {
+                    return false;
+                };
+                let label = g.get(&p).label.clone();
+                let (number, name) = label.split_once(' ').unwrap_or((label.as_str(), ""));
+                let (number, name) = (number.to_owned(), name.to_owned());
+                g.get_mut(&p).label = format!("{number}.1 {name}");
+                let second = g.node(
+                    format!("{number}.2 {}", processes.take()),
+                    SpecShape::Process,
+                    None,
+                    Vec::new(),
+                );
+                let third = g.node(
+                    format!("{number}.3 {}", processes.take()),
+                    SpecShape::Process,
+                    None,
+                    Vec::new(),
+                );
+                // Laid out the way what it sends goes.
+                let sent: Vec<String> = g
+                    .spec
+                    .edges
+                    .iter()
+                    .filter(|e| e.from == p)
+                    .map(|e| e.to.clone())
+                    .collect();
+                let way = g.toward(&p, &sent).unwrap_or(ahead);
+                let across = (way.1, way.0);
+                g.beside(rng, &second, &p, &[way, across, (-across.0, -across.1)]);
+                g.beside(rng, &third, &second, &[way, across, (-across.0, -across.1)]);
+                for e in g.spec.edges.iter_mut().filter(|e| e.from == p) {
+                    e.from.clone_from(&third);
+                }
+                g.edge(&p, &second, flow(rng));
+                g.edge(&second, &third, flow(rng));
+            }
+        }
+        true
+    });
+    g.done()
+}
+
+/// Suffixes for tables made from another when the pool runs out.
+const DERIVED: &[&str] = &["history", "notes", "events", "tags", "logs", "versions", "settings"];
+const LOOKUPS: &[&str] = &["statuses", "types", "categories", "regions", "currencies"];
+
+/// An entity relationship diagram: tables gaining child tables, junction
+/// tables for many to many, lookup tables, one to one details, and now and
+/// then a table referring to itself.
+fn grow_er(rng: &mut Rng, size: Size) -> Spec {
+    let mut g = Grower::new("Shop — entity relationship diagram", "er");
+    let mut order: Vec<usize> = (0..TABLES.len()).collect();
+    for i in (1..order.len()).rev() {
+        order.swap(i, rng.below(i + 1));
+    }
+    let mut pool = order.into_iter().map(|i| TABLES[i]);
+    let table = |g: &mut Grower, name: String, own: &[&str]| {
+        let columns = std::iter::once("id".to_owned())
+            .chain(own.iter().map(|c| (*c).to_owned()))
+            .collect();
+        g.node(name, SpecShape::Table, None, columns)
+    };
+    let taken = |g: &Grower, name: &str| g.spec.nodes.iter().any(|n| n.label == name);
+    // `child` gains a key to `parent`, after its id and the keys before.
+    let refer = |g: &mut Grower, child: &str, parent: &str, column: String| {
+        let at = g
+            .get(child)
+            .columns
+            .iter()
+            .take_while(|c| *c == "id" || c.ends_with("_id"))
+            .count();
+        g.get_mut(child).columns.insert(at, column.clone());
+        g.edge_ports(child, parent, None, Some(column), Some("id".into()));
+    };
+    let (name, own) = pool.next().expect("the table pool is not empty");
+    let first = table(&mut g, name.into(), own);
+    g.put(&first, (0.0, 0.0));
+    let (name, own) = pool.next().expect("the table pool has two tables");
+    let second = table(&mut g, name.into(), own);
+    let around = [(1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0)];
+    g.beside(rng, &second, &first, &around);
+    let key = format!("{}_id", singular(&g.get(&first).label));
+    refer(&mut g, &second, &first, key);
+    // Tables made for another's sake (junctions, lookups, details) are not
+    // grown on, as a designer would not key a junction of junctions.
+    let mut made_for: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
+        let tables = |n: &SpecNode| n.shape == SpecShape::Table && !made_for.contains(&n.id);
+        match weighted(rng, &[3.0, 2.0, 1.0, 1.0, 0.5]) {
+            // A child table, from the pool or named after its parent.
+            0 => {
+                let Some(parent) = g.simple_node(rng, tables) else {
+                    return false;
+                };
+                let parent_name = g.get(&parent).label.clone();
+                let (name, own) = match pool.next() {
+                    Some((name, own)) => (name.to_owned(), own),
+                    None => (
+                        format!("{}_{}", singular(&parent_name), rng.pick(DERIVED)),
+                        &["created_at"][..],
+                    ),
+                };
+                if taken(g, &name) {
+                    return false;
+                }
+                let child = table(g, name, own);
+                let outward = g.outward(&parent);
+                g.beside(rng, &child, &parent, &outward);
+                refer(g, &child, &parent, format!("{}_id", singular(&parent_name)));
+            }
+            // Many to many: a junction table keyed to both.
+            1 => {
+                let Some(a) = g.simple_node(rng, tables) else {
+                    return false;
+                };
+                let Some(b) = g.nearby_node(rng, &a, |n| tables(n) && n.id != a) else {
+                    return false;
+                };
+                let (an, bn) = (g.get(&a).label.clone(), g.get(&b).label.clone());
+                let name = format!("{}_{bn}", singular(&an));
+                if g.joined(&a, &b) || taken(g, &name) {
+                    return false;
+                }
+                let j = table(g, name, &["created_at"]);
+                g.between(rng, &j, &a, &b, (1.0, 0.0));
+                refer(g, &j, &a, format!("{}_id", singular(&an)));
+                refer(g, &j, &b, format!("{}_id", singular(&bn)));
+                made_for.insert(j);
+            }
+            // A lookup table the table points at.
+            2 => {
+                let Some(t) = g.simple_node(rng, tables) else {
+                    return false;
+                };
+                let what = rng.pick(LOOKUPS);
+                let name = format!("{}_{what}", singular(&g.get(&t).label));
+                if taken(g, &name) {
+                    return false;
+                }
+                let lookup = table(g, name, &["code", "label"]);
+                g.beside(rng, &lookup, &t, &[(1.0, 0.0), (-1.0, 0.0), (1.0, 1.0), (-1.0, 1.0)]);
+                refer(g, &t, &lookup, format!("{}_id", singular(what)));
+                made_for.insert(lookup);
+            }
+            // One to one: details split out of a table.
+            3 => {
+                let Some(t) = g.simple_node(rng, tables) else {
+                    return false;
+                };
+                let base = g.get(&t).label.clone();
+                let name = format!("{}_details", singular(&base));
+                if taken(g, &name) {
+                    return false;
+                }
+                let details = table(g, name, &["notes", "updated_at"]);
+                g.beside(rng, &details, &t, &[(0.0, 1.0), (0.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]);
+                refer(g, &details, &t, format!("{}_id", singular(&base)));
+                made_for.insert(details);
+            }
+            // A table referring to itself, as a tree.
+            _ => {
+                let Some(t) = g.simple_node(rng, |n| tables(n) && !n.columns.iter().any(|c| c == "parent_id")) else {
+                    return false;
+                };
+                refer(g, &t, &t, "parent_id".into());
+            }
+        }
+        true
+    });
+    g.done()
+}
+
 /// A spec drafted at `level`: laid out, then given the level's slips.
 fn generate_from(spec: &Spec, name: &str, level: Level, seed: u64, layout: Option<Layout>) -> String {
     // The name keeps each spec's drafts apart for the same seed.
@@ -1548,6 +2603,22 @@ fn generate_from(spec: &Spec, name: &str, level: Level, seed: u64, layout: Optio
     draft.spread();
     draft.crowd(&mut rng);
     write_svg(&mut rng, &draft)
+}
+
+/// A grown diagram of `kind` drafted at `level`, laid out as a spec is;
+/// none for a kind with no rules to grow it.
+fn generate_grown(kind: Kind, size: Size, level: Level, seed: u64, layout: Option<Layout>) -> Option<String> {
+    let mut rng = Rng::new(seed ^ (1 << 32) ^ ((kind as u64) << 40) ^ ((size as u64) << 48) ^ ((level as u64) << 56));
+    let spec = match kind {
+        Kind::Flow => grow_flow(&mut rng, size),
+        Kind::Dfd => grow_dfd(&mut rng, size),
+        Kind::Er => grow_er(&mut rng, size),
+        Kind::C4 | Kind::Arch => return None,
+    };
+    let mut draft = from_spec(&mut rng, &spec, level.mess(), layout);
+    draft.spread();
+    draft.crowd(&mut rng);
+    Some(write_svg(&mut rng, &draft))
 }
 
 fn generate(kind: Kind, size: Size, level: Level, seed: u64) -> String {
@@ -1614,8 +2685,15 @@ fn main() {
                 .iter()
                 .flat_map(|level| (args.seed..args.seed + args.count).map(move |seed| (*level, seed)))
             {
-                let name = format!("{kind:?}-{size:?}-{level:?}-{seed}.svg").to_lowercase();
-                write_checked(&args.out, &name, &generate(*kind, *size, level, seed));
+                if args.grow {
+                    let name = format!("{kind:?}-{size:?}-{level:?}-grown-{seed}.svg").to_lowercase();
+                    if let Some(svg) = generate_grown(*kind, *size, level, seed, args.layout) {
+                        write_checked(&args.out, &name, &svg);
+                    }
+                } else {
+                    let name = format!("{kind:?}-{size:?}-{level:?}-{seed}.svg").to_lowercase();
+                    write_checked(&args.out, &name, &generate(*kind, *size, level, seed));
+                }
             }
         }
     }
