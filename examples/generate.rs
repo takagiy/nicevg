@@ -1664,6 +1664,8 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
 /// diagram; now and then to any part, so hubs grow as well.
 struct Grower {
     spec: Spec,
+    /// The manner of the hand growing it.
+    hand: Hand,
     /// Sizes given to nodes that stand for something else than their
     /// label: a group laid out as one box.
     sizes: BTreeMap<String, (f64, f64)>,
@@ -1680,6 +1682,7 @@ impl Grower {
                 edges: Vec::new(),
             },
             sizes: BTreeMap::new(),
+            hand: Hand::PLAIN,
         }
     }
 
@@ -1764,9 +1767,10 @@ impl Grower {
         let size = self.size_of(self.get(id));
         let (from, (aw, ah)) = (self.at(anchor).unwrap_or((0.0, 0.0)), self.size_of(self.get(anchor)));
         // How roomy this hand is with this node.
-        let gap = [50.0, 70.0, 90.0, 130.0][rng.below(4)];
+        // Never under the clearance `free` asks, or the first ring is lost.
+        let gap = ([50.0, 70.0, 90.0, 130.0][rng.below(4)] * self.hand.room).max(32.0);
         for farther in 0..16 {
-            let extra = gap + farther as f64 * 60.0;
+            let extra = gap + farther as f64 * (60.0 * self.hand.room).max(20.0);
             let free: Vec<(f64, f64)> = directions
                 .iter()
                 .map(|(dx, dy)| {
@@ -2066,7 +2070,10 @@ impl Grower {
             .filter(|(id, hop)| **hop >= 2 && !self.joined(from, id) && keep(self.get(id)))
             .map(|(id, hop)| {
                 let degree = self.degree(id) as f64 + 1.0;
-                (id.to_string(), if *hop == 2 { 2.0 } else { 1.0 } / (degree * degree))
+                (
+                    id.to_string(),
+                    if *hop == 2 { self.hand.reach } else { 1.0 } / (degree * degree),
+                )
             })
             .collect();
         if candidates.is_empty() {
@@ -2086,7 +2093,7 @@ impl Grower {
             .filter(|n| keep(n))
             .map(|n| (n.id.clone(), self.degree(&n.id)))
             .collect();
-        simple(rng, candidates)
+        simple(rng, candidates, &self.hand)
     }
 
     /// One of the nodes `keep` lets through, simple ones and ones near
@@ -2123,7 +2130,7 @@ impl Grower {
             .filter(|(_, e)| e.from != e.to && keep(self.get(&e.from), self.get(&e.to)))
             .map(|(i, e)| (i, self.degree(&e.from) + self.degree(&e.to)))
             .collect();
-        simple(rng, candidates)
+        simple(rng, candidates, &self.hand)
     }
 
     /// The finished spec, checked: ids unique, every edge between nodes
@@ -2156,20 +2163,78 @@ impl Grower {
     }
 }
 
+/// How one hand grows a diagram, drawn once per diagram so drafts of a
+/// kind differ in manner as well as in detail: which rewrites it reaches
+/// for, how much it keeps to simple parts, how roomy it is, and how close
+/// what it joins up lies.
+#[derive(Clone, Copy)]
+struct Hand {
+    /// Each rewrite's weight is multiplied by its own of these.
+    tastes: [f64; 8],
+    /// A part is likelier the fewer connections it has, as one over one
+    /// more than them to this power.
+    focus: f64,
+    /// The share of picks that take any part, simple or not.
+    wander: f64,
+    /// Gaps between neighbours are multiplied by this: tight hands are
+    /// commoner than roomy ones.
+    room: f64,
+    /// How much likelier a node two links away is joined than one three
+    /// away.
+    reach: f64,
+}
+
+impl Hand {
+    /// The manner every grown diagram had before hands differed.
+    const PLAIN: Hand = Hand {
+        tastes: [1.0; 8],
+        focus: 2.0,
+        wander: 1.0 / 7.0,
+        room: 1.0,
+        reach: 2.0,
+    };
+
+    fn new(rng: &mut Rng) -> Hand {
+        // Between a third and three times as keen, evenly on a log scale.
+        let mut tastes = [1.0; 8];
+        for taste in &mut tastes {
+            *taste = 3f64.powf(rng.unit() * 2.0 - 1.0);
+        }
+        Hand {
+            tastes,
+            focus: 0.5 + rng.unit() * 2.5,
+            wander: 0.05 + rng.unit() * 0.25,
+            // From 0.4 to 1.3, evenly on a log scale but leaning low.
+            room: 0.4 * (1.3f64 / 0.4).powf(rng.unit().powf(1.6)),
+            reach: 1.0 + rng.unit() * 3.0,
+        }
+    }
+
+    /// One of the rewrites with these weights, as this hand leans.
+    fn pick(&self, rng: &mut Rng, weights: &[f64]) -> usize {
+        let leaned: Vec<f64> = weights
+            .iter()
+            .zip(self.tastes.iter().cycle())
+            .map(|(w, t)| w * t)
+            .collect();
+        weighted(rng, &leaned)
+    }
+}
+
 /// One of `candidates`, each with how many connections it has: the fewer,
-/// the likelier (as one over the square of one more). One pick in seven
-/// takes any, so busy parts grow too.
-fn simple<T>(rng: &mut Rng, candidates: Vec<(T, usize)>) -> Option<T> {
+/// the likelier, as the hand's focus has it. Its wander takes any, so busy
+/// parts grow too.
+fn simple<T>(rng: &mut Rng, candidates: Vec<(T, usize)>, hand: &Hand) -> Option<T> {
     if candidates.is_empty() {
         return None;
     }
-    if rng.chance(1.0 / 7.0) {
+    if rng.chance(hand.wander) {
         let at = rng.below(candidates.len());
         return candidates.into_iter().nth(at).map(|(item, _)| item);
     }
     let weights: Vec<f64> = candidates
         .iter()
-        .map(|(_, d)| 1.0 / ((d + 1) * (d + 1)) as f64)
+        .map(|(_, d)| 1.0 / ((d + 1) as f64).powf(hand.focus))
         .collect();
     let mut left = rng.unit() * weights.iter().sum::<f64>();
     let last = candidates.len() - 1;
@@ -2250,6 +2315,7 @@ const FAILED_ENDS: &[&str] = &["Cancelled", "Rejected", "Expired", "Withdrawn"];
 /// department.
 fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
     let mut g = Grower::new("Order to delivery — process flow", "flow");
+    g.hand = Hand::new(rng);
     let mut steps = Pool::new(rng, STEPS);
     let lanes = names(rng, LANES, LANES.len());
     let mut lanes_used = 0;
@@ -2269,7 +2335,8 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
     let step = g.node(steps.take(), SpecShape::Rect, first.clone(), Vec::new());
     let end = g.node("Done".into(), SpecShape::Circle, first, Vec::new());
     g.put(&start, (0.0, 60.0));
-    let gap = |rng: &mut Rng| [40.0, 60.0, 80.0, 110.0][rng.below(4)];
+    let room = g.hand.room;
+    let gap = |rng: &mut Rng| ([40.0, 60.0, 80.0, 110.0][rng.below(4)] * room).max(32.0);
     let x = g.after(&start, &step, gap(rng));
     g.in_lane(&step, x, 0);
     let x = g.after(&step, &end, gap(rng));
@@ -2304,7 +2371,7 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
         }
     };
     grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
-        match weighted(rng, &[3.0, 2.0, 1.0, 1.0, 1.0]) {
+        match g.hand.pick(rng, &[3.0, 2.0, 1.0, 1.0, 1.0]) {
             // A step split in two.
             0 => {
                 let Some(i) = g.simple_edge(rng, |_, _| true) else {
@@ -2436,6 +2503,7 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
 /// out, and a process broken down into numbered sub-processes.
 fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
     let mut g = Grower::new("Order handling — data flow diagram", "dfd");
+    g.hand = Hand::new(rng);
     let mut processes = Pool::new(rng, PROCESSES);
     let mut entities = Pool::new(rng, ENTITIES);
     let mut stores = Pool::new(rng, STORES);
@@ -2485,7 +2553,7 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
     };
     let is_party = |n: &SpecNode| n.shape == SpecShape::Rect && !is_store(n);
     grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
-        match weighted(rng, &[3.0, 3.0, 2.0, 1.0, 1.0]) {
+        match g.hand.pick(rng, &[3.0, 3.0, 2.0, 1.0, 1.0]) {
             // A store a process writes, and now and then another reads.
             0 => {
                 let Some(p) = g.simple_node(rng, is_process) else {
@@ -2604,6 +2672,7 @@ const LOOKUPS: &[&str] = &["statuses", "types", "categories", "regions", "curren
 /// tables already near them, and now and then a table referring to itself.
 fn grow_er(rng: &mut Rng, size: Size) -> Spec {
     let mut g = Grower::new("Shop — entity relationship diagram", "er");
+    g.hand = Hand::new(rng);
     let mut order: Vec<usize> = (0..TABLES.len()).collect();
     for i in (1..order.len()).rev() {
         order.swap(i, rng.below(i + 1));
@@ -2641,7 +2710,7 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
     let mut made_for: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
         let tables = |n: &SpecNode| n.shape == SpecShape::Table && !made_for.contains(&n.id);
-        match weighted(rng, &[3.0, 2.0, 1.0, 1.0, 0.5, 1.0]) {
+        match g.hand.pick(rng, &[3.0, 2.0, 1.0, 1.0, 0.5, 1.0]) {
             // A child table, from the pool or named after its parent.
             0 => {
                 let Some(parent) = g.simple_node(rng, tables) else {
@@ -2818,6 +2887,7 @@ fn place_boxed(g: &mut Grower, rng: &mut Rng, [ahead, side, other_side, back]: [
             }
         }
         let mut t = Grower::new("", "");
+        t.hand = g.hand;
         for (_, item) in &items {
             let node = g.spec.nodes.iter().find(|n| &n.id == item);
             t.spec.nodes.push(SpecNode {
@@ -2906,6 +2976,7 @@ fn place_boxed(g: &mut Grower, rng: &mut Rng, [ahead, side, other_side, back]: [
 /// to services and databases already near them.
 fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
     let mut g = Grower::new("Platform — container diagram", "c4");
+    g.hand = Hand::new(rng);
     let apps: Vec<String> = APPS.iter().map(|(name, tech)| format!("{name} [{tech}]")).collect();
     let apps: Vec<&str> = apps.iter().map(String::as_str).collect();
     let databases: Vec<String> = DATABASES
@@ -2932,7 +3003,7 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
     let kept: std::collections::BTreeSet<String> = databases.names.iter().chain(&queues.names).cloned().collect();
     let is_app = |n: &SpecNode| n.group.is_some() && !kept.contains(&n.label);
     grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
-        match weighted(rng, &[3.0, 2.0, 1.0, 1.5, 1.0, 2.0]) {
+        match g.hand.pick(rng, &[3.0, 2.0, 1.0, 1.5, 1.0, 2.0]) {
             // A service another calls, now and then in a domain of its own.
             0 => {
                 let Some(caller) = g.simple_node(rng, is_app) else {
@@ -3001,6 +3072,7 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
 /// links between what is there, so the parts form loops, not a tree.
 fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
     let mut g = Grower::new("Shop — cloud architecture", "arch");
+    g.hand = Hand::new(rng);
     let mut clients = Pool::new(rng, LAYERS[0].1);
     let mut doors = Pool::new(rng, LAYERS[1].1);
     let mut services = Pool::new(rng, LAYERS[2].1);
@@ -3027,7 +3099,7 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
     };
     let mut clusters = 0;
     grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
-        match weighted(rng, &[3.0, 2.0, 1.0, 1.0, 1.0, 1.0, 2.5]) {
+        match g.hand.pick(rng, &[3.0, 2.0, 1.0, 1.0, 1.0, 1.0, 2.5]) {
             // A service another calls, now and then in a cluster of its own.
             0 => {
                 let Some(caller) = g.simple_node(rng, is_service) else {
