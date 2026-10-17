@@ -1455,8 +1455,12 @@ pub mod trace {
 
     use serde_json::json;
 
-    use super::{Context, MAX_STEPS, Move, State, TOGETHER, changed_areas_touch, crossings, route_cost, turns};
-    use crate::geometry::Bounds;
+    use super::{
+        Context, MAX_STEPS, Move, State, TOGETHER, changed_areas_touch, crossings, route_cost,
+        segment_intersects_interior, segments, turns,
+    };
+    use crate::diagram::{Diagram, ancestor_ids};
+    use crate::geometry::{Bounds, hypot};
 
     static RECORDS: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
 
@@ -1478,6 +1482,121 @@ pub mod trace {
             _ if nudge(ax, ay) || nudge(ay, ax) => "nudge",
             _ => "align",
         }
+    }
+
+    /// How far apart two boxes are, zero when they touch or overlap.
+    fn gap(a: &Bounds, b: &Bounds) -> f64 {
+        let dx = (b.x - a.right()).max(a.x - b.right()).max(0.0);
+        let dy = (b.y - a.bottom()).max(a.y - b.bottom()).max(0.0);
+        hypot(dx, dy)
+    }
+
+    /// What moving the nodes `ids` by `step` would do, known before the
+    /// connectors are rerouted: the lines that would run straight between
+    /// centres, or stop doing so; how much nearer the nodes at the other
+    /// ends come; the closest any other node is, before and after, and
+    /// how many it would overlap; the lines of alignment it would leave;
+    /// and how many other connectors it would come to rest on.
+    fn destination(diagram: &Diagram, context: &Context, ids: &[&str], step: Move) -> serde_json::Value {
+        let moved = |id: &str| ids.contains(&id);
+        let at = |id: &str, after: bool| {
+            let node = diagram.node(id)?;
+            let shift = if after && moved(id) {
+                step
+            } else {
+                Move { dx: 0.0, dy: 0.0 }
+            };
+            Some(Bounds {
+                x: node.bounds.x + shift.dx,
+                y: node.bounds.y + shift.dy,
+                ..node.bounds
+            })
+        };
+        let (mut straightened, mut unstraightened, mut nearer) = (0, 0, 0.0);
+        for c in diagram.connectors.iter().filter(|c| moved(&c.from) != moved(&c.to)) {
+            let (Some(a0), Some(b0), Some(a1), Some(b1)) =
+                (at(&c.from, false), at(&c.to, false), at(&c.from, true), at(&c.to, true))
+            else {
+                continue;
+            };
+            let lined = |a: &Bounds, b: &Bounds| {
+                let (p, q) = (a.centre(), b.centre());
+                (p.x - q.x).abs() < 1.0 || (p.y - q.y).abs() < 1.0
+            };
+            let span = |a: &Bounds, b: &Bounds| {
+                let (p, q) = (a.centre(), b.centre());
+                (p.x - q.x).abs() + (p.y - q.y).abs()
+            };
+            match (lined(&a0, &b0), lined(&a1, &b1)) {
+                (false, true) => straightened += 1,
+                (true, false) => unstraightened += 1,
+                _ => {}
+            }
+            nearer += span(&a0, &b0) - span(&a1, &b1);
+        }
+        // Other nodes, leaving out the containers round the moved ones and
+        // the nodes inside them.
+        let around: Vec<&str> = ids.iter().flat_map(|id| ancestor_ids(&diagram.nodes, id)).collect();
+        let others: Vec<&Bounds> = diagram
+            .nodes
+            .iter()
+            .filter(|n| !moved(&n.id) && !around.contains(&n.id.as_str()))
+            .filter(|n| !ancestor_ids(&diagram.nodes, &n.id).iter().any(|a| moved(a)))
+            .map(|n| &n.bounds)
+            .collect();
+        let closest = |after: bool| {
+            ids.iter()
+                .filter_map(|id| at(id, after))
+                .flat_map(|b| others.iter().map(move |o| gap(&b, o)))
+                .fold(1000.0, f64::min)
+        };
+        let overlaps = ids
+            .iter()
+            .filter_map(|id| at(id, true))
+            .map(|b| others.iter().filter(|o| gap(&b, o) == 0.0).count())
+            .sum::<usize>();
+        let leaves = context
+            .alignments
+            .iter()
+            // A line moved as one keeps its own alignment.
+            .filter(|a| a.members.iter().any(|m| moved(m)) && !a.members.iter().all(|m| moved(m)))
+            .filter(|a| {
+                if a.edge.is_column() {
+                    step.dx != 0.0
+                } else {
+                    step.dy != 0.0
+                }
+            })
+            .count();
+        let lands_on = diagram
+            .connectors
+            .iter()
+            .filter(|c| !moved(&c.from) && !moved(&c.to))
+            .filter(|c| {
+                ids.iter().filter_map(|id| at(id, true)).any(|b| {
+                    segments(&c.points)
+                        .iter()
+                        .any(|(p, q)| segment_intersects_interior(*p, *q, &b))
+                })
+            })
+            .count();
+        let size: f64 = ids
+            .iter()
+            .filter_map(|id| diagram.node(id))
+            .map(|n| n.bounds.width.min(n.bounds.height))
+            .fold(0.0, f64::max)
+            .max(1.0);
+        json!({
+            "straightened": straightened,
+            "unstraightened": unstraightened,
+            "nearer": nearer,
+            "gap_before": closest(false),
+            "gap_after": closest(true),
+            "overlaps_after": overlaps,
+            "leaves_alignments": leaves,
+            "lands_on": lands_on,
+            "move_per_size": (step.dx.abs() + step.dy.abs()) / size,
+        })
     }
 
     pub(super) fn record(
@@ -1538,7 +1657,7 @@ pub mod trace {
                     .filter(|n| ids.contains(&n.id.as_str()))
                     .map(|n| n.bounds.width * n.bounds.height)
                     .sum();
-                json!({
+                let mut record = json!({
                     "step": MAX_STEPS - steps,
                     "candidates": candidates.len(),
                     "id": id.replace(TOGETHER, "+"),
@@ -1561,7 +1680,13 @@ pub mod trace {
                     "score": state.score,
                     "gain": gain,
                     "chosen": chosen == Some(index),
-                })
+                });
+                if let (Some(record), serde_json::Value::Object(after)) =
+                    (record.as_object_mut(), destination(diagram, context, &ids, *step))
+                {
+                    record.extend(after);
+                }
+                record
             });
         RECORDS.lock().expect("records lock").extend(records);
     }
