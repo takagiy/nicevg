@@ -1808,14 +1808,12 @@ impl Grower {
     /// one side of the line between them, else beside `a`.
     fn between(&mut self, rng: &mut Rng, id: &str, a: &str, b: &str, ahead: (f64, f64)) {
         let size = self.size_of(self.get(id));
+        let gap = (60.0 * self.hand.room).max(32.0);
         if let (Some(p), Some(q)) = (self.at(a), self.at(b)) {
             let mid = ((p.0 + q.0) / 2.0, (p.1 + q.1) / 2.0);
             let side = (ahead.1, ahead.0);
             for k in [0.0, 1.0, -1.0, 2.0, -2.0] {
-                let at = (
-                    mid.0 + side.0 * k * (size.0 + 60.0),
-                    mid.1 + side.1 * k * (size.1 + 60.0),
-                );
+                let at = (mid.0 + side.0 * k * (size.0 + gap), mid.1 + side.1 * k * (size.1 + gap));
                 if self.free(id, at, size, 30.0) {
                     self.put(id, at);
                     return;
@@ -1891,7 +1889,7 @@ impl Grower {
                 return;
             }
         }
-        self.make_room(x - size.0 / 2.0 - 20.0, size.0 + 70.0);
+        self.make_room(x - size.0 / 2.0 - 20.0, size.0 + (70.0 * self.hand.room).max(50.0));
         self.put(id, (x, y(row)));
     }
 
@@ -1901,7 +1899,7 @@ impl Grower {
         let size = self.size_of(self.get(id));
         let y = self.lane_top(&self.get(id).group) + 60.0 + row as f64 * ROW_GAP;
         if !self.free(id, (x, y), size, 30.0) {
-            self.make_room(x - size.0 / 2.0 - 20.0, size.0 + 70.0);
+            self.make_room(x - size.0 / 2.0 - 20.0, size.0 + (70.0 * self.hand.room).max(50.0));
         }
         self.put(id, (x, y));
     }
@@ -1923,11 +1921,12 @@ impl Grower {
         let mut order: Vec<usize> = (0..self.spec.nodes.len()).collect();
         order.sort_by_key(|v| layer[*v]);
         let size: Vec<(f64, f64)> = self.spec.nodes.iter().map(|n| self.size_of(n)).collect();
+        let ahead_gap = (40.0 * self.hand.room).max(32.0);
         for v in order {
             let least = edges
                 .iter()
                 .filter(|(a, b)| *b == v && layer[*a] < layer[v])
-                .filter_map(|(a, _)| Some(self.spec.nodes[*a].x? + (size[*a].0 + size[v].0) / 2.0 + 40.0))
+                .filter_map(|(a, _)| Some(self.spec.nodes[*a].x? + (size[*a].0 + size[v].0) / 2.0 + ahead_gap))
                 .fold(f64::MIN, f64::max);
             let n = &mut self.spec.nodes[v];
             n.x = n.x.map(|x| x.max(least));
