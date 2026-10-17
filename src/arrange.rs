@@ -1456,10 +1456,11 @@ pub mod trace {
     use serde_json::json;
 
     use super::{
-        Context, MAX_STEPS, Move, State, TOGETHER, changed_areas_touch, crossings, route_cost,
+        Context, MAX_STEPS, Move, State, TOGETHER, changed_areas_touch, crossings, route_cost, routes_cost,
         segment_intersects_interior, segments, turns,
     };
     use crate::diagram::{Diagram, ancestor_ids};
+    use crate::geometry::Point;
     use crate::geometry::{Bounds, hypot};
 
     static RECORDS: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
@@ -1599,6 +1600,211 @@ pub mod trace {
         })
     }
 
+    /// More of what a move would do, for a finer ranking: how far each
+    /// line's ends stay off a straight line, which way the move runs
+    /// against the lines' end segments, the room ahead, the change in the
+    /// nodes' offset from where fixing left them, the connectors the nodes
+    /// sit on before and after, a rough rerouting of their lines as L
+    /// shapes before and after, what their lines cost against the others,
+    /// how far the last step's changes are, and the diagram's own bends and
+    /// crossings.
+    fn finer(diagram: &Diagram, state: &State, ids: &[&str], step: Move, changed: &[Bounds]) -> serde_json::Value {
+        let moved = |id: &str| ids.contains(&id);
+        let at = |id: &str, after: bool| {
+            let node = diagram.node(id)?;
+            let shift = if after && moved(id) {
+                step
+            } else {
+                Move { dx: 0.0, dy: 0.0 }
+            };
+            Some(Bounds {
+                x: node.bounds.x + shift.dx,
+                y: node.bounds.y + shift.dy,
+                ..node.bounds
+            })
+        };
+        let attached: Vec<_> = diagram
+            .connectors
+            .iter()
+            .filter(|c| moved(&c.from) || moved(&c.to))
+            .collect();
+        let others: Vec<_> = diagram
+            .connectors
+            .iter()
+            .filter(|c| !moved(&c.from) && !moved(&c.to))
+            .collect();
+        // How far a line between two boxes' centres is off running straight.
+        let off = |a: &Bounds, b: &Bounds| {
+            let (p, q) = (a.centre(), b.centre());
+            (p.x - q.x).abs().min((p.y - q.y).abs())
+        };
+        let mut off_before = Vec::new();
+        let mut off_after = Vec::new();
+        let (mut along, mut across) = (0, 0);
+        // A rough rerouting: an L from centre to centre, turning once
+        // unless the centres line up.
+        let (mut l_bends, mut l_crossings, mut l_hits) = ([0usize; 2], [0usize; 2], [0usize; 2]);
+        for c in &attached {
+            // Its ends' nodes and the containers round them it runs inside.
+            let holding: Vec<&str> = [c.from.as_str(), c.to.as_str()]
+                .into_iter()
+                .chain(ancestor_ids(&diagram.nodes, &c.from))
+                .chain(ancestor_ids(&diagram.nodes, &c.to))
+                .collect();
+            let node_boxes: Vec<&Bounds> = diagram
+                .nodes
+                .iter()
+                .filter(|n| !holding.contains(&n.id.as_str()))
+                .map(|n| &n.bounds)
+                .collect();
+            let (Some(a0), Some(b0), Some(a1), Some(b1)) =
+                (at(&c.from, false), at(&c.to, false), at(&c.from, true), at(&c.to, true))
+            else {
+                continue;
+            };
+            off_before.push(off(&a0, &b0));
+            off_after.push(off(&a1, &b1));
+            // The end segment at the moved node: along it or across it.
+            let points = &c.points;
+            if points.len() >= 2 && (step.dx != 0.0 || step.dy != 0.0) {
+                let (p, q) = if moved(&c.from) {
+                    (points[0], points[1])
+                } else {
+                    (points[points.len() - 1], points[points.len() - 2])
+                };
+                let horizontal = p.y == q.y;
+                if horizontal == (step.dx != 0.0) {
+                    along += 1;
+                } else {
+                    across += 1;
+                }
+            }
+            for (i, (a, b)) in [(a0, b0), (a1, b1)].into_iter().enumerate() {
+                let (p, q) = (a.centre(), b.centre());
+                let route: Vec<Point> = if off(&a, &b) < 1.0 {
+                    vec![p, q]
+                } else {
+                    vec![p, Point { x: p.x, y: q.y }, q]
+                };
+                l_bends[i] += route.len() - 2;
+                l_crossings[i] += others.iter().map(|o| crossings(&route, &o.points)).sum::<usize>();
+                l_hits[i] += node_boxes
+                    .iter()
+                    .filter(|n| {
+                        segments(&route)
+                            .iter()
+                            .any(|(s, t)| segment_intersects_interior(*s, *t, n))
+                    })
+                    .count();
+            }
+        }
+        let sum = |v: &[f64]| v.iter().sum::<f64>();
+        let least = |v: &[f64]| v.iter().copied().fold(1000.0, f64::min);
+        // Room ahead: the nearest other node in the direction of the move,
+        // over the length of the move.
+        let length = step.dx.abs() + step.dy.abs();
+        let room = if length == 0.0 {
+            0.0
+        } else {
+            ids.iter()
+                .filter_map(|id| at(id, false))
+                .flat_map(|b| {
+                    diagram.nodes.iter().filter(|n| !moved(&n.id)).filter_map(move |n| {
+                        let o = &n.bounds;
+                        if step.dx > 0.0 {
+                            (o.y < b.bottom() && o.bottom() > b.y && o.x >= b.right()).then(|| o.x - b.right())
+                        } else if step.dx < 0.0 {
+                            (o.y < b.bottom() && o.bottom() > b.y && o.right() <= b.x).then(|| b.x - o.right())
+                        } else if step.dy > 0.0 {
+                            (o.x < b.right() && o.right() > b.x && o.y >= b.bottom()).then(|| o.y - b.bottom())
+                        } else {
+                            (o.x < b.right() && o.right() > b.x && o.bottom() <= b.y).then(|| b.y - o.bottom())
+                        }
+                    })
+                })
+                .fold(1000.0, f64::min)
+                / length
+        };
+        let offset = |after: bool| -> f64 {
+            ids.iter()
+                .map(|id| {
+                    let o = state.offsets.get(*id).copied().unwrap_or(Point { x: 0.0, y: 0.0 });
+                    let (dx, dy) = if after { (step.dx, step.dy) } else { (0.0, 0.0) };
+                    (o.x + dx).abs() + (o.y + dy).abs()
+                })
+                .sum()
+        };
+        let sitting_on = |after: bool| {
+            others
+                .iter()
+                .filter(|c| {
+                    ids.iter().filter_map(|id| at(id, after)).any(|b| {
+                        segments(&c.points)
+                            .iter()
+                            .any(|(p, q)| segment_intersects_interior(*p, *q, &b))
+                    })
+                })
+                .count()
+        };
+        let internal: usize = attached
+            .iter()
+            .enumerate()
+            .flat_map(|(i, a)| attached[i + 1..].iter().map(move |b| crossings(&a.points, &b.points)))
+            .sum();
+        let against: f64 = attached
+            .iter()
+            .map(|a| others.iter().map(|o| routes_cost(&a.points, &o.points)).sum::<f64>())
+            .sum();
+        let centre = ids
+            .iter()
+            .filter_map(|id| at(id, false))
+            .map(|b| b.centre())
+            .next()
+            .unwrap_or(Point { x: 0.0, y: 0.0 });
+        let to_change = changed
+            .iter()
+            .map(|area| {
+                let dx = (area.x - centre.x).max(centre.x - area.right()).max(0.0);
+                let dy = (area.y - centre.y).max(centre.y - area.bottom()).max(0.0);
+                hypot(dx, dy)
+            })
+            .fold(10000.0, f64::min);
+        let diagram_bends: usize = diagram.connectors.iter().map(|c| turns(&c.points)).sum();
+        let diagram_crossings: usize = diagram
+            .connectors
+            .iter()
+            .enumerate()
+            .flat_map(|(i, a)| {
+                diagram.connectors[i + 1..]
+                    .iter()
+                    .map(move |b| crossings(&a.points, &b.points))
+            })
+            .sum();
+        json!({
+            "off_before_sum": sum(&off_before),
+            "off_after_sum": sum(&off_after),
+            "off_before_min": least(&off_before),
+            "off_after_min": least(&off_after),
+            "along_ends": along,
+            "across_ends": across,
+            "room_ahead": room,
+            "offset_change": offset(true) - offset(false),
+            "sitting_before": sitting_on(false),
+            "sitting_after": sitting_on(true),
+            "internal_crossings": internal,
+            "against_cost": against,
+            "to_change": to_change,
+            "l_bends_before": l_bends[0],
+            "l_bends_after": l_bends[1],
+            "l_crossings_before": l_crossings[0],
+            "l_crossings_after": l_crossings[1],
+            "l_hits_before": l_hits[0],
+            "l_hits_after": l_hits[1],
+            "diagram_bends": diagram_bends,
+            "diagram_crossings": diagram_crossings,
+        })
+    }
+
     pub(super) fn record(
         context: &Context,
         state: &State,
@@ -1685,6 +1891,11 @@ pub mod trace {
                     (record.as_object_mut(), destination(diagram, context, &ids, *step))
                 {
                     record.extend(after);
+                }
+                if let (Some(record), serde_json::Value::Object(finer)) =
+                    (record.as_object_mut(), finer(diagram, state, &ids, *step, changed))
+                {
+                    record.extend(finer);
                 }
                 record
             });
