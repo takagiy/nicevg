@@ -158,11 +158,11 @@ fn improve<'scope>(
     // changed, would not help now either: it is not tried again.
     let diagram = &state.result.report().diagram;
     let key = |(id, step): &(String, Move)| (id.clone(), step.dx as i64, step.dy as i64);
+    // Recording tries every candidate, so each gets its label.
     let (retried, skipped): (Vec<_>, Vec<_>) = candidates.into_iter().partition(|candidate| {
-        tried.get(&key(candidate)).is_none_or(|gain| *gain < 0.0)
-            || reach(diagram, &candidate.0)
-                .iter()
-                .any(|reach| changed.iter().any(|area| touches_area(reach, area)))
+        cfg!(feature = "trace-candidates")
+            || tried.get(&key(candidate)).is_none_or(|gain| *gain < 0.0)
+            || changed_areas_touch(diagram, &candidate.0, &changed)
     });
     let evaluated = evaluate_all(context, &state, &retried, workers);
     let tried: Tried = skipped
@@ -179,21 +179,46 @@ fn improve<'scope>(
     // Candidates are compared after one pass of fixing; the passes that
     // follow go to the best one, and to the next ones only while those
     // passes leave it no better than now.
-    let (mut compared, dropped): (Vec<State>, Vec<State>) =
-        evaluated.into_iter().flatten().partition(|next| keeps(next));
-    compared.sort_by(|a, b| a.score.total_cmp(&b.score));
+    #[cfg(feature = "trace-candidates")]
+    let gains: Vec<Option<f64>> = evaluated
+        .iter()
+        .map(|next| {
+            next.as_ref()
+                .filter(|next| keeps(next))
+                .map(|next| next.score - state.score)
+        })
+        .collect();
+    // Each kept candidate with its place among those tried.
+    let (mut compared, dropped): (Vec<_>, Vec<_>) = evaluated
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, next)| Some((index, next?)))
+        .partition(|(_, next)| keeps(next));
+    compared.sort_by(|a, b| a.1.score.total_cmp(&b.1.score));
     let mut compared = compared.into_iter();
     let best = compared
         .by_ref()
-        .map(|next| {
+        .map(|(index, next)| {
             let result = fix_further(next.result, PASSES - 1);
-            State {
+            let next = State {
                 score: context.score(result.report(), &next.offsets),
                 result,
                 offsets: next.offsets,
-            }
+            };
+            (index, next)
         })
-        .find(|next| keeps(next) && next.score < state.score - 1e-9);
+        .find(|(_, next)| keeps(next) && next.score < state.score - 1e-9);
+    #[cfg(feature = "trace-candidates")]
+    trace::record(
+        context,
+        &state,
+        steps,
+        &retried,
+        &gains,
+        best.as_ref().map(|(index, _)| *index),
+        &changed,
+    );
+    let best = best.map(|(_, next)| next);
     // The candidates not taken are many documents to free: let another
     // thread free them while the next step goes on.
     frees.spawn(move || drop((compared, dropped)));
@@ -204,6 +229,14 @@ fn improve<'scope>(
         }
         None => state,
     }
+}
+
+/// Whether anything that changed lies within reach of moving the nodes `id`
+/// names.
+fn changed_areas_touch(diagram: &Diagram, id: &str, changed: &[Bounds]) -> bool {
+    reach(diagram, id)
+        .iter()
+        .any(|reach| changed.iter().any(|area| touches_area(reach, area)))
 }
 
 /// What each move tried scored against the state it was tried from (lower
@@ -1411,5 +1444,125 @@ mod tests {
         };
 
         assert!(context.alignment_cost(&moved(&["n2", "n3", "n4"])) > context.alignment_cost(&moved(&["n4"])));
+    }
+}
+
+/// Recording, for learning to screen candidates: each candidate tried, what
+/// could be known of it before trying it, and what trying it showed.
+#[cfg(feature = "trace-candidates")]
+pub mod trace {
+    use std::sync::Mutex;
+
+    use serde_json::json;
+
+    use super::{Context, MAX_STEPS, Move, State, TOGETHER, changed_areas_touch, crossings, route_cost, turns};
+    use crate::geometry::Bounds;
+
+    static RECORDS: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+
+    /// The records made since the last call, one per candidate tried.
+    pub fn take() -> Vec<serde_json::Value> {
+        std::mem::take(&mut *RECORDS.lock().expect("records lock"))
+    }
+
+    /// What a candidate is, from how it was made: rerouting in place, the
+    /// ends of crossing connectors together, a row or column moved as one,
+    /// a nudge by one of the fixed amounts, or a move lining something up.
+    fn kind(id: &str, step: Move) -> &'static str {
+        let (ax, ay) = (step.dx.abs(), step.dy.abs());
+        let nudge = |a: f64, b: f64| a == 0.0 && (b == 20.0 || b == 40.0);
+        match (ax == 0.0 && ay == 0.0, id.contains(TOGETHER)) {
+            (true, false) => "reroute",
+            (true, true) => "together",
+            (false, true) => "line",
+            _ if nudge(ax, ay) || nudge(ay, ax) => "nudge",
+            _ => "align",
+        }
+    }
+
+    pub(super) fn record(
+        context: &Context,
+        state: &State,
+        steps: usize,
+        candidates: &[(String, Move)],
+        gains: &[Option<f64>],
+        chosen: Option<usize>,
+        changed: &[Bounds],
+    ) {
+        let report = state.result.report();
+        let diagram = &report.diagram;
+        let records = candidates
+            .iter()
+            .zip(gains)
+            .enumerate()
+            .map(|(index, ((id, step), gain))| {
+                let ids: Vec<&str> = id.split(TOGETHER).collect();
+                let attached: Vec<_> = diagram
+                    .connectors
+                    .iter()
+                    .filter(|c| ids.contains(&c.from.as_str()) || ids.contains(&c.to.as_str()))
+                    .collect();
+                let names: Vec<&str> = ids
+                    .iter()
+                    .copied()
+                    .chain(attached.iter().map(|c| c.id.as_str()))
+                    .collect();
+                let crossed: usize = attached
+                    .iter()
+                    .map(|c| {
+                        diagram
+                            .connectors
+                            .iter()
+                            .map(|other| crossings(&c.points, &other.points))
+                            .sum::<usize>()
+                    })
+                    .sum();
+                let issues = report
+                    .issues
+                    .iter()
+                    .filter(|issue| issue.elements.iter().any(|e| names.contains(&e.as_str())))
+                    .count();
+                let offset: f64 = ids
+                    .iter()
+                    .filter_map(|id| state.offsets.get(*id))
+                    .map(|p| p.x.abs() + p.y.abs())
+                    .sum();
+                let aligned = context
+                    .alignments
+                    .iter()
+                    .filter(|a| a.members.iter().any(|m| ids.contains(&m.as_str())))
+                    .count();
+                let area: f64 = diagram
+                    .nodes
+                    .iter()
+                    .filter(|n| ids.contains(&n.id.as_str()))
+                    .map(|n| n.bounds.width * n.bounds.height)
+                    .sum();
+                json!({
+                    "step": MAX_STEPS - steps,
+                    "candidates": candidates.len(),
+                    "id": id.replace(TOGETHER, "+"),
+                "kind": kind(id, *step),
+                    "dx": step.dx,
+                    "dy": step.dy,
+                    "nodes_moved": ids.len(),
+                    "attached": attached.len(),
+                    "attached_bends": attached.iter().map(|c| turns(&c.points)).sum::<usize>(),
+                    "attached_crossings": crossed,
+                    "attached_cost": attached.iter().map(|c| route_cost(&c.points)).sum::<f64>(),
+                    "issues_here": issues,
+                    "offset": offset,
+                    "alignments": aligned,
+                    "area": area,
+                    "touched": changed_areas_touch(diagram, id, changed),
+                    "diagram_nodes": diagram.nodes.len(),
+                    "diagram_connectors": diagram.connectors.len(),
+                    "diagram_issues": report.issues.len(),
+                    "score": state.score,
+                    "gain": gain,
+                    "chosen": chosen == Some(index),
+                })
+            });
+        RECORDS.lock().expect("records lock").extend(records);
     }
 }
