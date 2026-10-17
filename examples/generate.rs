@@ -1700,19 +1700,7 @@ impl Grower {
     /// Whether the placed nodes and one of `size` at `at` together stay
     /// between half as wide as tall and twice as wide.
     fn keeps_shape(&self, at: (f64, f64), size: (f64, f64)) -> bool {
-        let boxes = self
-            .spec
-            .nodes
-            .iter()
-            .filter_map(|n| Some((n.x?, n.y?, Grower::size_of(n))))
-            .chain(std::iter::once((at.0, at.1, size)));
-        let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-        for (x, y, (w, h)) in boxes {
-            (left, right) = (left.min(x - w / 2.0), right.max(x + w / 2.0));
-            (top, bottom) = (top.min(y - h / 2.0), bottom.max(y + h / 2.0));
-        }
-        let ratio = (right - left) / (bottom - top).max(1.0);
-        (0.5..=2.0).contains(&ratio)
+        (0.5..=2.0).contains(&self.spread_ratio(Some((at, size))))
     }
 
     /// Puts `id` between `a` and `b` if there is room there, else off to
@@ -1866,12 +1854,17 @@ impl Grower {
         }
     }
 
-    /// How many times wider than tall the placed nodes spread.
-    fn spread_ratio(&self) -> f64 {
+    /// How many times wider than tall the placed nodes spread, with one
+    /// more of a size at a place when given.
+    fn spread_ratio(&self, extra: Option<((f64, f64), (f64, f64))>) -> f64 {
+        let boxes = self
+            .spec
+            .nodes
+            .iter()
+            .filter_map(|n| Some(((n.x?, n.y?), Grower::size_of(n))))
+            .chain(extra);
         let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-        for n in &self.spec.nodes {
-            let (Some(x), Some(y)) = (n.x, n.y) else { continue };
-            let (w, h) = Grower::size_of(n);
+        for ((x, y), (w, h)) in boxes {
             (left, right) = (left.min(x - w / 2.0), right.max(x + w / 2.0));
             (top, bottom) = (top.min(y - h / 2.0), bottom.max(y + h / 2.0));
         }
@@ -2093,8 +2086,8 @@ fn grown_nodes(size: Size) -> usize {
 }
 
 /// Rewrites a diagram until it has `target` nodes; `rewrite` tries one
-/// rewrite and says whether it could.
-fn grow_until(g: &mut Grower, rng: &mut Rng, target: usize, mut rewrite: impl FnMut(&mut Grower, &mut Rng) -> bool) {
+/// rewrite, which may find nothing to rewrite.
+fn grow_until(g: &mut Grower, rng: &mut Rng, target: usize, mut rewrite: impl FnMut(&mut Grower, &mut Rng)) {
     let mut tries = 0;
     while g.spec.nodes.len() < target && tries < 10 * target {
         tries += 1;
@@ -2154,7 +2147,7 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
     // one, more often once the lanes run long.
     let mut lane_for = |g: &mut Grower, rng: &mut Rng, near: &str| -> Option<String> {
         let here = g.get(near).group.clone();
-        let weights = if g.spread_ratio() > 3.0 {
+        let weights = if g.spread_ratio(None) > 3.0 {
             [4.0, 3.0, 3.0]
         } else {
             [7.0, 2.0, 1.0]
@@ -2173,7 +2166,7 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
             // A step split in two.
             0 => {
                 let Some(i) = g.simple_edge(rng, |_, _| true) else {
-                    return false;
+                    return;
                 };
                 let e = g.spec.edges.remove(i);
                 let lane = lane_for(g, rng, &e.from);
@@ -2186,7 +2179,7 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
             // A check after a step: "no" takes another way back in, or ends early.
             1 => {
                 let Some(i) = g.simple_edge(rng, |a, _| is_step(a)) else {
-                    return false;
+                    return;
                 };
                 let e = g.spec.edges.remove(i);
                 let lane = g.get(&e.from).group.clone();
@@ -2228,7 +2221,7 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
             // A step checked after it and done again until it passes.
             2 => {
                 let Some(i) = g.simple_edge(rng, |a, _| is_step(a)) else {
-                    return false;
+                    return;
                 };
                 let e = g.spec.edges.remove(i);
                 let lane = g.get(&e.from).group.clone();
@@ -2242,7 +2235,7 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
             // Two steps done side by side between a split and a join.
             3 => {
                 let Some(i) = g.simple_edge(rng, |a, b| is_step(a) || is_step(b)) else {
-                    return false;
+                    return;
                 };
                 let e = g.spec.edges.remove(i);
                 let lane = g.get(&e.from).group.clone();
@@ -2280,18 +2273,17 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
             // A step handed to another department.
             _ => {
                 let Some(t) = g.simple_node(rng, is_step) else {
-                    return false;
+                    return;
                 };
                 let lane = lane_for(g, rng, &t);
                 if lane == g.get(&t).group {
-                    return false;
+                    return;
                 }
                 g.get_mut(&t).group = lane;
                 let x = g.at(&t).map_or(0.0, |p| p.0);
                 g.in_lane(&t, x, 0);
             }
         }
-        true
     });
     g.forward();
     g.done()
@@ -2355,7 +2347,7 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
             // A store a process writes, and now and then another reads.
             0 => {
                 let Some(p) = g.simple_node(rng, is_process) else {
-                    return false;
+                    return;
                 };
                 let s = store(g, stores.take());
                 g.beside(rng, &s, &p, &aside);
@@ -2369,7 +2361,7 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
             // A process between the ends of a flow.
             1 => {
                 let Some(i) = g.simple_edge(rng, |a, b| is_process(a) || is_process(b)) else {
-                    return false;
+                    return;
                 };
                 let e = g.spec.edges.remove(i);
                 let q = process(g, processes.take());
@@ -2380,7 +2372,7 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
             // An outside party a process hears from or answers.
             2 => {
                 let Some(p) = g.simple_node(rng, is_process) else {
-                    return false;
+                    return;
                 };
                 let e = g.node(entities.take(), SpecShape::Rect, None, Vec::new());
                 let outward = g.outward(&p);
@@ -2394,7 +2386,7 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
             // A process handing work on to two others.
             3 => {
                 let Some(p) = g.simple_node(rng, is_process) else {
-                    return false;
+                    return;
                 };
                 let mut next_to = p.clone();
                 for k in 0..2 {
@@ -2420,7 +2412,7 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
             // the first taking what came in, the last sending what went out.
             _ => {
                 let Some(p) = g.simple_node(rng, is_process) else {
-                    return false;
+                    return;
                 };
                 let label = g.get(&p).label.clone();
                 let (number, name) = label.split_once(' ').unwrap_or((label.as_str(), ""));
@@ -2457,7 +2449,6 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
                 g.edge(&second, &third, flow(rng));
             }
         }
-        true
     });
     g.done()
 }
@@ -2512,7 +2503,7 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
             // A child table, from the pool or named after its parent.
             0 => {
                 let Some(parent) = g.simple_node(rng, tables) else {
-                    return false;
+                    return;
                 };
                 let parent_name = g.get(&parent).label.clone();
                 let (name, own) = match pool.next() {
@@ -2523,7 +2514,7 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
                     ),
                 };
                 if taken(g, &name) {
-                    return false;
+                    return;
                 }
                 let child = table(g, name, own);
                 let outward = g.outward(&parent);
@@ -2533,15 +2524,15 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
             // Many to many: a junction table keyed to both.
             1 => {
                 let Some(a) = g.simple_node(rng, tables) else {
-                    return false;
+                    return;
                 };
                 let Some(b) = g.nearby_node(rng, &a, |n| tables(n) && n.id != a) else {
-                    return false;
+                    return;
                 };
                 let (an, bn) = (g.get(&a).label.clone(), g.get(&b).label.clone());
                 let name = format!("{}_{bn}", singular(&an));
                 if g.joined(&a, &b) || taken(g, &name) {
-                    return false;
+                    return;
                 }
                 let j = table(g, name, &["created_at"]);
                 g.between(rng, &j, &a, &b, (1.0, 0.0));
@@ -2552,12 +2543,12 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
             // A lookup table the table points at.
             2 => {
                 let Some(t) = g.simple_node(rng, tables) else {
-                    return false;
+                    return;
                 };
                 let what = rng.pick(LOOKUPS);
                 let name = format!("{}_{what}", singular(&g.get(&t).label));
                 if taken(g, &name) {
-                    return false;
+                    return;
                 }
                 let lookup = table(g, name, &["code", "label"]);
                 g.beside(rng, &lookup, &t, &[(1.0, 0.0), (-1.0, 0.0), (1.0, 1.0), (-1.0, 1.0)]);
@@ -2567,12 +2558,12 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
             // One to one: details split out of a table.
             3 => {
                 let Some(t) = g.simple_node(rng, tables) else {
-                    return false;
+                    return;
                 };
                 let base = g.get(&t).label.clone();
                 let name = format!("{}_details", singular(&base));
                 if taken(g, &name) {
-                    return false;
+                    return;
                 }
                 let details = table(g, name, &["notes", "updated_at"]);
                 g.beside(rng, &details, &t, &[(0.0, 1.0), (0.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]);
@@ -2582,12 +2573,11 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
             // A table referring to itself, as a tree.
             _ => {
                 let Some(t) = g.simple_node(rng, |n| tables(n) && !n.columns.iter().any(|c| c == "parent_id")) else {
-                    return false;
+                    return;
                 };
                 refer(g, &t, &t, "parent_id".into());
             }
         }
-        true
     });
     g.done()
 }
