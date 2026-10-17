@@ -2022,6 +2022,47 @@ impl Grower {
         self.spec.edges.iter().filter(|e| e.from == id || e.to == id).count()
     }
 
+    /// A node two or three connections away from `from` (two likelier),
+    /// not joined to it yet, that `keep` lets through, simple ones
+    /// likelier: joining it closes a small loop.
+    fn close_by(&self, rng: &mut Rng, from: &str, keep: impl Fn(&SpecNode) -> bool) -> Option<String> {
+        let mut hops: BTreeMap<&str, usize> = BTreeMap::from([(from, 0)]);
+        let mut frontier = vec![from];
+        for hop in 1..=3 {
+            let mut next = Vec::new();
+            for at in frontier {
+                for e in &self.spec.edges {
+                    let other = if e.from == at {
+                        e.to.as_str()
+                    } else if e.to == at {
+                        e.from.as_str()
+                    } else {
+                        continue;
+                    };
+                    if !hops.contains_key(other) {
+                        hops.insert(other, hop);
+                        next.push(other);
+                    }
+                }
+            }
+            frontier = next;
+        }
+        let candidates: Vec<(String, f64)> = hops
+            .iter()
+            .filter(|(id, hop)| **hop >= 2 && !self.joined(from, id) && keep(self.get(id)))
+            .map(|(id, hop)| {
+                let degree = self.degree(id) as f64 + 1.0;
+                (id.to_string(), if *hop == 2 { 2.0 } else { 1.0 } / (degree * degree))
+            })
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
+        let weights: Vec<f64> = candidates.iter().map(|(_, w)| *w).collect();
+        let at = weighted(rng, &weights);
+        candidates.into_iter().nth(at).map(|(id, _)| id)
+    }
+
     /// One of the nodes `keep` lets through, simple ones likelier.
     fn simple_node(&self, rng: &mut Rng, keep: impl Fn(&SpecNode) -> bool) -> Option<String> {
         let candidates: Vec<(String, usize)> = self
@@ -2545,8 +2586,8 @@ const DERIVED: &[&str] = &["history", "notes", "events", "tags", "logs", "versio
 const LOOKUPS: &[&str] = &["statuses", "types", "categories", "regions", "currencies"];
 
 /// An entity relationship diagram: tables gaining child tables, junction
-/// tables for many to many, lookup tables, one to one details, and now and
-/// then a table referring to itself.
+/// tables for many to many, lookup tables, one to one details, keys to
+/// tables already near them, and now and then a table referring to itself.
 fn grow_er(rng: &mut Rng, size: Size) -> Spec {
     let mut g = Grower::new("Shop — entity relationship diagram", "er");
     let mut order: Vec<usize> = (0..TABLES.len()).collect();
@@ -2586,7 +2627,7 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
     let mut made_for: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
         let tables = |n: &SpecNode| n.shape == SpecShape::Table && !made_for.contains(&n.id);
-        match weighted(rng, &[3.0, 2.0, 1.0, 1.0, 0.5]) {
+        match weighted(rng, &[3.0, 2.0, 1.0, 1.0, 0.5, 1.0]) {
             // A child table, from the pool or named after its parent.
             0 => {
                 let Some(parent) = g.simple_node(rng, tables) else {
@@ -2637,9 +2678,14 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
                 if taken(g, &name) {
                     return;
                 }
+                // status_id, or order_status_id when the table has one.
+                let mut column = format!("{}_id", singular(what));
+                if g.get(&t).columns.contains(&column) {
+                    column = format!("{}_id", singular(&name));
+                }
                 let lookup = table(g, name, &["code", "label"]);
                 g.beside(rng, &lookup, &t, &[(1.0, 0.0), (-1.0, 0.0), (1.0, 1.0), (-1.0, 1.0)]);
-                refer(g, &t, &lookup, format!("{}_id", singular(what)));
+                refer(g, &t, &lookup, column);
                 made_for.insert(lookup);
             }
             // One to one: details split out of a table.
@@ -2658,11 +2704,25 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
                 made_for.insert(details);
             }
             // A table referring to itself, as a tree.
-            _ => {
+            4 => {
                 let Some(t) = g.simple_node(rng, |n| tables(n) && !n.columns.iter().any(|c| c == "parent_id")) else {
                     return;
                 };
                 refer(g, &t, &t, "parent_id".into());
+            }
+            // A table gaining a key to one near it, so two ways lead from
+            // it to the same table (an order line to its product as well
+            // as through its order).
+            _ => {
+                let Some(t) = g.simple_node(rng, tables) else { return };
+                let Some(other) = g.close_by(rng, &t, tables) else {
+                    return;
+                };
+                let column = format!("{}_id", singular(&g.get(&other).label));
+                if g.get(&t).columns.contains(&column) {
+                    return;
+                }
+                refer(g, &t, &other, column);
             }
         }
     });
@@ -2775,11 +2835,16 @@ fn place_boxed(g: &mut Grower, rng: &mut Rng, [ahead, side, other_side, back]: [
             let done: Vec<&String> = items[..k].iter().map(|(_, x)| x).collect();
             let into = t.spec.edges.iter().find(|e| &e.to == item && done.contains(&&e.from));
             let out = t.spec.edges.iter().find(|e| &e.from == item && done.contains(&&e.to));
-            let (anchor, directions) = match (into, out) {
+            let (anchor, mut directions) = match (into, out) {
                 (Some(e), _) => (e.from.clone(), [ahead, side, other_side, back]),
                 (None, Some(e)) => (e.to.clone(), [back, side, other_side, ahead]),
                 (None, None) => (items[k - 1].1.clone(), [side, ahead, other_side, back]),
             };
+            // Now and then off to a side first, so what hangs off one box
+            // does not all line up on one side of it.
+            if rng.chance(0.35) {
+                directions.swap(0, 1 + rng.below(2));
+            }
             t.beside(rng, item, &anchor, &directions);
         }
         let at: Vec<(String, (f64, f64))> = items
@@ -2823,7 +2888,8 @@ fn place_boxed(g: &mut Grower, rng: &mut Rng, [ahead, side, other_side, back]: [
 
 /// A C4 container diagram: people outside a system boundary, apps and
 /// services inside it, some in domain boundaries of their own, with their
-/// databases, queues between them, and outside systems they call.
+/// databases, queues between them, outside systems they call, and calls
+/// to services and databases already near them.
 fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
     let mut g = Grower::new("Platform — container diagram", "c4");
     let apps: Vec<String> = APPS.iter().map(|(name, tech)| format!("{name} [{tech}]")).collect();
@@ -2852,7 +2918,7 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
     let kept: std::collections::BTreeSet<String> = databases.names.iter().chain(&queues.names).cloned().collect();
     let is_app = |n: &SpecNode| n.group.is_some() && !kept.contains(&n.label);
     grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
-        match weighted(rng, &[3.0, 2.0, 1.0, 1.5, 1.0]) {
+        match weighted(rng, &[3.0, 2.0, 1.0, 1.5, 1.0, 2.0]) {
             // A service another calls, now and then in a domain of its own.
             0 => {
                 let Some(caller) = g.simple_node(rng, is_app) else {
@@ -2891,7 +2957,7 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
                 g.edge(&caller, &x, verb(rng));
             }
             // A queue between two services.
-            _ => {
+            4 => {
                 let Some(i) = g.simple_edge(rng, |a, b| is_app(a) && is_app(b)) else {
                     return;
                 };
@@ -2901,6 +2967,14 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
                 g.edge(&e.from, &q, Some("Sends events to".into()));
                 g.edge(&q, &e.to, Some("Delivers to".into()));
             }
+            // A service calling another near it, or using its database.
+            _ => {
+                let Some(from) = g.simple_node(rng, is_app) else { return };
+                let Some(to) = g.close_by(rng, &from, |n| n.group.is_some()) else {
+                    return;
+                };
+                g.edge(&from, &to, verb(rng));
+            }
         }
     });
     place_boxed(&mut g, rng, reads);
@@ -2908,8 +2982,9 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
 }
 
 /// A cloud architecture: clients outside a network, edge services in a
-/// public subnet, services in a private subnet (some in a cluster of their
-/// own), data stores in a data subnet, and outside services.
+/// public subnet, services in a private subnet (some in clusters of their
+/// own in it), data stores in a data subnet, and outside services; and
+/// links between what is there, so the parts form loops, not a tree.
 fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
     let mut g = Grower::new("Shop — cloud architecture", "arch");
     let mut clients = Pool::new(rng, LAYERS[0].1);
@@ -2924,7 +2999,7 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
     let private = g.group("Private subnet", Some(network.clone()));
     let data = g.group("Data subnet", Some(network.clone()));
     let entry = g.node(doors.take(), SpecShape::Rect, Some(public.clone()), Vec::new());
-    let first = g.node(services.take(), SpecShape::Rect, Some(private), Vec::new());
+    let first = g.node(services.take(), SpecShape::Rect, Some(private.clone()), Vec::new());
     let store = g.node(stores.take(), SpecShape::Rect, Some(data.clone()), Vec::new());
     let client = g.node(clients.take(), SpecShape::Rect, None, Vec::new());
     g.edge(&client, &entry, protocol(rng));
@@ -2938,7 +3013,7 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
     };
     let mut clusters = 0;
     grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
-        match weighted(rng, &[3.0, 2.0, 1.0, 1.0, 1.0, 1.0]) {
+        match weighted(rng, &[3.0, 2.0, 1.0, 1.0, 1.0, 1.0, 2.5]) {
             // A service another calls, now and then in a cluster of its own.
             0 => {
                 let Some(caller) = g.simple_node(rng, is_service) else {
@@ -2946,8 +3021,7 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
                 };
                 let group = if rng.chance(0.2) {
                     clusters += 1;
-                    let parent = g.get(&caller).group.clone();
-                    Some(g.group(&format!("Cluster {clusters}"), parent))
+                    Some(g.group(&format!("Cluster {clusters}"), Some(private.clone())))
                 } else {
                     g.get(&caller).group.clone()
                 };
@@ -3002,12 +3076,25 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
                 g.edge(&q, &w, Some("events".into()));
             }
             // An outside service a service calls.
-            _ => {
+            5 => {
                 let Some(caller) = g.simple_node(rng, is_service) else {
                     return;
                 };
                 let x = g.node(outside.take(), SpecShape::Rect, None, Vec::new());
                 g.edge(&caller, &x, protocol(rng));
+            }
+            // A link between what is already there, closing a small loop: a
+            // service calling another near it, sharing another's store, or
+            // an edge service sending to a second service.
+            _ => {
+                let Some(from) = g.simple_node(rng, |n| is_service(n) || in_group(n, &public)) else {
+                    return;
+                };
+                let door = in_group(g.get(&from), &public);
+                let Some(to) = g.close_by(rng, &from, |n| is_service(n) || (!door && in_group(n, &data))) else {
+                    return;
+                };
+                g.edge(&from, &to, protocol(rng));
             }
         }
     });
