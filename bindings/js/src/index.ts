@@ -49,7 +49,9 @@ export interface Bounds {
  * apart by their `from` and `to`.
  */
 export interface SketchConnector {
+  /** The node it leaves, or `"node.port"` for a port its style marks `data-port`. */
   from: string;
+  /** The node it reaches, or `"node.port"`. */
   to: string;
   points?: Point[];
   /** Its text, lines split at `\n`, placed beside it. */
@@ -112,6 +114,8 @@ export interface DiagramNode {
   allowOverlap?: boolean;
   /** Drawn by a style: its texts are kept clear of, but not checked to fit. */
   custom?: boolean;
+  /** The points its style marks `data-port`, each facing out of the side it lies on. */
+  ports?: { name: string; point: Point; side: "top" | "right" | "bottom" | "left" }[];
 }
 
 export interface DiagramConnector {
@@ -120,6 +124,10 @@ export interface DiagramConnector {
   from: string;
   to: string;
   points: Point[];
+  /** The port of `from` it leaves, when it names one. */
+  fromPort?: string;
+  /** The port of `to` it reaches, when it names one. */
+  toPort?: string;
 }
 
 export interface DiagramLabel {
@@ -211,6 +219,12 @@ function sketchRequest<Node extends SketchNode>({ nodes, edges, connectors, styl
   if (edges && connectors) {
     throw new NicevgError("edges and connectors are the same; pass one of them");
   }
+  const ids = new Set(nodes.map((node) => node.id));
+  // A node's id as it is, else split at the last dot into a node and its port.
+  const end = (name: string) => {
+    const dot = name.lastIndexOf(".");
+    return ids.has(name) || dot < 0 ? { node: name } : { node: name.slice(0, dot), port: name.slice(dot + 1) };
+  };
   return {
     nodes: nodes.map((node, index) => {
       if (typeof node.class !== "string") {
@@ -223,7 +237,10 @@ function sketchRequest<Node extends SketchNode>({ nodes, edges, connectors, styl
       const { id, x, y, parent, allowOverlap } = node;
       return { id, x, y, parent, allowOverlap, svg: String(draw(node)) };
     }),
-    connectors: edges ?? connectors,
+    connectors: (edges ?? connectors)?.map(({ from, to, ...connector }) => {
+      const [start, finish] = [end(from), end(to)];
+      return { ...connector, from: start.node, fromPort: start.port, to: finish.node, toPort: finish.port };
+    }),
     rootAttrs: rootAttrs && Object.fromEntries(Object.entries(rootAttrs).map(([name, value]) => [name, String(value)])),
   };
 }

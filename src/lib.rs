@@ -21,10 +21,11 @@ mod xml;
 use serde::Serialize;
 
 pub use arrange::arrange;
-pub use diagram::{Diagram, DiagramConnector, DiagramLabel, DiagramNode, Shape, UnsupportedElement};
+pub use diagram::{Diagram, DiagramConnector, DiagramLabel, DiagramNode, Port, Shape, UnsupportedElement};
 pub use fix::{FixChange, FixResult, fix, fix_with_passes};
 pub use geometry::{Bounds, Point};
 pub use inspect::DiagramIssue;
+pub use route::Side;
 pub use sketch::{
     Sketch, SketchConnector, SketchError, SketchNode, SketchShape, analyze_sketch, arrange_sketch, fix_sketch,
     sketch_svg,

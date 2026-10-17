@@ -397,6 +397,47 @@ struct Reroute<'a> {
     connector: &'a DiagramConnector,
     source: &'a DiagramNode,
     target: &'a DiagramNode,
+    /// The point and side each end is pinned to by the port it names.
+    pins: [Option<(Point, Side)>; 2],
+}
+
+impl<'a> Reroute<'a> {
+    /// The places of the port each end names on its node, none for an end
+    /// naming no port or one its node lacks.
+    fn port_places(&self) -> [Vec<&crate::diagram::Port>; 2] {
+        fn places<'n>(node: &'n DiagramNode, port: Option<&str>) -> Vec<&'n crate::diagram::Port> {
+            port.map_or_else(Vec::new, |name| {
+                node.ports.iter().filter(|place| place.name == name).collect()
+            })
+        }
+        [
+            places(self.source, self.connector.from_port.as_deref()),
+            places(self.target, self.connector.to_port.as_deref()),
+        ]
+    }
+
+    /// A connector to reroute between its nodes, each end pinned to the
+    /// place of its port nearest where it ends now.
+    fn new(connector: &'a DiagramConnector, source: &'a DiagramNode, target: &'a DiagramNode) -> Self {
+        let mut reroute = Reroute {
+            connector,
+            source,
+            target,
+            pins: [None, None],
+        };
+        let ends = [connector.points.first(), connector.points.last()];
+        reroute.pins = std::array::from_fn(|end| {
+            let places = &reroute.port_places()[end];
+            let nearest = |place: &&crate::diagram::Port| {
+                ends[end].map_or(0.0, |at| (place.point.x - at.x).hypot(place.point.y - at.y))
+            };
+            places
+                .iter()
+                .min_by(|a, b| nearest(a).total_cmp(&nearest(b)))
+                .map(|place| (place.point, place.side))
+        });
+        reroute
+    }
 }
 
 /// What fixing reroutes: the ids of the tied labels that drifted from their
@@ -462,6 +503,7 @@ fn pick_reroutes<'a>(
         "connector-node-crossing",
         "connector-label-clearance",
         "connector-endpoint-inside",
+        "connector-end-off-port",
         "connector-end-along-side",
         "connector-overlap",
         "connector-near-miss",
@@ -492,11 +534,11 @@ fn pick_reroutes<'a>(
                 || moved_node_ids.contains(&connector.to)
         })
         .filter_map(|connector| {
-            Some(Reroute {
+            Some(Reroute::new(
                 connector,
-                source: nodes_by_id.get(connector.from.as_str())?,
-                target: nodes_by_id.get(connector.to.as_str())?,
-            })
+                nodes_by_id.get(connector.from.as_str())?,
+                nodes_by_id.get(connector.to.as_str())?,
+            ))
         })
         .collect();
     (detached_ids, reroutes)
@@ -528,10 +570,12 @@ fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_ro
             let connector = reroute.connector;
             let routes = with_route(state.routes, &connector.id, route.clone());
             let document = &state.draft.document;
-            let Some(drawn) = all_drawn
-                .iter()
-                .find(|drawn| drawn.id == connector.id || (drawn.from == connector.from && drawn.to == connector.to))
-            else {
+            // Its own shaft by id, else the one joining the same nodes.
+            let Some(drawn) = all_drawn.iter().find(|drawn| drawn.id == connector.id).or_else(|| {
+                all_drawn
+                    .iter()
+                    .find(|drawn| drawn.from == connector.from && drawn.to == connector.to)
+            }) else {
                 return Routing { routes, ..state };
             };
             let shaft = &drawn.shaft;
@@ -723,9 +767,11 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             *load.entry(key).or_insert(0.0) += 1.0;
             load
         });
-    let choose_all = |previous: &HashMap<&str, Sides>| -> HashMap<&str, Sides> {
+    // Each choice comes with the loads it saw on the sides of its ends.
+    type Chosen<'a> = HashMap<&'a str, (Sides, [f64; 8])>;
+    let choose_all = |previous: &Chosen| -> Chosen {
         let load = reroutes.iter().fold(settled_load.clone(), |mut load, reroute| {
-            if let Some(chosen) = previous.get(reroute.connector.id.as_str()) {
+            if let Some((chosen, _)) = previous.get(reroute.connector.id.as_str()) {
                 for key in [
                     side_key(&reroute.source.bounds, chosen.start),
                     side_key(&reroute.target.bounds, chosen.end),
@@ -738,7 +784,8 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
         reroutes
             .iter()
             .map(|reroute| {
-                let own = previous.get(reroute.connector.id.as_str());
+                let before = previous.get(reroute.connector.id.as_str());
+                let own = before.map(|(sides, _)| sides);
                 let load_of = |bounds: &Bounds, side: crate::route::Side| {
                     let key = side_key(bounds, side);
                     let mine = own.map_or(0.0, |own| {
@@ -747,6 +794,23 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
                     });
                     load.get(&key).copied().unwrap_or(0.0) - mine
                 };
+                let mut loads = [0.0; 8];
+                for (index, side) in Side::ALL.iter().enumerate() {
+                    loads[index] = load_of(&reroute.source.bounds, *side);
+                    loads[index + 4] = load_of(&reroute.target.bounds, *side);
+                }
+                // Loads only grow, and each side's terminal costs more by
+                // what its load grew: sides whose loads grew least of their
+                // node's still make the cheapest route.
+                if let Some((sides, seen)) = before {
+                    let grown: Vec<f64> = loads.iter().zip(seen).map(|(now, then)| now - then).collect();
+                    let least =
+                        |range: std::ops::Range<usize>| grown[range].iter().copied().fold(f64::INFINITY, f64::min);
+                    let index = |side: Side| Side::ALL.iter().position(|s| *s == side).expect("one of all sides");
+                    if grown[index(sides.start)] <= least(0..4) && grown[4 + index(sides.end)] <= least(4..8) {
+                        return (reroute.connector.id.as_str(), (*sides, loads));
+                    }
+                }
                 let sides = choose_sides(
                     &reroute.source.bounds,
                     &reroute.target.bounds,
@@ -756,32 +820,33 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
                     &rails_for(reroute.connector),
                     &load_of,
                 );
-                (reroute.connector.id.as_str(), sides)
+                (reroute.connector.id.as_str(), (sides, loads))
             })
             .collect()
     };
-    let chosen = choose_all(&choose_all(&HashMap::new()));
-    let fixed = settled_ports(diagram, &nodes_by_id, &rerouted_ids);
-    let ports = spread_ports(
-        &reroutes
-            .iter()
-            .filter_map(|reroute| {
-                Some(PortRequest {
-                    id: reroute.connector.id.clone(),
-                    source_id: reroute.source.id.clone(),
-                    target_id: reroute.target.id.clone(),
-                    source: reroute.source.bounds,
-                    target: reroute.target.bounds,
-                    source_round: reroute.source.shape.is_some(),
-                    target_round: reroute.target.shape.is_some(),
-                    sides: *chosen.get(reroute.connector.id.as_str())?,
-                })
-            })
-            .collect::<Vec<_>>(),
-        &fixed,
-    );
-
     let route_with = |reroute: &Reroute, ports: Ports, occupied: &[Vec<Point>]| {
+        // Routes into the same port as this one merge into it: their last
+        // stretch there is no route to keep clear of.
+        let pinned: Vec<Point> = reroute.pins.iter().flatten().map(|(at, _)| *at).collect();
+        let merging: Vec<Vec<Point>>;
+        let occupied = if pinned.is_empty() {
+            occupied
+        } else {
+            merging = occupied
+                .iter()
+                .map(|route| {
+                    let (mut first, mut last) = (0, route.len());
+                    if route.first().is_some_and(|start| pinned.contains(start)) {
+                        first = 1;
+                    }
+                    if route.last().is_some_and(|end| pinned.contains(end)) {
+                        last = last.saturating_sub(1);
+                    }
+                    route.get(first..last.max(first)).unwrap_or_default().to_vec()
+                })
+                .collect();
+            &merging
+        };
         end_on_shapes(
             route_connector(
                 &reroute.source.bounds,
@@ -796,13 +861,117 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             reroute.target,
         )
     };
+    let chosen: HashMap<&str, Sides> = choose_all(&choose_all(&HashMap::new()))
+        .into_iter()
+        .map(|(id, (sides, _))| (id, sides))
+        .collect();
+    // An end whose port has several places takes the one its route costs
+    // least from, among the connectors that stay, with each free end at the
+    // middle of the side chosen for it.
+    let reroutes: Vec<Reroute> = reroutes
+        .iter()
+        .map(|reroute| {
+            let places = reroute.port_places();
+            if places.iter().all(|places| places.len() < 2) {
+                return Reroute { ..*reroute };
+            }
+            let sides = chosen.get(reroute.connector.id.as_str()).copied();
+            let options = |end: usize| -> Vec<Option<(Point, Side)>> {
+                if places[end].is_empty() {
+                    vec![None]
+                } else {
+                    places[end]
+                        .iter()
+                        .map(|place| Some((place.point, place.side)))
+                        .collect()
+                }
+            };
+            let free_end = |bounds: &Bounds, side: Option<Side>, fallback: Point| {
+                side.map_or(fallback, |side| crate::route::port_on_side(bounds, side))
+            };
+            let default = connector_ports(&reroute.source.bounds, &reroute.target.bounds);
+            let starts = options(0);
+            let ends = options(1);
+            let cost = |pins: [Option<(Point, Side)>; 2]| {
+                let ports = Ports {
+                    start: pins[0].map_or_else(
+                        || free_end(&reroute.source.bounds, sides.map(|sides| sides.start), default.start),
+                        |(at, _)| at,
+                    ),
+                    end: pins[1].map_or_else(
+                        || free_end(&reroute.target.bounds, sides.map(|sides| sides.end), default.end),
+                        |(at, _)| at,
+                    ),
+                };
+                let route = route_with(reroute, ports, &settled);
+                // A route that found no way is drawn straight across.
+                let orthogonal = segments(&route).iter().all(|(a, b)| a.x == b.x || a.y == b.y);
+                if !orthogonal {
+                    return f64::INFINITY;
+                }
+                route_cost(&route) + settled.iter().map(|other| routes_cost(&route, other)).sum::<f64>()
+            };
+            let pins = starts
+                .iter()
+                .flat_map(|start| ends.iter().map(move |end| [*start, *end]))
+                .map(|pins| (cost(pins), pins))
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .expect("a place for each end")
+                .1;
+            Reroute { pins, ..*reroute }
+        })
+        .collect();
+    // An end naming a port meets the side its port lies on.
+    let chosen: HashMap<&str, Sides> = chosen
+        .into_iter()
+        .map(|(id, sides)| {
+            let reroute = reroutes
+                .iter()
+                .find(|reroute| reroute.connector.id == id)
+                .expect("chosen for a reroute");
+            let [start, end] = reroute.pins;
+            (
+                id,
+                Sides {
+                    start: start.map_or(sides.start, |(_, side)| side),
+                    end: end.map_or(sides.end, |(_, side)| side),
+                },
+            )
+        })
+        .collect();
+    let fixed = settled_ports(diagram, &nodes_by_id, &rerouted_ids);
+    let ports = spread_ports(
+        &reroutes
+            .iter()
+            .filter_map(|reroute| {
+                Some(PortRequest {
+                    id: reroute.connector.id.clone(),
+                    source_id: reroute.source.id.clone(),
+                    target_id: reroute.target.id.clone(),
+                    source: reroute.source.bounds,
+                    target: reroute.target.bounds,
+                    source_round: reroute.source.shape.is_some(),
+                    target_round: reroute.target.shape.is_some(),
+                    sides: *chosen.get(reroute.connector.id.as_str())?,
+                    pins: reroute.pins.map(|pin| pin.map(|(at, _)| at)),
+                })
+            })
+            .collect::<Vec<_>>(),
+        &fixed,
+    );
+
     let first_ports: Vec<Ports> = reroutes
         .iter()
         .map(|reroute| {
-            ports
+            let spread = ports
                 .get(&reroute.connector.id)
                 .copied()
-                .unwrap_or_else(|| connector_ports(&reroute.source.bounds, &reroute.target.bounds))
+                .unwrap_or_else(|| connector_ports(&reroute.source.bounds, &reroute.target.bounds));
+            let [start, end] = reroute.pins;
+            Ports {
+                start: start.map_or(spread.start, |(at, _)| at),
+                end: end.map_or(spread.end, |(at, _)| at),
+            }
         })
         .collect();
     let (_, first_routes) = reroutes.iter().zip(&first_ports).fold(
@@ -825,14 +994,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             let points = &connector.points;
             let (_, start) = end_port(points[0], points[1], &source.bounds);
             let (_, end) = end_port(points[points.len() - 1], points[points.len() - 2], &target.bounds);
-            Some((
-                Reroute {
-                    connector,
-                    source,
-                    target,
-                },
-                Ports { start, end },
-            ))
+            Some((Reroute::new(connector, source, target), Ports { start, end }))
         })
         .collect();
     let all_ends: Vec<(&Reroute, &Ports, &Vec<Point>)> = reroutes
@@ -1011,7 +1173,20 @@ pub(crate) fn spread_close_runs(result: Draft) -> Draft {
             .map(|bounds| bounds.inflate(CLEARANCE))
             .collect()
     };
-    let obstacles: Vec<Vec<Bounds>> = diagram.connectors.iter().map(obstacles_for).collect();
+    // What each connector keeps clear of: the nodes and labels around it,
+    // and its own end nodes, which only its middle segments keep clear of.
+    let obstacles: Vec<[Vec<Bounds>; 2]> = diagram
+        .connectors
+        .iter()
+        .map(|connector| {
+            let ends = [&connector.from, &connector.to]
+                .into_iter()
+                .filter_map(|id| diagram.node(id))
+                .map(|node| node.bounds.inflate(CLEARANCE))
+                .collect();
+            [obstacles_for(connector), ends]
+        })
+        .collect();
     // How much a trial changes what the routes cost: only the routes it
     // moved cost differently, on their own and against the others.
     let change = |routes: &[Vec<Point>], trial: &[Vec<Point>]| -> f64 {
@@ -1082,11 +1257,7 @@ pub(crate) fn spread_close_runs(result: Draft) -> Draft {
         .iter()
         .filter_map(|index| {
             let connector = &diagram.connectors[*index];
-            let reroute = Reroute {
-                connector,
-                source: diagram.node(&connector.from)?,
-                target: diagram.node(&connector.to)?,
-            };
+            let reroute = Reroute::new(connector, diagram.node(&connector.from)?, diagram.node(&connector.to)?);
             Some((reroute, routes[*index].clone()))
         })
         .unzip();
@@ -1102,11 +1273,12 @@ pub(crate) fn spread_close_runs(result: Draft) -> Draft {
 /// Moves middle segment `k` of route `index` onto `line`, pushing on by two
 /// lanes, in the same direction `away`, any other route's middle segment
 /// beyond it that it would run within two lanes of. Fails when a route would
-/// turn back on itself, run into the clearance of a node or label, or have
-/// to push a route's first or last segment.
+/// turn back on itself, run into the clearance of a node or label, run its
+/// moved segment into the clearance of its own end nodes, or have to push
+/// a route's first or last segment.
 fn push(
     routes: &mut [Vec<Point>],
-    obstacles: &[Vec<Bounds>],
+    obstacles: &[[Vec<Bounds>; 2]],
     index: usize,
     k: usize,
     line: f64,
@@ -1131,7 +1303,10 @@ fn push(
         .windows(2)
         .zip(moved.windows(2))
         .all(|(old, new)| new[0] != new[1] && heading(old[0], old[1]) == heading(new[0], new[1]));
-    if !keeps_headings || !route_is_clear(&moved[k - 1..=k + 2], &obstacles[index]) {
+    if !keeps_headings
+        || !route_is_clear(&moved[k - 1..=k + 2], &obstacles[index][0])
+        || !route_is_clear(&moved[k..=k + 1], &obstacles[index][1])
+    {
         return false;
     }
     let segment = (moved[k], moved[k + 1]);
@@ -1411,6 +1586,8 @@ fn improve_ports(
         }
     };
     let port_at = |ports: &Ports, end: usize| if end == 0 { ports.start } else { ports.end };
+    // An end its port pins stays where it is.
+    let pinned = |index: usize, end: usize| reroutes[index].pins[end].is_some();
     let with_port = |ports: Ports, end: usize, p: Point| {
         if end == 0 {
             Ports { start: p, ..ports }
@@ -1489,7 +1666,11 @@ fn improve_ports(
                 p.x
             }
         };
-        if facing && along(far) == along(old) && free(ports, index, opposite, far_side, along(new)) {
+        if facing
+            && along(far) == along(old)
+            && !pinned(index, opposite)
+            && free(ports, index, opposite, far_side, along(new))
+        {
             with_port(moved, opposite, moved_to(far, far_side, along(new)))
         } else {
             moved
@@ -1505,7 +1686,7 @@ fn improve_ports(
             let (one, other) = (node_at(first, a), node_at(second, b));
             let (p, q) = (port_at(&ports[first], a), port_at(&ports[second], b));
             let shared = one.id == other.id && side_of(p, &one.bounds) == side_of(q, &other.bounds);
-            if !shared || crossings(&routes[first], &routes[second]) == 0 {
+            if !shared || pinned(first, a) || pinned(second, b) || crossings(&routes[first], &routes[second]) == 0 {
                 return (ports, routes);
             }
             let changed = [
@@ -1524,6 +1705,9 @@ fn improve_ports(
         }
     };
     let slid = ends.iter().fold(traded, |(ports, routes), &(index, end)| {
+        if pinned(index, end) {
+            return (ports, routes);
+        }
         let port = port_at(&ports[index], end);
         let side = side_of(port, &node_at(index, end).bounds);
         let route = toward(&routes, index, end);
@@ -1545,6 +1729,9 @@ fn improve_ports(
     // moves to the side the route was heading into, where the route may run
     // straight in.
     let (_, turned) = ends.iter().fold(slid, |(ports, routes), &(index, end)| {
+        if pinned(index, end) {
+            return (ports, routes);
+        }
         let Some((side, line)) = turned_end(&toward(&routes, index, end)) else {
             return (ports, routes);
         };
@@ -1908,6 +2095,36 @@ mod tests {
             (p - q).abs() >= 16.0 && (q - r).abs() >= 16.0 && (p - r).abs() >= 16.0,
             "{p} {q} {r}"
         );
+    }
+
+    /// Given `posts` with a connector from its port "reply_to_id" round to
+    ///   its port "id", both on its left, turning 8px out, and a straight
+    ///   connector running down 12px further left
+    /// When their close runs are spread once the layout is settled
+    /// Then the loop still turns at least 8px clear of `posts`: it is not
+    ///   pushed against its own node to get away from the other connector
+    #[test]
+    fn keeps_a_run_pushed_away_from_a_neighbour_clear_of_its_own_node() {
+        let fixed = fix(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 340">
+              <g data-node="posts" data-custom="true"><g transform="translate(100 100)">
+                <rect data-bounds="true" width="120" height="96"/>
+                <circle data-port="id" cx="0" cy="24" r="0"/>
+                <circle data-port="reply_to_id" cx="0" cy="72" r="0"/>
+              </g></g>
+              <g data-node="above"><rect x="54" y="0" width="52" height="40"/></g>
+              <g data-node="below"><rect x="54" y="260" width="52" height="40"/></g>
+              <path id="reply" data-from="posts" data-from-port="reply_to_id" data-to="posts" data-to-port="id" d="M 100 172 L 92 172 L 92 124 L 100 124"/>
+              <path id="down" data-from="above" data-to="below" d="M 80 40 L 80 260"/>
+            </svg>"#)
+        .unwrap();
+        let reply = |result: &FixResult| result.report.diagram.connector("reply").unwrap().points.clone();
+        assert_eq!(reply(&fixed)[1].x, 92.0, "{:?}", reply(&fixed));
+
+        let spread =
+            spread_close_runs(Draft::new(parse(&fixed.svg).unwrap(), Changes::default(), Vec::new())).written();
+
+        let turn = reply(&spread)[1].x;
+        assert!(100.0 - turn >= 8.0, "{:?}", reply(&spread));
     }
 
     /// Given two boxes joined by a straight connector with no issue

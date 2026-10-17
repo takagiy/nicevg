@@ -86,7 +86,8 @@ pub(crate) const SHORT_END_FADE: Fade = Fade {
     full: 300.0,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Side {
     Top,
     Right,
@@ -104,6 +105,20 @@ impl Side {
             Side::Bottom => "bottom",
             Side::Left => "left",
         }
+    }
+
+    /// The side of `bounds` nearest to `point`, the first of them on a tie.
+    pub fn nearest(bounds: &Bounds, point: Point) -> Side {
+        let distance = |side: Side| match side {
+            Side::Top => (point.y - bounds.y).abs(),
+            Side::Right => (point.x - bounds.right()).abs(),
+            Side::Bottom => (point.y - bounds.bottom()).abs(),
+            Side::Left => (point.x - bounds.x).abs(),
+        };
+        Side::ALL
+            .into_iter()
+            .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
+            .expect("four sides")
     }
 
     fn is_horizontal_edge(self) -> bool {
@@ -1603,6 +1618,17 @@ pub struct PortRequest {
     pub source_round: bool,
     pub target_round: bool,
     pub sides: Sides,
+    /// The points its start and end are pinned to by the ports they name.
+    pub pins: [Option<Point>; 2],
+}
+
+impl PortRequest {
+    fn pin(&self, end: End) -> Option<Point> {
+        match end {
+            End::Start => self.pins[0],
+            End::End => self.pins[1],
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1637,11 +1663,29 @@ pub fn spread_ports(requests: &[PortRequest], fixed: &HashMap<String, Vec<f64>>)
     let midpoints: HashMap<String, Ports> = requests
         .iter()
         .map(|request| {
-            let start = port_on_side(&request.source, request.sides.start);
-            let end = port_on_side(&request.target, request.sides.end);
+            let start = request.pins[0].unwrap_or_else(|| port_on_side(&request.source, request.sides.start));
+            let end = request.pins[1].unwrap_or_else(|| port_on_side(&request.target, request.sides.end));
             (request.id.clone(), Ports { start, end })
         })
         .collect();
+    // Ends pinned to a port hold their place on the side, as the ports of
+    // the connectors that stay do.
+    let fixed = requests
+        .iter()
+        .flat_map(|request| {
+            [(request.pins[0], request.source), (request.pins[1], request.target)]
+                .into_iter()
+                .filter_map(|(pin, bounds)| {
+                    let pin = pin?;
+                    let side = side_of(pin, &bounds);
+                    let along = if side.is_horizontal_edge() { pin.x } else { pin.y };
+                    Some((format!("{}:{}", bounds.format(), side.name()), along))
+                })
+        })
+        .fold(fixed.clone(), |mut fixed, (key, along)| {
+            fixed.entry(key).or_default().push(along);
+            fixed
+        });
     let spread = sides_in_use(requests, &midpoints)
         .iter()
         .fold(midpoints.clone(), |ports, (key, users)| {
@@ -1676,6 +1720,9 @@ fn untangle_pairs(requests: &[PortRequest], ports: HashMap<String, Ports>) -> Ha
             } else {
                 return ports;
             };
+            if first.pins.iter().chain(&second.pins).any(Option::is_some) {
+                return ports;
+            }
             let (Some(one), Some(other)) = (ports.get(&first.id).copied(), ports.get(&second.id).copied()) else {
                 return ports;
             };
@@ -1761,7 +1808,9 @@ fn sides_in_use(requests: &[PortRequest], ports: &HashMap<String, Ports>) -> Vec
                 (End::Start, request.source, request.target),
                 (End::End, request.target, request.source),
             ]
-            .map(|(end, bounds, other)| {
+            .into_iter()
+            .filter(|(end, _, _)| request.pin(*end).is_none())
+            .map(move |(end, bounds, other)| {
                 let key = format!("{}:{}", bounds.format(), side_of(get(&port, end), &bounds).name());
                 (
                     key,
@@ -1911,7 +1960,8 @@ fn align_facing_ports(requests: &[PortRequest], ports: HashMap<String, Ports>) -
         };
         let moved = |p: Point, value: f64| if along_y { point(p.x, value) } else { point(value, p.y) };
         let (start_value, end_value) = (coordinate(port.start), coordinate(port.end));
-        if fits(&request.target, request.target_round, start_value)
+        if request.pins[1].is_none()
+            && fits(&request.target, request.target_round, start_value)
             && !taken(&ports, &request.target_id, end_side, start_value)
         {
             ports.insert(
@@ -1921,7 +1971,8 @@ fn align_facing_ports(requests: &[PortRequest], ports: HashMap<String, Ports>) -
                     ..port
                 },
             );
-        } else if fits(&request.source, request.source_round, end_value)
+        } else if request.pins[0].is_none()
+            && fits(&request.source, request.source_round, end_value)
             && !taken(&ports, &request.source_id, start_side, end_value)
         {
             ports.insert(
@@ -2465,6 +2516,7 @@ mod tests {
                     start: Side::Bottom,
                     end: Side::Top,
                 },
+                pins: [None, None],
             };
             let ports = HashMap::from([(
                 "c".to_owned(),

@@ -1,6 +1,8 @@
 //! Mechanical layout checks. Each check maps the diagram to the issues it
 //! finds; `inspect` concatenates them in a fixed order.
 
+use std::borrow::Cow;
+
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
@@ -51,6 +53,7 @@ pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue>
         label_node_overlaps(&diagram.nodes, &diagram.labels),
         connector_label_clearance(&diagram.connectors, &diagram.labels),
         connector_endpoints(&diagram.nodes, &diagram.connectors),
+        connector_ends_off_ports(&diagram.nodes, &diagram.connectors),
         connector_ends_along_sides(&diagram.nodes, &diagram.connectors),
         connector_overlaps(&diagram.connectors),
         connector_near_misses(&diagram.connectors),
@@ -376,6 +379,81 @@ fn connector_endpoints(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -
         .collect()
 }
 
+/// How far an end may lie from its port's point and still meet it.
+pub const PORT_TOLERANCE: f64 = 0.5;
+
+/// Each end of a connector, as (its point, the node it meets, the port it
+/// names, its verb, which end), for the ends that name a port.
+fn port_ends<'a>(
+    nodes: &'a [DiagramNode],
+    connector: &'a DiagramConnector,
+) -> impl Iterator<Item = (Point, &'a DiagramNode, &'a str, &'static str, &'static str)> {
+    let node = |id: &str| nodes.iter().find(|node| node.id == id);
+    [
+        (
+            connector.points.first(),
+            node(&connector.from),
+            connector.from_port.as_deref(),
+            "starts",
+            "start",
+        ),
+        (
+            connector.points.last(),
+            node(&connector.to),
+            connector.to_port.as_deref(),
+            "ends",
+            "end",
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(point, owner, port, verb, which)| Some((*point?, owner?, port?, verb, which)))
+}
+
+/// Ends naming a port their node does not declare, and ends naming one of
+/// its ports that meet none of its points.
+fn connector_ends_off_ports(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
+    connectors
+        .iter()
+        .flat_map(|connector| {
+            port_ends(nodes, connector).filter_map(move |(end, owner, port, verb, which)| {
+                let places: Vec<Point> = owner
+                    .ports
+                    .iter()
+                    .filter(|place| place.name == port)
+                    .map(|place| place.point)
+                    .collect();
+                let details = Some(json!({ "endpoint": which, "port": port }));
+                let elements: [&str; 2] = [&connector.id, &owner.id];
+                if places.is_empty() {
+                    return Some(issue(
+                        "connector-unknown-port",
+                        format!(
+                            "Connector \"{}\" {verb} at port \"{port}\", which node \"{}\" does not have.",
+                            connector.id, owner.id
+                        ),
+                        &elements,
+                        details,
+                    ));
+                }
+                places
+                    .iter()
+                    .all(|place| hypot(end.x - place.x, end.y - place.y) > PORT_TOLERANCE)
+                    .then(|| {
+                        issue(
+                            "connector-end-off-port",
+                            format!(
+                                "Connector \"{}\" {verb} off port \"{port}\" of node \"{}\".",
+                                connector.id, owner.id
+                            ),
+                            &elements,
+                            details,
+                        )
+                    })
+            })
+        })
+        .collect()
+}
+
 /// Ends whose last stretch lies on a side of the box they end on: the line
 /// runs along the outline instead of meeting it, and its arrowhead points
 /// along the side.
@@ -421,6 +499,88 @@ fn connector_ends_along_sides(nodes: &[DiagramNode], connectors: &[DiagramConnec
         .collect()
 }
 
+/// A connector's ends as (node, port, point, whether it is the last point).
+fn named_ends(connector: &DiagramConnector) -> [(&str, Option<&str>, Option<&Point>, bool); 2] {
+    [
+        (
+            connector.from.as_str(),
+            connector.from_port.as_deref(),
+            connector.points.first(),
+            false,
+        ),
+        (
+            connector.to.as_str(),
+            connector.to_port.as_deref(),
+            connector.points.last(),
+            true,
+        ),
+    ]
+}
+
+/// The routes of two connectors with the run they share into a port they
+/// both end at cut off, so that merging there does not read as running
+/// along each other; both routes as they are when they share no port end.
+fn before_merging<'a>(
+    first: &'a DiagramConnector,
+    second: &'a DiagramConnector,
+) -> (Cow<'a, [Point]>, Cow<'a, [Point]>) {
+    let shared = named_ends(first).into_iter().find_map(|(node, port, point, last)| {
+        let (port, point) = (port?, point?);
+        named_ends(second)
+            .into_iter()
+            .find_map(|(other_node, other_port, other_point, other_last)| {
+                let other_point = other_point?;
+                (other_node == node
+                    && other_port == Some(port)
+                    && hypot(point.x - other_point.x, point.y - other_point.y) <= PORT_TOLERANCE)
+                    .then_some((last, other_last))
+            })
+    });
+    let Some((a_last, b_last)) = shared else {
+        return (Cow::Borrowed(&first.points), Cow::Borrowed(&second.points));
+    };
+    let (mut a, mut b) = (first.points.clone(), second.points.clone());
+    // Both run into the port at their last point while the run is cut.
+    if !a_last {
+        a.reverse();
+    }
+    if !b_last {
+        b.reverse();
+    }
+    while a.len() >= 2 && b.len() >= 2 {
+        let end = a[a.len() - 1];
+        let (next_a, next_b) = (a[a.len() - 2], b[b.len() - 2]);
+        let (da, db) = (
+            (next_a.x - end.x, next_a.y - end.y),
+            (next_b.x - end.x, next_b.y - end.y),
+        );
+        let (la, lb) = (hypot(da.0, da.1), hypot(db.0, db.1));
+        let together =
+            la > 0.0 && lb > 0.0 && (da.0 * db.1 - da.1 * db.0).abs() < 1e-6 && da.0 * db.0 + da.1 * db.1 > 0.0;
+        if !together {
+            break;
+        }
+        let run = la.min(lb);
+        let cut = Point {
+            x: end.x + da.0 / la * run,
+            y: end.y + da.1 / la * run,
+        };
+        for (route, length) in [(&mut a, la), (&mut b, lb)] {
+            route.pop();
+            if length > run {
+                route.push(cut);
+            }
+        }
+    }
+    if !a_last {
+        a.reverse();
+    }
+    if !b_last {
+        b.reverse();
+    }
+    (Cow::Owned(a), Cow::Owned(b))
+}
+
 fn connector_overlaps(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
     connectors
         .iter()
@@ -428,7 +588,10 @@ fn connector_overlaps(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
         .flat_map(|(index, first)| {
             connectors[index + 1..]
                 .iter()
-                .filter(move |second| routes_overlap(&first.points, &second.points))
+                .filter(move |second| {
+                    let (a, b) = before_merging(first, second);
+                    routes_overlap(&a, &b)
+                })
                 .map(move |second| {
                     issue(
                         "connector-overlap",
@@ -471,9 +634,8 @@ fn connector_near_misses(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
             connectors[index + 1..]
                 .iter()
                 .filter(move |second| {
-                    turns_beside(&first.points, &segments(&second.points))
-                        + turns_beside(&second.points, &segments(&first.points))
-                        > 0
+                    let (a, b) = before_merging(first, second);
+                    turns_beside(&a, &segments(&b)) + turns_beside(&b, &segments(&a)) > 0
                 })
                 .map(move |second| {
                     issue(
