@@ -503,6 +503,7 @@ fn pick_reroutes<'a>(
         "connector-node-crossing",
         "connector-label-clearance",
         "connector-endpoint-inside",
+        "connector-endpoint-detached",
         "connector-end-off-port",
         "connector-end-along-side",
         "connector-overlap",
@@ -525,13 +526,17 @@ fn pick_reroutes<'a>(
                 }),
         )
         .collect();
+    // A node moves with any container around it.
+    let moved = |id: &str| {
+        std::iter::once(id)
+            .chain(ancestor_ids(&diagram.nodes, id))
+            .any(|id| moved_node_ids.iter().any(|moved| moved == id))
+    };
     let reroutes: Vec<Reroute> = diagram
         .connectors
         .iter()
         .filter(|connector| {
-            with_issues.contains(connector.id.as_str())
-                || moved_node_ids.contains(&connector.from)
-                || moved_node_ids.contains(&connector.to)
+            with_issues.contains(connector.id.as_str()) || moved(&connector.from) || moved(&connector.to)
         })
         .filter_map(|connector| {
             Some(Reroute::new(

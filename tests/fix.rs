@@ -1773,7 +1773,7 @@ fn does_not_reroute_onto_a_short_segment_between_grid_lines() {
           <rect x="260" y="20" width="100" height="56" />
           <text x="310" y="53" text-anchor="middle" font-size="14">Target</text>
         </g>
-        <path id="tick" data-from="west" data-to="target"
+        <path id="tick" data-from="west" data-to="obstacle"
           d="M 0 -40 L 195 -40 L 195 12 L 200 12" />
         <line id="flow" data-from="source" data-to="target"
           x1="120" y1="48" x2="260" y2="48" />
@@ -2236,6 +2236,67 @@ fn reroutes_each_of_two_connectors_joining_the_same_nodes() {
         !has_issue(&result.report, "connector-endpoint-inside"),
         "{:?}",
         issue_codes(&result.report)
+    );
+}
+
+/// Given a connector drawn between `source` and `target` whose ends stop
+///   40px short of both
+/// When the diagram is fixed
+/// Then it is rerouted to start on the outline of `source` and end on the
+///   outline of `target`
+#[test]
+fn reroutes_a_connector_whose_ends_stop_away_from_its_nodes() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
+        <g data-node="source"><rect x="20" y="20" width="100" height="56"/><text x="70" y="53" text-anchor="middle" font-size="14">Source</text></g>
+        <g data-node="target"><rect x="260" y="20" width="100" height="56"/><text x="310" y="53" text-anchor="middle" font-size="14">Target</text></g>
+        <line id="flow" data-from="source" data-to="target" x1="160" y1="36" x2="220" y2="36"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+
+    let points = connector_points(&result.report, "flow");
+    assert!(
+        side_of(points[0], &node_bounds(&result.report, "source")).is_some(),
+        "{points:?}"
+    );
+    assert!(
+        side_of(points[points.len() - 1], &node_bounds(&result.report, "target")).is_some(),
+        "{points:?}"
+    );
+}
+
+/// Given `ext` 10px to the left of the container `box`, and a connector
+///   from `ext` to `inner`, a node inside `box`, ending on its left side
+/// When the diagram is fixed, moving `box` right to leave a 20px gap
+/// Then the connector is rerouted to end on the outline of `inner` where
+///   it has moved to
+#[test]
+fn reroutes_connectors_into_a_container_moved_to_keep_a_gap() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 240">
+        <g data-node="ext"><rect x="20" y="100" width="100" height="56"/><text x="70" y="133" text-anchor="middle" font-size="14">Ext</text></g>
+        <g data-node="box">
+          <rect x="130" y="20" width="280" height="200"/>
+          <g data-node="inner"><rect x="170" y="100" width="100" height="56"/><text x="220" y="133" text-anchor="middle" font-size="14">Inner</text></g>
+        </g>
+        <line id="flow" data-from="ext" data-to="inner" x1="120" y1="128" x2="170" y2="128"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+
+    assert!(
+        change_codes(&result).contains(&"move-node".to_owned()),
+        "{:?}",
+        change_codes(&result)
+    );
+    let points = connector_points(&result.report, "flow");
+    assert!(
+        side_of(points[points.len() - 1], &node_bounds(&result.report, "inner")).is_some(),
+        "{points:?} {:?}",
+        node_bounds(&result.report, "inner")
     );
 }
 

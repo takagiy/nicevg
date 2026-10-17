@@ -284,6 +284,55 @@ fn reports_connector_endpoints_placed_inside_their_nodes() {
     );
 }
 
+/// Given a connector whose ends stop 40px short of the source and the
+///   target, and one stopping 8px short of them, as an arrowhead may
+/// When the diagram is analyzed
+/// Then each end of the first is reported as detached from its node, and
+///   the second is not
+#[test]
+fn reports_connector_endpoints_away_from_their_nodes() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
+        <g data-node="source">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+        </g>
+        <g data-node="target">
+          <rect x="260" y="20" width="100" height="56" />
+          <text x="310" y="53" text-anchor="middle" font-size="14">Target</text>
+        </g>
+        <line id="flow" data-from="source" data-to="target"
+          x1="160" y1="36" x2="220" y2="36" />
+        <line id="short" data-from="source" data-to="target"
+          x1="128" y1="60" x2="252" y2="60" />
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+    let detached: Vec<serde_json::Value> = issues_json(&report)
+        .into_iter()
+        .filter(|issue| issue["code"] == "connector-endpoint-detached")
+        .collect();
+
+    assert_eq!(
+        detached,
+        [
+            json!({
+                "code": "connector-endpoint-detached",
+                "message": "Connector \"flow\" starts 40px away from node \"source\".",
+                "elements": ["flow", "source"],
+                "details": { "endpoint": "start", "distance": 40 },
+            }),
+            json!({
+                "code": "connector-endpoint-detached",
+                "message": "Connector \"flow\" ends 40px away from node \"target\".",
+                "elements": ["flow", "target"],
+                "details": { "endpoint": "end", "distance": 40 },
+            }),
+        ]
+    );
+}
+
 /// Given overlapping peer nodes where one declares intentional overlap
 /// When the diagram is analyzed
 /// Then no overlap issue is reported for that pair
@@ -716,6 +765,32 @@ fn tables_joined_by(d: &str, to_port: &str) -> String {
       </svg>
     "#
     )
+}
+
+/// Given `article` whose port "author" is a pin 20px outside its right
+///   side, and a connector from that pin to the left side of `user`
+/// When the diagram is analyzed
+/// Then the end at the pin is not reported as detached from `article`
+#[test]
+fn accepts_an_end_at_a_port_outside_its_node() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 160">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <line x1="120" y1="62" x2="140" y2="62"/>
+            <circle data-port="author" cx="140" cy="62" r="0"/>
+          </g>
+        </g>
+        <g data-node="user"><rect x="300" y="20" width="120" height="96"/></g>
+        <path id="wrote" data-from="article" data-from-port="author" data-to="user" d="M 160 82 L 300 82"/>
+      </svg>
+    "#;
+
+    assert_eq!(
+        issues_with_code(&analyze(svg), "connector-endpoint-detached"),
+        Vec::<Vec<String>>::new()
+    );
 }
 
 /// Given a connector leaving its port "author" but reaching the side of

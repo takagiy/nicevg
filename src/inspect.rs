@@ -355,26 +355,69 @@ pub fn point_is_inside_node(target: Point, node: &DiagramNode) -> bool {
     }
 }
 
+/// How far short of its node a connector may stop, for an arrowhead drawn
+/// in the gap.
+pub const ENDPOINT_GAP: f64 = 16.0;
+
+/// How far a point outside a node lies from the node's outline.
+fn distance_to_node(target: Point, node: &DiagramNode) -> f64 {
+    if node.is_circle() {
+        let centre = node.bounds.centre();
+        (hypot(target.x - centre.x, target.y - centre.y) - node.bounds.width / 2.0).max(0.0)
+    } else {
+        distance_to_route(&node.bounds, &[target, target])
+    }
+}
+
 fn connector_endpoints(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
     let node = |id: &str| nodes.iter().find(|node| node.id == id);
     connectors
         .iter()
         .flat_map(|connector| {
             let ends = [
-                (connector.points.first(), node(&connector.from), "starts", "start"),
-                (connector.points.last(), node(&connector.to), "ends", "end"),
+                (
+                    connector.points.first(),
+                    node(&connector.from),
+                    &connector.from_port,
+                    "starts",
+                    "start",
+                ),
+                (
+                    connector.points.last(),
+                    node(&connector.to),
+                    &connector.to_port,
+                    "ends",
+                    "end",
+                ),
             ];
-            ends.into_iter().filter_map(move |(endpoint, owner, verb, which)| {
-                let (endpoint, owner) = (endpoint?, owner?);
-                point_is_inside_node(*endpoint, owner).then(|| {
-                    issue(
-                        "connector-endpoint-inside",
-                        format!("Connector \"{}\" {verb} inside node \"{}\".", connector.id, owner.id),
-                        &[&connector.id, &owner.id],
-                        Some(json!({ "endpoint": which })),
-                    )
+            ends.into_iter()
+                .filter_map(move |(endpoint, owner, port, verb, which)| {
+                    let (endpoint, owner) = (endpoint?, owner?);
+                    if point_is_inside_node(*endpoint, owner) {
+                        return Some(issue(
+                            "connector-endpoint-inside",
+                            format!("Connector \"{}\" {verb} inside node \"{}\".", connector.id, owner.id),
+                            &[&connector.id, &owner.id],
+                            Some(json!({ "endpoint": which })),
+                        ));
+                    }
+                    // An end at a port may lie outside the node, where the port
+                    // is drawn; whether it meets the port is checked on its own.
+                    let distance = distance_to_node(*endpoint, owner);
+                    (port.is_none() && distance > ENDPOINT_GAP).then(|| {
+                        issue(
+                            "connector-endpoint-detached",
+                            format!(
+                                "Connector \"{}\" {verb} {}px away from node \"{}\".",
+                                connector.id,
+                                format_number(distance),
+                                owner.id
+                            ),
+                            &[&connector.id, &owner.id],
+                            Some(json!({ "endpoint": which, "distance": json_number(distance) })),
+                        )
+                    })
                 })
-            })
         })
         .collect()
 }
