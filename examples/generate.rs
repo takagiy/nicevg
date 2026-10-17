@@ -1254,21 +1254,6 @@ struct SpecEdge {
 /// Each node's layer: the longest way to it from a node nothing leads to,
 /// leaving out the edges that close a cycle.
 fn layers(count: usize, edges: &[(usize, usize)]) -> Vec<usize> {
-    fn walk(v: usize, out: &[Vec<usize>], state: &mut [u8], kept: &mut [Vec<usize>]) {
-        state[v] = 1;
-        for &w in &out[v] {
-            match state[w] {
-                0 => {
-                    kept[v].push(w);
-                    walk(w, out, state, kept);
-                }
-                // On the walk's own path: this edge closes a cycle.
-                1 => {}
-                _ => kept[v].push(w),
-            }
-        }
-        state[v] = 2;
-    }
     let mut out: Vec<Vec<usize>> = vec![Vec::new(); count];
     for (a, b) in edges {
         if a != b {
@@ -1277,9 +1262,32 @@ fn layers(count: usize, edges: &[(usize, usize)]) -> Vec<usize> {
     }
     let mut state = vec![0u8; count];
     let mut kept: Vec<Vec<usize>> = vec![Vec::new(); count];
-    for v in 0..count {
-        if state[v] == 0 {
-            walk(v, &out, &mut state, &mut kept);
+    // A depth-first walk kept on a stack of (node, next edge to look at),
+    // so a long chain cannot run out of call stack.
+    for root in 0..count {
+        if state[root] != 0 {
+            continue;
+        }
+        state[root] = 1;
+        let mut stack = vec![(root, 0usize)];
+        while let Some((v, next)) = stack.last_mut() {
+            let v = *v;
+            let Some(&w) = out[v].get(*next) else {
+                state[v] = 2;
+                stack.pop();
+                continue;
+            };
+            *next += 1;
+            match state[w] {
+                0 => {
+                    kept[v].push(w);
+                    state[w] = 1;
+                    stack.push((w, 0));
+                }
+                // On the walk's own path: this edge closes a cycle.
+                1 => {}
+                _ => kept[v].push(w),
+            }
         }
     }
     let mut layer = vec![0; count];
@@ -1494,7 +1502,13 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
         };
         let ports = [column(a, &e.from_port), column(b, &e.to_port)];
         let label = e.label.as_ref().map(|l| l.chars().take(30).collect());
-        if from != to && !d.edges.iter().any(|x| x.from == from && x.to == to) {
+        // Two foreign keys between the same tables, or a table referring
+        // to itself, are edges of their own; only an exact repeat is not.
+        let repeat = d
+            .edges
+            .iter()
+            .any(|x| x.from == from && x.to == to && x.ports == ports && x.label == label);
+        if !repeat {
             d.edges.push(Edge { from, to, label, ports });
         }
     }
