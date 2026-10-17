@@ -12,10 +12,10 @@
 //!
 //! `--spec` drafts the diagrams JSON specs describe (nodes, groups and
 //! edges, as converters write them from datasets) instead of made-up ones.
-//! `--grow` grows flow, dfd and er diagrams from a few nodes by rewriting a
-//! part at a time (a step split, a check that branches, a store, a junction
-//! table), instead of drawing each kind from one fixed plan; their files
-//! are `<kind>-<size>-<mess>-grown-<seed>.svg`.
+//! `--grow` grows each kind from a few nodes by rewriting a part at a time
+//! (a step split, a check that branches, a store, a junction table, a
+//! service in a boundary of its own), instead of drawing it from one fixed
+//! plan; their files are `<kind>-<size>-<mess>-grown-<seed>.svg`.
 //! `--mess` picks how rough: `tidy`, `sloppy`, `messy` or `wild`. Each file
 //! is `<kind>-<size>-<mess>-<seed>.svg`. The same arguments always give
 //! the same files. Each draft is read back with `nicevg::analyze`, and its
@@ -57,9 +57,8 @@ struct Args {
     /// else in layers wrapped onto rows when a flow runs long.
     #[arg(long)]
     layout: Option<Layout>,
-    /// Grow flow, dfd and er diagrams from a few nodes by rewriting a part
-    /// at a time, instead of drawing them from a fixed plan; laid out as
-    /// specs are. Other kinds are left out.
+    /// Grow diagrams from a few nodes by rewriting a part at a time,
+    /// instead of drawing them from a fixed plan; laid out as drawn specs.
     #[arg(long)]
     grow: bool,
 }
@@ -292,6 +291,8 @@ struct Container {
     id: String,
     title: String,
     members: Vec<usize>,
+    /// The container it sits in, if any, by its place in the draft's.
+    parent: Option<usize>,
 }
 
 struct Edge {
@@ -642,6 +643,7 @@ fn c4(rng: &mut Rng, size: Size, mess: Mess) -> Draft {
         id: "platform".into(),
         title: "Platform [Software System]".into(),
         members: cs.iter().chain(&ds).copied().collect(),
+        parent: None,
     });
     for (i, p) in ps.iter().enumerate() {
         d.link(*p, cs[i % 2.min(cs.len())], Some("Uses [HTTPS]".into()));
@@ -737,11 +739,13 @@ fn er(rng: &mut Rng, size: Size, mess: Mess) -> Draft {
             id: "sales".into(),
             title: "Sales".into(),
             members: ts[..split].to_vec(),
+            parent: None,
         });
         d.containers.push(Container {
             id: "fulfilment".into(),
             title: "Fulfilment".into(),
             members: ts[split..].to_vec(),
+            parent: None,
         });
     }
     d
@@ -819,6 +823,7 @@ fn flow(rng: &mut Rng, size: Size, mess: Mess) -> Draft {
             id: format!("lane{}", index + 1),
             title: LANES[index].into(),
             members,
+            parent: None,
         });
     }
     d.containers.retain(|c| !c.members.is_empty());
@@ -877,6 +882,7 @@ fn arch(rng: &mut Rng, size: Size, mess: Mess) -> Draft {
             id: title.to_lowercase(),
             title: (*title).to_owned(),
             members: members.clone(),
+            parent: None,
         });
         layers.push(members);
     }
@@ -1066,32 +1072,78 @@ const STYLE: &str = r##"  <style>
   </defs>
 "##;
 
+/// A container with its nodes, and the containers in it inside it.
+fn container_svg(
+    out: &mut String,
+    d: &Draft,
+    frames: &[(f64, f64, f64, f64)],
+    c: usize,
+    indent: &str,
+    placed: &mut [bool],
+) {
+    let (x, y, w, h) = frames[c];
+    let _ = writeln!(out, r#"{indent}<g data-node="{}" class="group">"#, d.containers[c].id);
+    let _ = writeln!(
+        out,
+        r#"{indent}  <rect x="{x}" y="{y}" width="{w}" height="{h}" rx="8"/>"#
+    );
+    let _ = writeln!(
+        out,
+        r#"{indent}  <text x="{}" y="{}">{}</text>"#,
+        x + 12.0,
+        y + 18.0,
+        escape(&d.containers[c].title)
+    );
+    let inner = format!("{indent}  ");
+    for m in &d.containers[c].members {
+        node_svg(out, &d.nodes[*m], &inner);
+        placed[*m] = true;
+    }
+    for nested in (0..d.containers.len()).filter(|n| d.containers[*n].parent == Some(c)) {
+        container_svg(out, d, frames, nested, &inner, placed);
+    }
+    let _ = writeln!(out, "{indent}</g>");
+}
+
 fn write_svg(rng: &mut Rng, d: &Draft) -> String {
     let routes: Vec<Vec<(f64, f64)>> = (0..d.edges.len()).map(|index| route(rng, d, index)).collect();
     // Containers fitted round their members, sometimes with the title
     // squeezed against the first row.
-    let frames: Vec<(f64, f64, f64, f64)> = d
+    let pads: Vec<f64> = d
         .containers
         .iter()
-        .map(|c| {
-            let pad = if rng.chance(d.mess.tight_frame) { 6.0 } else { 24.0 };
-            let left = c.members.iter().map(|m| d.nodes[*m].x).fold(f64::INFINITY, f64::min) - pad;
-            let top = c.members.iter().map(|m| d.nodes[*m].y).fold(f64::INFINITY, f64::min) - pad - 18.0;
-            let right = c
-                .members
-                .iter()
-                .map(|m| d.nodes[*m].x + d.nodes[*m].w)
-                .fold(f64::NEG_INFINITY, f64::max)
-                + pad;
-            let bottom = c
-                .members
-                .iter()
-                .map(|m| d.nodes[*m].y + d.nodes[*m].h)
-                .fold(f64::NEG_INFINITY, f64::max)
-                + pad;
-            (left, top, right - left, bottom - top)
-        })
+        .map(|_| if rng.chance(d.mess.tight_frame) { 6.0 } else { 24.0 })
         .collect();
+    // Inner containers first: an outer one is fitted round them as well.
+    let depth = |mut c: usize| {
+        let mut depth = 0;
+        while let Some(parent) = d.containers[c].parent {
+            (c, depth) = (parent, depth + 1);
+        }
+        depth
+    };
+    let mut order: Vec<usize> = (0..d.containers.len()).collect();
+    order.sort_by_key(|c| std::cmp::Reverse(depth(*c)));
+    let mut frames = vec![(0.0, 0.0, 0.0, 0.0); d.containers.len()];
+    for c in order {
+        let members = d.containers[c].members.iter().map(|m| {
+            let n = &d.nodes[*m];
+            (n.x, n.y, n.x + n.w, n.y + n.h)
+        });
+        let inner = (0..d.containers.len())
+            .filter(|inner| d.containers[*inner].parent == Some(c))
+            .map(|inner| {
+                let (x, y, w, h) = frames[inner];
+                (x, y, x + w, y + h)
+            });
+        let (mut left, mut top, mut right, mut bottom) =
+            (f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for (l, t, r, b) in members.chain(inner) {
+            (left, top, right, bottom) = (left.min(l), top.min(t), right.max(r), bottom.max(b));
+        }
+        let (left, top) = (left - pads[c], top - pads[c] - 18.0);
+        frames[c] = (left, top, right + pads[c] - left, bottom + pads[c] - top);
+    }
     let mut right = d.nodes.iter().map(|n| n.x + n.w).fold(0.0, f64::max);
     let mut bottom = d.nodes.iter().map(|n| n.y + n.h).fold(0.0, f64::max);
     for (x, y, w, h) in &frames {
@@ -1125,21 +1177,8 @@ fn write_svg(rng: &mut Rng, d: &Draft) -> String {
         escape(&d.title)
     );
     let mut placed = vec![false; d.nodes.len()];
-    for (c, (x, y, fw, fh)) in d.containers.iter().zip(&frames) {
-        let _ = writeln!(out, r#"  <g data-node="{}" class="group">"#, c.id);
-        let _ = writeln!(out, r#"    <rect x="{x}" y="{y}" width="{fw}" height="{fh}" rx="8"/>"#);
-        let _ = writeln!(
-            out,
-            r#"    <text x="{}" y="{}">{}</text>"#,
-            x + 12.0,
-            y + 18.0,
-            escape(&c.title)
-        );
-        for m in &c.members {
-            node_svg(&mut out, &d.nodes[*m], "    ");
-            placed[*m] = true;
-        }
-        let _ = writeln!(out, "  </g>");
+    for c in (0..d.containers.len()).filter(|c| d.containers[*c].parent.is_none()) {
+        container_svg(&mut out, d, &frames, c, "  ", &mut placed);
     }
     for (n, done) in d.nodes.iter().zip(&placed) {
         if !done {
@@ -1251,6 +1290,10 @@ enum SpecShape {
 struct SpecGroup {
     id: String,
     title: String,
+    /// The group it sits in, when groups nest; drawn only where nodes are
+    /// laid out as drawn.
+    #[serde(default)]
+    parent: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1556,6 +1599,18 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
     // Lanes, or the boxes a modeller drew round nodes where they drew them.
     if flow || layout == Layout::Drawn {
         let blocks = block_of.iter().max().map_or(1, |last| last + 1);
+        // A group holds a node when the node sits in it or in a group in it.
+        let holds = |g: usize, n: &SpecNode| {
+            let mut at = n.group.clone();
+            while let Some(id) = at {
+                if spec.groups[g].id == id {
+                    return true;
+                }
+                at = spec.groups.iter().find(|x| x.id == id).and_then(|x| x.parent.clone());
+            }
+            false
+        };
+        let mut container_of: BTreeMap<(usize, usize), usize> = BTreeMap::new();
         for (g, group) in spec.groups.iter().enumerate() {
             for block in 0..blocks {
                 let members: Vec<usize> = spec
@@ -1565,14 +1620,24 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
                     .filter(|(v, n)| lane_of(n) == g && block_of[*v] == block)
                     .filter_map(|(v, _)| placed[v])
                     .collect();
-                if !members.is_empty() {
+                let nested = block == 0 && spec.nodes.iter().any(|n| lane_of(n) != g && holds(g, n));
+                if !members.is_empty() || nested {
+                    container_of.insert((g, block), d.containers.len());
                     d.containers.push(Container {
                         id: format!("g{}-{}", g + 1, block + 1),
                         title: group.title.chars().take(40).collect(),
                         members,
+                        parent: None,
                     });
                 }
             }
+        }
+        for ((g, block), c) in &container_of {
+            let parent = spec.groups[*g]
+                .parent
+                .as_ref()
+                .and_then(|p| spec.groups.iter().position(|x| &x.id == p));
+            d.containers[*c].parent = parent.and_then(|p| container_of.get(&(p, *block)).copied());
         }
     }
     d
@@ -1585,6 +1650,9 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
 /// diagram; now and then to any part, so hubs grow as well.
 struct Grower {
     spec: Spec,
+    /// Sizes given to nodes that stand for something else than their
+    /// label: a group laid out as one box.
+    sizes: BTreeMap<String, (f64, f64)>,
 }
 
 impl Grower {
@@ -1597,7 +1665,18 @@ impl Grower {
                 groups: Vec::new(),
                 edges: Vec::new(),
             },
+            sizes: BTreeMap::new(),
         }
+    }
+
+    fn group(&mut self, title: &str, parent: Option<String>) -> String {
+        let id = format!("g{}", self.spec.groups.len() + 1);
+        self.spec.groups.push(SpecGroup {
+            id: id.clone(),
+            title: title.to_owned(),
+            parent,
+        });
+        id
     }
 
     fn node(&mut self, label: String, shape: SpecShape, group: Option<String>, columns: Vec<String>) -> String {
@@ -1614,8 +1693,12 @@ impl Grower {
         id
     }
 
-    /// About how big a node comes out, as `Draft::add` sizes it.
-    fn size_of(n: &SpecNode) -> (f64, f64) {
+    /// How big a node comes out: the size it was given, or as
+    /// `Draft::add` sizes it.
+    fn size_of(&self, n: &SpecNode) -> (f64, f64) {
+        if let Some(size) = self.sizes.get(&n.id) {
+            return *size;
+        }
         let lines = match n.shape {
             SpecShape::Circle => vec![String::new()],
             SpecShape::Table => std::iter::once(n.label.clone())
@@ -1655,7 +1738,7 @@ impl Grower {
     fn free(&self, id: &str, at: (f64, f64), size: (f64, f64), margin: f64) -> bool {
         self.spec.nodes.iter().filter(|n| n.id != id).all(|n| {
             let (Some(x), Some(y)) = (n.x, n.y) else { return true };
-            let (w, h) = Grower::size_of(n);
+            let (w, h) = self.size_of(n);
             (x - at.0).abs() >= (w + size.0) / 2.0 + margin || (y - at.1).abs() >= (h + size.1) / 2.0 + margin
         })
     }
@@ -1664,8 +1747,8 @@ impl Grower {
     /// given, in order, each as far out as the two nodes' halves and a gap,
     /// keeping the anchor's line; then a step farther out, and so on.
     fn beside(&mut self, rng: &mut Rng, id: &str, anchor: &str, directions: &[(f64, f64)]) {
-        let size = Grower::size_of(self.get(id));
-        let (from, (aw, ah)) = (self.at(anchor).unwrap_or((0.0, 0.0)), Grower::size_of(self.get(anchor)));
+        let size = self.size_of(self.get(id));
+        let (from, (aw, ah)) = (self.at(anchor).unwrap_or((0.0, 0.0)), self.size_of(self.get(anchor)));
         // How roomy this hand is with this node.
         let gap = [50.0, 70.0, 90.0, 130.0][rng.below(4)];
         for farther in 0..16 {
@@ -1692,7 +1775,7 @@ impl Grower {
             .spec
             .nodes
             .iter()
-            .filter_map(|n| Some(n.x? + Grower::size_of(n).0 / 2.0))
+            .filter_map(|n| Some(n.x? + self.size_of(n).0 / 2.0))
             .fold(0.0, f64::max);
         self.put(id, (right + gap + size.0 / 2.0, from.1));
     }
@@ -1706,7 +1789,7 @@ impl Grower {
     /// Puts `id` between `a` and `b` if there is room there, else off to
     /// one side of the line between them, else beside `a`.
     fn between(&mut self, rng: &mut Rng, id: &str, a: &str, b: &str, ahead: (f64, f64)) {
-        let size = Grower::size_of(self.get(id));
+        let size = self.size_of(self.get(id));
         if let (Some(p), Some(q)) = (self.at(a), self.at(b)) {
             let mid = ((p.0 + q.0) / 2.0, (p.1 + q.1) / 2.0);
             let side = (ahead.1, ahead.0);
@@ -1762,7 +1845,7 @@ impl Grower {
 
     /// Where a node of `id` goes just after `a` along a flow, with `gap`.
     fn after(&self, a: &str, id: &str, gap: f64) -> f64 {
-        let (aw, w) = (Grower::size_of(self.get(a)).0, Grower::size_of(self.get(id)).0);
+        let (aw, w) = (self.size_of(self.get(a)).0, self.size_of(self.get(id)).0);
         self.at(a).map_or(0.0, |p| p.0) + (aw + w) / 2.0 + gap
     }
 
@@ -1779,7 +1862,7 @@ impl Grower {
     /// another row of the lane, else in `row` once the nodes from there
     /// on are moved along to make room, as a hand inserts a step.
     fn in_lane(&mut self, id: &str, x: f64, row: usize) {
-        let size = Grower::size_of(self.get(id));
+        let size = self.size_of(self.get(id));
         let top = self.lane_top(&self.get(id).group);
         let y = |r: usize| top + 60.0 + r as f64 * ROW_GAP;
         let mut rows: Vec<usize> = (0..LANE_ROWS).collect();
@@ -1797,7 +1880,7 @@ impl Grower {
     /// Puts `id` at `x` in `row` of its lane, moving the nodes from there
     /// on along first if they are in the way: a step put between two.
     fn in_row(&mut self, id: &str, x: f64, row: usize) {
-        let size = Grower::size_of(self.get(id));
+        let size = self.size_of(self.get(id));
         let y = self.lane_top(&self.get(id).group) + 60.0 + row as f64 * ROW_GAP;
         if !self.free(id, (x, y), size, 30.0) {
             self.make_room(x - size.0 / 2.0 - 20.0, size.0 + 70.0);
@@ -1821,7 +1904,7 @@ impl Grower {
         let layer = layers(self.spec.nodes.len(), &edges);
         let mut order: Vec<usize> = (0..self.spec.nodes.len()).collect();
         order.sort_by_key(|v| layer[*v]);
-        let size: Vec<(f64, f64)> = self.spec.nodes.iter().map(Grower::size_of).collect();
+        let size: Vec<(f64, f64)> = self.spec.nodes.iter().map(|n| self.size_of(n)).collect();
         for v in order {
             let least = edges
                 .iter()
@@ -1861,7 +1944,7 @@ impl Grower {
             .spec
             .nodes
             .iter()
-            .filter_map(|n| Some(((n.x?, n.y?), Grower::size_of(n))))
+            .filter_map(|n| Some(((n.x?, n.y?), self.size_of(n))))
             .chain(extra);
         let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
         for ((x, y), (w, h)) in boxes {
@@ -2119,7 +2202,11 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
         let title = lanes.get(lanes_used)?.clone();
         lanes_used += 1;
         let id = format!("lane{lanes_used}");
-        g.spec.groups.push(SpecGroup { id: id.clone(), title });
+        g.spec.groups.push(SpecGroup {
+            id: id.clone(),
+            title,
+            parent: None,
+        });
         Some(id)
     };
     let first = new_lane(&mut g);
@@ -2582,6 +2669,352 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
     g.done()
 }
 
+const DOMAINS: &[&str] = &[
+    "Ordering", "Payments", "Catalog", "Accounts", "Delivery", "Search", "Support", "Pricing",
+];
+const QUEUES: &[&str] = &[
+    "Event bus [Kafka]",
+    "Order events [SQS]",
+    "Jobs [RabbitMQ]",
+    "Notifications [SNS]",
+    "Stream [Kinesis]",
+];
+const PROTOCOLS: &[&str] = &["HTTPS", "gRPC", "SQL", "AMQP", "REST", "events"];
+
+/// The directions a diagram reads in: ahead, to one side and the other,
+/// and back.
+fn reading(rng: &mut Rng) -> [(f64, f64); 4] {
+    let ahead = if rng.chance(0.5) { (1.0, 0.0) } else { (0.0, 1.0) };
+    let side = (ahead.1, ahead.0);
+    [ahead, side, (-side.0, -side.1), (-ahead.0, -ahead.1)]
+}
+
+/// Inner space round a group's contents, and the room its title takes, as
+/// `write_svg` draws a group.
+const GROUP_PAD: f64 = 24.0;
+const GROUP_TITLE: f64 = 18.0;
+
+/// Lays out a grown diagram whose groups nest, from the inside out: in
+/// each group, its nodes and the groups in it are placed in the order
+/// they were made, each beside one it joins (ahead of what leads to it,
+/// back from what it leads to); then the group is one box at the level
+/// above. Boxes are placed as nodes are, so none runs into another.
+fn place_boxed(g: &mut Grower, rng: &mut Rng, [ahead, side, other_side, back]: [(f64, f64); 4]) {
+    let depth = |g: &Grower, id: &str| {
+        let mut depth = 0;
+        let mut at = g.spec.groups.iter().find(|x| x.id == id).and_then(|x| x.parent.clone());
+        while let Some(p) = at {
+            depth += 1;
+            at = g.spec.groups.iter().find(|x| x.id == p).and_then(|x| x.parent.clone());
+        }
+        depth
+    };
+    let mut levels: Vec<Option<String>> = g.spec.groups.iter().map(|x| Some(x.id.clone())).collect();
+    levels.sort_by_key(|level| std::cmp::Reverse(level.as_deref().map_or(0, |id| depth(g, id))));
+    levels.push(None);
+    // What stands for a node at a level: itself, or the group in the level
+    // it sits in.
+    let item_at = |g: &Grower, node: &SpecNode, level: &Option<String>| -> Option<String> {
+        if &node.group == level {
+            return Some(node.id.clone());
+        }
+        let mut at = node.group.clone();
+        while let Some(id) = at {
+            let parent = g.spec.groups.iter().find(|x| x.id == id).and_then(|x| x.parent.clone());
+            if &parent == level {
+                return Some(id);
+            }
+            at = parent;
+        }
+        None
+    };
+    let mut sizes: BTreeMap<String, (f64, f64)> = BTreeMap::new();
+    let mut middles: BTreeMap<String, (f64, f64)> = BTreeMap::new();
+    // Each level's items, with where they sit in it.
+    type Items = Vec<(String, (f64, f64))>;
+    let mut placed: BTreeMap<Option<String>, Items> = BTreeMap::new();
+    for level in levels {
+        // The items, in the order their first node was made.
+        let mut items: Vec<(usize, String)> = Vec::new();
+        for (index, n) in g.spec.nodes.iter().enumerate() {
+            if let Some(item) = item_at(g, n, &level)
+                && !items.iter().any(|(_, x)| *x == item)
+            {
+                items.push((index, item));
+            }
+        }
+        let mut t = Grower::new("", "");
+        for (_, item) in &items {
+            let node = g.spec.nodes.iter().find(|n| &n.id == item);
+            t.spec.nodes.push(SpecNode {
+                id: item.clone(),
+                label: node.map_or_else(String::new, |n| n.label.clone()),
+                shape: node.map_or(SpecShape::Rect, |n| n.shape),
+                columns: node.map_or_else(Vec::new, |n| n.columns.clone()),
+                group: None,
+                x: None,
+                y: None,
+            });
+            if let Some(size) = sizes.get(item) {
+                t.sizes.insert(item.clone(), *size);
+            }
+        }
+        for e in &g.spec.edges {
+            let (Some(a), Some(b)) = (item_at(g, g.get(&e.from), &level), item_at(g, g.get(&e.to), &level)) else {
+                continue;
+            };
+            if a != b && !t.joined(&a, &b) {
+                t.edge(&a, &b, None);
+            }
+        }
+        for (k, (_, item)) in items.iter().enumerate() {
+            if k == 0 {
+                t.put(item, (0.0, 0.0));
+                continue;
+            }
+            let done: Vec<&String> = items[..k].iter().map(|(_, x)| x).collect();
+            let into = t.spec.edges.iter().find(|e| &e.to == item && done.contains(&&e.from));
+            let out = t.spec.edges.iter().find(|e| &e.from == item && done.contains(&&e.to));
+            let (anchor, directions) = match (into, out) {
+                (Some(e), _) => (e.from.clone(), [ahead, side, other_side, back]),
+                (None, Some(e)) => (e.to.clone(), [back, side, other_side, ahead]),
+                (None, None) => (items[k - 1].1.clone(), [side, ahead, other_side, back]),
+            };
+            t.beside(rng, item, &anchor, &directions);
+        }
+        let at: Vec<(String, (f64, f64))> = items
+            .iter()
+            .map(|(_, item)| (item.clone(), t.at(item).unwrap_or((0.0, 0.0))))
+            .collect();
+        if let Some(group) = &level {
+            let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+            for n in &t.spec.nodes {
+                let ((x, y), (w, h)) = (t.at(&n.id).unwrap_or((0.0, 0.0)), t.size_of(n));
+                (left, right) = (left.min(x - w / 2.0), right.max(x + w / 2.0));
+                (top, bottom) = (top.min(y - h / 2.0), bottom.max(y + h / 2.0));
+            }
+            sizes.insert(
+                group.clone(),
+                (
+                    right - left + 2.0 * GROUP_PAD,
+                    bottom - top + 2.0 * GROUP_PAD + GROUP_TITLE,
+                ),
+            );
+            middles.insert(group.clone(), ((left + right) / 2.0, (top + bottom) / 2.0));
+        }
+        placed.insert(level, at);
+    }
+    // From the outside in: each group's items moved to where its box went,
+    // below its title.
+    let mut todo: Vec<(Option<String>, (f64, f64))> = vec![(None, (0.0, 0.0))];
+    while let Some((level, centre)) = todo.pop() {
+        let middle = level.as_ref().map_or((0.0, 0.0), |id| middles[id]);
+        let shift = if level.is_some() { GROUP_TITLE / 2.0 } else { 0.0 };
+        for (item, (x, y)) in placed.get(&level).cloned().unwrap_or_default() {
+            let at = (centre.0 + x - middle.0, centre.1 + y - middle.1 + shift);
+            if sizes.contains_key(&item) {
+                todo.push((Some(item), at));
+            } else {
+                g.put(&item, at);
+            }
+        }
+    }
+}
+
+/// A C4 container diagram: people outside a system boundary, apps and
+/// services inside it, some in domain boundaries of their own, with their
+/// databases, queues between them, and outside systems they call.
+fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
+    let mut g = Grower::new("Platform — container diagram", "c4");
+    let apps: Vec<String> = APPS.iter().map(|(name, tech)| format!("{name} [{tech}]")).collect();
+    let apps: Vec<&str> = apps.iter().map(String::as_str).collect();
+    let databases: Vec<String> = DATABASES
+        .iter()
+        .map(|(name, tech)| format!("{name} [{tech}]"))
+        .collect();
+    let databases: Vec<&str> = databases.iter().map(String::as_str).collect();
+    let (mut apps, mut databases) = (Pool::new(rng, &apps), Pool::new(rng, &databases));
+    let mut people = Pool::new(rng, PEOPLE);
+    let mut systems = Pool::new(rng, SYSTEMS);
+    let mut domains = Pool::new(rng, DOMAINS);
+    let reads = reading(rng);
+    let verb = |rng: &mut Rng| Some(rng.pick(VERBS).to_owned());
+    let system = g.group("Platform", None);
+    let web = g.node(apps.take(), SpecShape::Rect, Some(system.clone()), Vec::new());
+    let api = g.node(apps.take(), SpecShape::Rect, Some(system.clone()), Vec::new());
+    let db = g.node(databases.take(), SpecShape::Rect, Some(system), Vec::new());
+    let person = g.node(people.take(), SpecShape::Rect, None, Vec::new());
+    g.edge(&person, &web, Some("Uses".into()));
+    g.edge(&web, &api, verb(rng));
+    g.edge(&api, &db, verb(rng));
+    let mut queues = Pool::new(rng, QUEUES);
+    // Apps are what sits inside but is no database and no queue.
+    let kept: std::collections::BTreeSet<String> = databases.names.iter().chain(&queues.names).cloned().collect();
+    let is_app = |n: &SpecNode| n.group.is_some() && !kept.contains(&n.label);
+    grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
+        match weighted(rng, &[3.0, 2.0, 1.0, 1.5, 1.0]) {
+            // A service another calls, now and then in a domain of its own.
+            0 => {
+                let Some(caller) = g.simple_node(rng, is_app) else {
+                    return;
+                };
+                let group = if rng.chance(0.3) {
+                    let parent = g.get(&caller).group.clone();
+                    Some(g.group(&domains.take(), parent))
+                } else {
+                    g.get(&caller).group.clone()
+                };
+                let s = g.node(apps.take(), SpecShape::Rect, group, Vec::new());
+                g.edge(&caller, &s, verb(rng));
+            }
+            // A database a service keeps, beside it in its boundary.
+            1 => {
+                let Some(owner) = g.simple_node(rng, is_app) else {
+                    return;
+                };
+                let group = g.get(&owner).group.clone();
+                let d = g.node(databases.take(), SpecShape::Rect, group, Vec::new());
+                g.edge(&owner, &d, verb(rng));
+            }
+            // Someone using an app.
+            2 => {
+                let Some(app) = g.simple_node(rng, is_app) else { return };
+                let p = g.node(people.take(), SpecShape::Rect, None, Vec::new());
+                g.edge(&p, &app, Some("Uses".into()));
+            }
+            // An outside system a service calls.
+            3 => {
+                let Some(caller) = g.simple_node(rng, is_app) else {
+                    return;
+                };
+                let x = g.node(systems.take(), SpecShape::Rect, None, Vec::new());
+                g.edge(&caller, &x, verb(rng));
+            }
+            // A queue between two services.
+            _ => {
+                let Some(i) = g.simple_edge(rng, |a, b| is_app(a) && is_app(b)) else {
+                    return;
+                };
+                let e = g.spec.edges.remove(i);
+                let group = g.get(&e.from).group.clone();
+                let q = g.node(queues.take(), SpecShape::Rect, group, Vec::new());
+                g.edge(&e.from, &q, Some("Sends events to".into()));
+                g.edge(&q, &e.to, Some("Delivers to".into()));
+            }
+        }
+    });
+    place_boxed(&mut g, rng, reads);
+    g.done()
+}
+
+/// A cloud architecture: clients outside a network, edge services in a
+/// public subnet, services in a private subnet (some in a cluster of their
+/// own), data stores in a data subnet, and outside services.
+fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
+    let mut g = Grower::new("Shop — cloud architecture", "arch");
+    let mut clients = Pool::new(rng, LAYERS[0].1);
+    let mut doors = Pool::new(rng, LAYERS[1].1);
+    let mut services = Pool::new(rng, LAYERS[2].1);
+    let mut stores = Pool::new(rng, LAYERS[3].1);
+    let mut outside = Pool::new(rng, SYSTEMS);
+    let reads = reading(rng);
+    let protocol = |rng: &mut Rng| Some(rng.pick(PROTOCOLS).to_owned());
+    let network = g.group("VPC", None);
+    let public = g.group("Public subnet", Some(network.clone()));
+    let private = g.group("Private subnet", Some(network.clone()));
+    let data = g.group("Data subnet", Some(network.clone()));
+    let entry = g.node(doors.take(), SpecShape::Rect, Some(public.clone()), Vec::new());
+    let first = g.node(services.take(), SpecShape::Rect, Some(private), Vec::new());
+    let store = g.node(stores.take(), SpecShape::Rect, Some(data.clone()), Vec::new());
+    let client = g.node(clients.take(), SpecShape::Rect, None, Vec::new());
+    g.edge(&client, &entry, protocol(rng));
+    g.edge(&entry, &first, protocol(rng));
+    g.edge(&first, &store, protocol(rng));
+    let in_group = |n: &SpecNode, group: &str| n.group.as_deref() == Some(group);
+    let is_service = |n: &SpecNode| {
+        n.group
+            .as_ref()
+            .is_some_and(|x| *x != public && *x != data && *x != network)
+    };
+    let mut clusters = 0;
+    grow_until(&mut g, rng, grown_nodes(size), |g, rng| {
+        match weighted(rng, &[3.0, 2.0, 1.0, 1.0, 1.0, 1.0]) {
+            // A service another calls, now and then in a cluster of its own.
+            0 => {
+                let Some(caller) = g.simple_node(rng, is_service) else {
+                    return;
+                };
+                let group = if rng.chance(0.2) {
+                    clusters += 1;
+                    let parent = g.get(&caller).group.clone();
+                    Some(g.group(&format!("Cluster {clusters}"), parent))
+                } else {
+                    g.get(&caller).group.clone()
+                };
+                let s = g.node(services.take(), SpecShape::Rect, group, Vec::new());
+                g.edge(&caller, &s, protocol(rng));
+            }
+            // A data store a service uses, among the other stores.
+            1 => {
+                let Some(user) = g.simple_node(rng, is_service) else {
+                    return;
+                };
+                let d = g.node(stores.take(), SpecShape::Rect, Some(data.clone()), Vec::new());
+                g.edge(&user, &d, protocol(rng));
+            }
+            // A client coming in at the edge.
+            2 => {
+                let Some(door) = g.simple_node(rng, |n| in_group(n, &public)) else {
+                    return;
+                };
+                let c = g.node(clients.take(), SpecShape::Rect, None, Vec::new());
+                g.edge(&c, &door, protocol(rng));
+            }
+            // Another edge service in front of what a client reaches.
+            3 => {
+                let Some(i) = g.simple_edge(rng, |a, b| a.group.is_none() && in_group(b, &public)) else {
+                    return;
+                };
+                let e = g.spec.edges.remove(i);
+                let front = g.node(doors.take(), SpecShape::Rect, Some(public.clone()), Vec::new());
+                g.edge(&e.from, &front, e.label);
+                g.edge(&front, &e.to, protocol(rng));
+            }
+            // A queue and a worker behind a service.
+            4 => {
+                let Some(producer) = g.simple_node(rng, is_service) else {
+                    return;
+                };
+                let group = g.get(&producer).group.clone();
+                let q = g.node(
+                    format!("{} queue", services.take()),
+                    SpecShape::Rect,
+                    group.clone(),
+                    Vec::new(),
+                );
+                let w = g.node(
+                    format!("{} worker", services.take()),
+                    SpecShape::Rect,
+                    group,
+                    Vec::new(),
+                );
+                g.edge(&producer, &q, Some("events".into()));
+                g.edge(&q, &w, Some("events".into()));
+            }
+            // An outside service a service calls.
+            _ => {
+                let Some(caller) = g.simple_node(rng, is_service) else {
+                    return;
+                };
+                let x = g.node(outside.take(), SpecShape::Rect, None, Vec::new());
+                g.edge(&caller, &x, protocol(rng));
+            }
+        }
+    });
+    place_boxed(&mut g, rng, reads);
+    g.done()
+}
+
 /// A spec drafted at `level`: laid out, then given the level's slips.
 fn generate_from(spec: &Spec, name: &str, level: Level, seed: u64, layout: Option<Layout>) -> String {
     // The name keeps each spec's drafts apart for the same seed.
@@ -2595,20 +3028,20 @@ fn generate_from(spec: &Spec, name: &str, level: Level, seed: u64, layout: Optio
     write_svg(&mut rng, &draft)
 }
 
-/// A grown diagram of `kind` drafted at `level`, laid out as a spec is;
-/// none for a kind with no rules to grow it.
-fn generate_grown(kind: Kind, size: Size, level: Level, seed: u64, layout: Option<Layout>) -> Option<String> {
+/// A grown diagram of `kind` drafted at `level`, laid out as a spec is.
+fn generate_grown(kind: Kind, size: Size, level: Level, seed: u64, layout: Option<Layout>) -> String {
     let mut rng = Rng::new(seed ^ (1 << 32) ^ ((kind as u64) << 40) ^ ((size as u64) << 48) ^ ((level as u64) << 56));
     let spec = match kind {
         Kind::Flow => grow_flow(&mut rng, size),
         Kind::Dfd => grow_dfd(&mut rng, size),
         Kind::Er => grow_er(&mut rng, size),
-        Kind::C4 | Kind::Arch => return None,
+        Kind::C4 => grow_c4(&mut rng, size),
+        Kind::Arch => grow_arch(&mut rng, size),
     };
     let mut draft = from_spec(&mut rng, &spec, level.mess(), layout);
     draft.spread();
     draft.crowd(&mut rng);
-    Some(write_svg(&mut rng, &draft))
+    write_svg(&mut rng, &draft)
 }
 
 fn generate(kind: Kind, size: Size, level: Level, seed: u64) -> String {
@@ -2677,9 +3110,11 @@ fn main() {
             {
                 if args.grow {
                     let name = format!("{kind:?}-{size:?}-{level:?}-grown-{seed}.svg").to_lowercase();
-                    if let Some(svg) = generate_grown(*kind, *size, level, seed, args.layout) {
-                        write_checked(&args.out, &name, &svg);
-                    }
+                    write_checked(
+                        &args.out,
+                        &name,
+                        &generate_grown(*kind, *size, level, seed, args.layout),
+                    );
                 } else {
                     let name = format!("{kind:?}-{size:?}-{level:?}-{seed}.svg").to_lowercase();
                     write_checked(&args.out, &name, &generate(*kind, *size, level, seed));
