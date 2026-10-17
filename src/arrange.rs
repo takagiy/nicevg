@@ -362,8 +362,12 @@ fn evaluate_all<'scope>(
         let (id, step) = candidates[index].clone();
         let job: Job<'scope> = Box::new(move || {
             let _thread = tracing::info_span!(parent: &parent, "evaluate_thread").entered();
+            #[cfg(feature = "trace-candidates")]
+            let next = trace::timed_evaluate(context, &state, &id, step, index);
+            #[cfg(not(feature = "trace-candidates"))]
+            let next = evaluate(context, &state, &id, step);
             // The step only stops listening once every result is in.
-            let _ = results.send((index, evaluate(context, &state, &id, step)));
+            let _ = results.send((index, next));
         });
         workers.jobs.send(job).expect("the workers run while arranging");
     }
@@ -1464,6 +1468,110 @@ pub mod trace {
     use crate::geometry::{Bounds, hypot};
 
     static RECORDS: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+    /// For each candidate of the step under way, by its place: how long a
+    /// trial rerouting of its lines took, how many searches that ran, and
+    /// how long its real evaluation took.
+    static TIMES: Mutex<Vec<(usize, u128, usize, u128)>> = Mutex::new(Vec::new());
+    /// For each candidate of the step under way, by its place: what its
+    /// trial rerouting found, before and after the move.
+    static TRIALS: Mutex<Vec<(usize, [Trial; 2])>> = Mutex::new(Vec::new());
+
+    /// What a trial rerouting of a candidate's lines found: their bends,
+    /// crossings with the other lines, own cost (length, bends, short
+    /// ends), cost against the other lines, and the lines it found no
+    /// route for.
+    #[derive(Clone, Copy, Default)]
+    struct Trial {
+        bends: usize,
+        crossings: usize,
+        cost: f64,
+        against: f64,
+        unrouted: usize,
+    }
+
+    /// Evaluates a candidate as arrange does, after a trial rerouting of its
+    /// lines, timing both on the same worker.
+    pub(super) fn timed_evaluate(
+        context: &Context,
+        state: &State,
+        id: &str,
+        step: Move,
+        index: usize,
+    ) -> Option<State> {
+        let started = std::time::Instant::now();
+        let before = trial(state, id, Move { dx: 0.0, dy: 0.0 });
+        let after = trial(state, id, step);
+        let searches = 2 * after.1;
+        let trial_ns = started.elapsed().as_nanos();
+        TRIALS.lock().expect("trials lock").push((index, [before.0, after.0]));
+        let started = std::time::Instant::now();
+        let next = super::evaluate(context, state, id, step);
+        let eval_ns = started.elapsed().as_nanos();
+        TIMES
+            .lock()
+            .expect("times lock")
+            .push((index, trial_ns, searches, eval_ns));
+        next
+    }
+
+    /// A trial rerouting: for each line of the moved nodes, the side choice
+    /// arrange's rerouting runs (a coarse search, then a fine one along the
+    /// coarse route), with the nodes where the move puts them and the other
+    /// lines as they are. Gives what the routes it found come to, and how
+    /// many searches it ran.
+    fn trial(state: &State, id: &str, step: Move) -> (Trial, usize) {
+        let diagram = &state.result.report().diagram;
+        let ids: Vec<&str> = id.split(TOGETHER).collect();
+        let moved = |id: &str| ids.contains(&id);
+        let at = |node: &crate::diagram::DiagramNode| {
+            let shift = if moved(&node.id) {
+                step
+            } else {
+                Move { dx: 0.0, dy: 0.0 }
+            };
+            Bounds {
+                x: node.bounds.x + shift.dx,
+                y: node.bounds.y + shift.dy,
+                ..node.bounds
+            }
+        };
+        let attached: Vec<_> = diagram
+            .connectors
+            .iter()
+            .filter(|c| moved(&c.from) || moved(&c.to))
+            .collect();
+        let occupied: Vec<Vec<Point>> = diagram
+            .connectors
+            .iter()
+            .filter(|c| !moved(&c.from) && !moved(&c.to))
+            .map(|c| c.points.clone())
+            .collect();
+        let mut searches = 0;
+        let mut found = Trial::default();
+        for c in attached {
+            let (Some(from), Some(to)) = (diagram.node(&c.from), diagram.node(&c.to)) else {
+                continue;
+            };
+            let obstacles: Vec<Bounds> = diagram
+                .nodes
+                .iter()
+                .filter(|n| !crate::diagram::holds_end(&diagram.nodes, c, n))
+                .map(at)
+                .collect();
+            let (_, route) =
+                crate::route::sides_and_route(&at(from), &at(to), &obstacles, &[], &occupied, &[], &|_, _| 0.0);
+            searches += 1;
+            let Some(route) = route else {
+                found.unrouted += 1;
+                continue;
+            };
+            found.bends += turns(&route);
+            found.crossings += occupied.iter().map(|other| crossings(&route, other)).sum::<usize>();
+            found.cost += route_cost(&route);
+            found.against += occupied.iter().map(|other| routes_cost(&route, other)).sum::<f64>();
+        }
+        (found, searches)
+    }
 
     /// The records made since the last call, one per candidate tried.
     pub fn take() -> Vec<serde_json::Value> {
@@ -1816,6 +1924,15 @@ pub mod trace {
     ) {
         let report = state.result.report();
         let diagram = &report.diagram;
+        let trials: std::collections::HashMap<usize, [Trial; 2]> =
+            std::mem::take(&mut *TRIALS.lock().expect("trials lock"))
+                .into_iter()
+                .collect();
+        let times: std::collections::HashMap<usize, (u128, usize, u128)> =
+            std::mem::take(&mut *TIMES.lock().expect("times lock"))
+                .into_iter()
+                .map(|(index, trial, searches, eval)| (index, (trial, searches, eval)))
+                .collect();
         let records = candidates
             .iter()
             .zip(gains)
@@ -1891,6 +2008,20 @@ pub mod trace {
                     (record.as_object_mut(), destination(diagram, context, &ids, *step))
                 {
                     record.extend(after);
+                }
+                if let (Some(record), Some((trial, searches, eval))) = (record.as_object_mut(), times.get(&index)) {
+                    record.insert("trial_ns".into(), json!(trial));
+                    record.insert("trial_searches".into(), json!(searches));
+                    record.insert("eval_ns".into(), json!(eval));
+                }
+                if let (Some(record), Some([before, after])) = (record.as_object_mut(), trials.get(&index)) {
+                    for (when, t) in [("before", before), ("after", after)] {
+                        record.insert(format!("trial_bends_{when}"), json!(t.bends));
+                        record.insert(format!("trial_crossings_{when}"), json!(t.crossings));
+                        record.insert(format!("trial_cost_{when}"), json!(t.cost));
+                        record.insert(format!("trial_against_{when}"), json!(t.against));
+                        record.insert(format!("trial_unrouted_{when}"), json!(t.unrouted));
+                    }
                 }
                 if let (Some(record), serde_json::Value::Object(finer)) =
                     (record.as_object_mut(), finer(diagram, state, &ids, *step, changed))

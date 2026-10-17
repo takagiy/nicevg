@@ -1564,6 +1564,20 @@ pub fn choose_sides(
     rails: &[(Point, Point)],
     load: &dyn Fn(&Bounds, Side) -> f64,
 ) -> Sides {
+    sides_and_route(source, target, raw_obstacles, raw_pushable, occupied, rails, load).0
+}
+
+/// `choose_sides`, with the rough route it found from port to port, when
+/// it found one.
+pub(crate) fn sides_and_route(
+    source: &Bounds,
+    target: &Bounds,
+    raw_obstacles: &[Bounds],
+    raw_pushable: &[Pushable<'_>],
+    occupied: &[Vec<Point>],
+    rails: &[(Point, Point)],
+    load: &dyn Fn(&Bounds, Side) -> f64,
+) -> (Sides, Option<Vec<Point>>) {
     let preferred = connector_ports(source, target);
     let fallback = Sides {
         start: side_of(preferred.start, source),
@@ -1596,12 +1610,21 @@ pub fn choose_sides(
         rails,
         SIDE_BEND_PENALTY,
     );
-    match found.and_then(|found| Some((Side::ALL.get(found.start?)?, Side::ALL.get(found.end?)?))) {
-        Some((start, end)) => Sides {
-            start: *start,
-            end: *end,
-        },
-        None => fallback,
+    match found.and_then(|found| Some((Side::ALL.get(found.start?)?, Side::ALL.get(found.end?)?, found.path))) {
+        Some((start, end, path)) => {
+            let route: Vec<Point> = std::iter::once(port_on_side(source, *start))
+                .chain(path)
+                .chain(std::iter::once(port_on_side(target, *end)))
+                .collect();
+            (
+                Sides {
+                    start: *start,
+                    end: *end,
+                },
+                Some(without_redundant_points(&route)),
+            )
+        }
+        None => (fallback, None),
     }
 }
 
