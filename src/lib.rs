@@ -21,6 +21,8 @@ mod xml;
 use serde::Serialize;
 
 pub use arrange::arrange;
+#[cfg(feature = "screening")]
+pub use arrange::screening;
 #[cfg(feature = "trace-candidates")]
 pub use arrange::trace as candidate_trace;
 pub use diagram::{Diagram, DiagramConnector, DiagramLabel, DiagramNode, Port, Shape, UnsupportedElement};

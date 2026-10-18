@@ -95,8 +95,15 @@ const LABEL_CLEARANCE: f64 = 4.0;
 /// bends, crossings and crowded lanes.
 #[tracing::instrument(skip_all)]
 pub fn arrange(svg: &str) -> Result<FixResult, SvgInputError> {
+    arranged(svg, |_| {})
+}
+
+/// Arranges as `arrange` does, with the context `prepare` has set up.
+fn arranged(svg: &str, prepare: impl FnOnce(&mut Context)) -> Result<FixResult, SvgInputError> {
     let fixed = fix_after_moves(Draft::new(parse(svg)?, Changes::default(), Vec::new()), PASSES);
-    let context = Context::new(fixed.report().diagram.clone());
+    #[allow(unused_mut)]
+    let mut context = Context::new(fixed.report().diagram.clone());
+    prepare(&mut context);
     let start = State {
         score: context.score(fixed.report(), &HashMap::new()),
         result: fixed,
@@ -121,6 +128,12 @@ struct Context {
     joined: HashSet<(String, String, bool)>,
     #[cfg(feature = "trace-candidates")]
     step: trace::Step,
+    /// The model screening the candidates, when arranging with one, and
+    /// what the steps so far left for its features.
+    #[cfg(feature = "screening")]
+    screen: Option<screening::Screen>,
+    #[cfg(feature = "screening")]
+    history: std::sync::Mutex<screening::History>,
 }
 
 #[derive(Clone)]
@@ -152,6 +165,9 @@ fn improve<'scope>(
     }
     let candidates = candidates(context, &state);
     tracing::Span::current().record("candidates", candidates.len());
+    // The model's features need every candidate, the ones not tried again too.
+    #[cfg(feature = "screening")]
+    let all = context.screen.as_ref().map(|_| candidates.clone());
     let keeps = |next: &State| {
         next.result.report().issues.len() <= state.result.report().issues.len()
             && total_jogs(&next.result.report().diagram) <= total_jogs(&state.result.report().diagram)
@@ -166,6 +182,12 @@ fn improve<'scope>(
             || tried.get(&key(candidate)).is_none_or(|gain| *gain < 0.0)
             || changed_areas_touch(diagram, &candidate.0, &changed)
     });
+    // With a model, only the ones it ranks first are evaluated.
+    #[cfg(feature = "screening")]
+    let retried = match (&context.screen, &all) {
+        (Some(screen), Some(all)) => screening::kept(context, screen, &state, steps, all, retried, &changed),
+        _ => retried,
+    };
     let evaluated = evaluate_all(context, &state, &retried, workers);
     let tried: Tried = skipped
         .iter()
@@ -181,7 +203,7 @@ fn improve<'scope>(
     // Candidates are compared after one pass of fixing; the passes that
     // follow go to the best one, and to the next ones only while those
     // passes leave it no better than now.
-    #[cfg(feature = "trace-candidates")]
+    #[cfg(any(feature = "trace-candidates", feature = "screening"))]
     let gains: Vec<Option<f64>> = evaluated
         .iter()
         .map(|next| {
@@ -227,6 +249,10 @@ fn improve<'scope>(
         &changed,
         &further,
     );
+    #[cfg(feature = "screening")]
+    if context.screen.is_some() {
+        screening::remember(context, steps, &retried, &gains, best.as_ref().map(|(index, _)| *index));
+    }
     let best = best.map(|(_, next)| next);
     // The candidates not taken are many documents to free: let another
     // thread free them while the next step goes on.
@@ -758,6 +784,10 @@ impl Context {
             baseline,
             #[cfg(feature = "trace-candidates")]
             step: trace::Step::default(),
+            #[cfg(feature = "screening")]
+            screen: None,
+            #[cfg(feature = "screening")]
+            history: std::sync::Mutex::default(),
         }
     }
 
@@ -1481,17 +1511,21 @@ mod tests {
 
 /// Recording, for learning to screen candidates: each candidate tried, what
 /// could be known of it before trying it, and what trying it showed.
-#[cfg(feature = "trace-candidates")]
+#[cfg(any(feature = "trace-candidates", feature = "screening"))]
 pub mod trace {
+    #[cfg(feature = "trace-candidates")]
     use std::cell::RefCell;
     use std::collections::HashMap;
+    #[cfg(feature = "trace-candidates")]
     use std::sync::Mutex;
 
     use serde_json::json;
 
+    #[cfg(feature = "trace-candidates")]
+    use super::{Changes, Draft};
     use super::{
-        Changes, Context, Draft, MAX_STEPS, Move, State, TOGETHER, changed_areas_touch, crossings, route_cost,
-        routes_cost, segment_intersects_interior, segments, turns,
+        Context, MAX_STEPS, Move, State, TOGETHER, changed_areas_touch, crossings, route_cost, routes_cost,
+        segment_intersects_interior, segments, turns,
     };
     use crate::diagram::{Diagram, ancestor_ids};
     use crate::geometry::Point;
@@ -1499,6 +1533,7 @@ pub mod trace {
 
     // Arranging records on the thread that called it, so arrangements on
     // other threads keep their own records and logs.
+    #[cfg(feature = "trace-candidates")]
     thread_local! {
         static RECORDS: RefCell<Vec<serde_json::Value>> = const { RefCell::new(Vec::new()) };
         /// What arranging went through, to replay it without arranging
@@ -1513,6 +1548,7 @@ pub mod trace {
         };
     }
 
+    #[cfg(feature = "trace-candidates")]
     struct Log {
         start: String,
         now: String,
@@ -1521,6 +1557,7 @@ pub mod trace {
 
     /// What the workers find of the step under way, each candidate by its
     /// place; one per arrangement.
+    #[cfg(feature = "trace-candidates")]
     #[derive(Default)]
     pub(super) struct Step {
         /// How long a trial rerouting of its lines took, how many searches
@@ -1537,7 +1574,7 @@ pub mod trace {
     /// ends), cost against the other lines, and the lines it found no
     /// route for.
     #[derive(Clone, Copy, Default)]
-    struct Trial {
+    pub(super) struct Trial {
         bends: usize,
         crossings: usize,
         cost: f64,
@@ -1547,6 +1584,7 @@ pub mod trace {
 
     /// Evaluates a candidate as arrange does, after a trial rerouting of its
     /// lines, timing both on the same worker.
+    #[cfg(feature = "trace-candidates")]
     pub(super) fn timed_evaluate(
         context: &Context,
         state: &State,
@@ -1589,6 +1627,7 @@ pub mod trace {
     /// What one pass of fixing after a move came to, beyond its score: the
     /// score's terms, the issues and jogs left, and how many connectors and
     /// labels it changed.
+    #[cfg(feature = "trace-candidates")]
     fn outcome(context: &Context, state: &State, next: &State) -> serde_json::Value {
         let (before, after) = (&state.result.report().diagram, &next.result.report().diagram);
         let rerouted = after
@@ -1619,12 +1658,14 @@ pub mod trace {
 
     /// A document cut after each `>`: a move changes some tags and keeps
     /// their number, so a step is told by the tags it changes.
+    #[cfg(feature = "trace-candidates")]
     fn tags(svg: &str) -> Vec<&str> {
         svg.split_inclusive('>').collect()
     }
 
     /// How to get from one document to the next: the tags that differ by
     /// place, or the whole next document when the number of tags changed.
+    #[cfg(feature = "trace-candidates")]
     fn difference(before: &str, after: &str) -> serde_json::Value {
         let (old, new) = (tags(before), tags(after));
         if old.len() != new.len() {
@@ -1640,6 +1681,7 @@ pub mod trace {
         json!({ "tags": changed })
     }
 
+    #[cfg(feature = "trace-candidates")]
     fn applied(before: &str, difference: &serde_json::Value) -> Result<String, String> {
         if let Some(svg) = difference["svg"].as_str() {
             return Ok(svg.to_owned());
@@ -1659,7 +1701,7 @@ pub mod trace {
     /// coarse route), with the nodes where the move puts them and the other
     /// lines as they are. Gives what the routes it found come to, and how
     /// many searches it ran.
-    fn trial(state: &State, id: &str, step: Move) -> (Trial, usize) {
+    pub(super) fn trial(state: &State, id: &str, step: Move) -> (Trial, usize) {
         let diagram = &state.result.report().diagram;
         let ids: Vec<&str> = id.split(TOGETHER).collect();
         let moved = |id: &str| ids.contains(&id);
@@ -1714,6 +1756,7 @@ pub mod trace {
     }
 
     /// The records made since the last call, one per candidate tried.
+    #[cfg(feature = "trace-candidates")]
     pub fn take() -> Vec<serde_json::Value> {
         RECORDS.take()
     }
@@ -2056,6 +2099,7 @@ pub mod trace {
     /// Records a step: a line per candidate of what could be known of it
     /// before trying it and the gain trying it showed, and the step in the
     /// log, with the move taken.
+    #[cfg(feature = "trace-candidates")]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn record(
         context: &Context,
@@ -2120,11 +2164,12 @@ pub mod trace {
         });
     }
 
-    type Trials = HashMap<usize, [Trial; 2]>;
-    type Times = HashMap<usize, (u128, usize, u128)>;
+    pub(super) type Trials = HashMap<usize, [Trial; 2]>;
+    pub(super) type Times = HashMap<usize, (u128, usize, u128)>;
 
     /// The log of the arrangement just made: the document arranging started
     /// from (after fixing), and its steps.
+    #[cfg(feature = "trace-candidates")]
     pub fn take_log() -> serde_json::Value {
         LOG.with_borrow_mut(|log| {
             log.now.clear();
@@ -2141,37 +2186,10 @@ pub mod trace {
     /// and what could be known of each candidate is worked out again from
     /// it; the gains, the move taken and the times are the log's. Fails
     /// when a rebuilt document does not score what the log says it did.
+    #[cfg(feature = "trace-candidates")]
     pub fn replay(log: &serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
-        let mut now = log["start"].as_str().ok_or("a log without its start")?.to_owned();
-        let read = |svg: &str| crate::parse(svg).map_err(|e| e.0);
-        let draft = Draft::new(read(&now)?, Changes::default(), Vec::new());
-        let context = Context::new(draft.report().diagram.clone());
-        let mut state = State {
-            score: context.score(draft.report(), &HashMap::new()),
-            result: draft,
-            offsets: HashMap::new(),
-        };
-        let mut changed = Vec::new();
         let mut records = Vec::new();
-        let steps = log["steps"].as_array().ok_or("a log without steps")?;
-        for (index, step) in steps.iter().enumerate() {
-            if step["score"].as_f64() != Some(state.score) {
-                return Err(format!(
-                    "step {index}: the rebuilt document scores {}, the log {}",
-                    state.score, step["score"]
-                ));
-            }
-            let candidates: Vec<(String, Move)> = step["candidates"]
-                .as_array()
-                .ok_or("a step without candidates")?
-                .iter()
-                .map(|c| {
-                    let (Some(id), Some(dx), Some(dy)) = (c[0].as_str(), c[1].as_f64(), c[2].as_f64()) else {
-                        return Err(format!("a candidate that cannot be read: {c}"));
-                    };
-                    Ok((id.to_owned(), Move { dx, dy }))
-                })
-                .collect::<Result<_, String>>()?;
+        walk(log, |context, state, steps_left, candidates, changed, step| {
             let results = step["results"].as_array().ok_or("a step without results")?;
             let gains: Vec<Option<f64>> = results.iter().map(|r| r["gain"].as_f64()).collect();
             let times: Times = results
@@ -2195,27 +2213,69 @@ pub mod trace {
                 .map(|(i, (id, step))| {
                     (
                         i,
-                        [
-                            trial(&state, id, Move { dx: 0.0, dy: 0.0 }).0,
-                            trial(&state, id, *step).0,
-                        ],
+                        [trial(state, id, Move { dx: 0.0, dy: 0.0 }).0, trial(state, id, *step).0],
                     )
                 })
                 .collect();
             let chosen = step["chosen"].as_u64().map(|c| c as usize);
-            let steps_left = MAX_STEPS - index;
             records.extend(table(
-                &context,
-                &state,
-                steps_left,
-                &candidates,
-                &gains,
-                chosen,
-                &changed,
-                &trials,
-                &times,
+                context, state, steps_left, candidates, &gains, chosen, changed, &trials, &times,
             ));
-            let Some(chosen) = chosen else { break };
+            Ok(())
+        })?;
+        Ok(records)
+    }
+
+    /// Walks a log's steps, rebuilding each step's document from the start
+    /// and the tags each step changed, and hands `visit` each step: the
+    /// arrangement's context, the state, the steps left, the candidates,
+    /// the areas the step before changed, and the step as logged. Fails
+    /// when a rebuilt document does not score what the log says it did.
+    #[cfg(feature = "trace-candidates")]
+    pub(super) fn walk(
+        log: &serde_json::Value,
+        mut visit: impl FnMut(
+            &Context,
+            &State,
+            usize,
+            &[(String, Move)],
+            &[Bounds],
+            &serde_json::Value,
+        ) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let mut now = log["start"].as_str().ok_or("a log without its start")?.to_owned();
+        let read = |svg: &str| crate::parse(svg).map_err(|e| e.0);
+        let draft = Draft::new(read(&now)?, Changes::default(), Vec::new());
+        let context = Context::new(draft.report().diagram.clone());
+        let mut state = State {
+            score: context.score(draft.report(), &HashMap::new()),
+            result: draft,
+            offsets: HashMap::new(),
+        };
+        let mut changed = Vec::new();
+        let steps = log["steps"].as_array().ok_or("a log without steps")?;
+        for (index, step) in steps.iter().enumerate() {
+            if step["score"].as_f64() != Some(state.score) {
+                return Err(format!(
+                    "step {index}: the rebuilt document scores {}, the log {}",
+                    state.score, step["score"]
+                ));
+            }
+            let candidates: Vec<(String, Move)> = step["candidates"]
+                .as_array()
+                .ok_or("a step without candidates")?
+                .iter()
+                .map(|c| {
+                    let (Some(id), Some(dx), Some(dy)) = (c[0].as_str(), c[1].as_f64(), c[2].as_f64()) else {
+                        return Err(format!("a candidate that cannot be read: {c}"));
+                    };
+                    Ok((id.to_owned(), Move { dx, dy }))
+                })
+                .collect::<Result<_, String>>()?;
+            visit(&context, &state, MAX_STEPS - index, &candidates, &changed, step)?;
+            let Some(chosen) = step["chosen"].as_u64().map(|c| c as usize) else {
+                break;
+            };
             let (id, taken) = candidates.get(chosen).ok_or("a move taken past the candidates")?;
             let (_, offsets) = super::moved(&state, id, *taken).ok_or("a move taken that cannot be made")?;
             now = applied(&now, &step["next"])?;
@@ -2227,13 +2287,13 @@ pub mod trace {
                 offsets,
             };
         }
-        Ok(records)
+        Ok(())
     }
 
     /// A line per candidate: what could be known of it before trying it,
     /// with the gain trying it showed and whether arrange took it.
     #[allow(clippy::too_many_arguments)]
-    fn table(
+    pub(super) fn table(
         context: &Context,
         state: &State,
         steps: usize,
@@ -2346,7 +2406,7 @@ pub mod trace {
             .collect()
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "trace-candidates"))]
     mod tests {
         use super::{applied, difference};
 
@@ -2365,5 +2425,471 @@ pub mod trace {
             assert_eq!((first.as_str(), second.as_str()), (moved, grown));
             assert_eq!(difference(start, moved)["tags"].as_array().map(Vec::len), Some(1));
         }
+    }
+}
+
+/// Screening arrange's candidates with a learned model: each step, of the
+/// moves arrange would try, only the ones the model ranks first are
+/// evaluated. The model is an XGBoost forest saved as JSON, trained in
+/// nicevg-lab on the features `FEATURES` names, as arrange's records and
+/// the steps before give them.
+#[cfg(feature = "screening")]
+pub mod screening {
+    use std::collections::{HashMap, HashSet};
+    use std::sync::Arc;
+
+    use serde_json::Value;
+
+    use super::trace::{Times, Trials, table, trial};
+    use super::{Context, MAX_STEPS, Move, State, TOGETHER};
+    use crate::geometry::Bounds;
+    use crate::{FixResult, SvgInputError};
+
+    /// The features a model may use. Those ending in `~` are left missing
+    /// where nothing is known (the first step, a move not tried before).
+    pub const FEATURES: &[&str] = &[
+        "prior_gain~",
+        "prior_tried",
+        "node_prior_best~",
+        "node_prior_mean~",
+        "node_prior_count",
+        "last_taken_gain~",
+        "last_taken_share~",
+        "steps_since_moved~",
+        "to_change",
+        "against_cost",
+        "leaves_alignments",
+        "trial_total_change",
+        "trial_cost_change",
+        "touched",
+        "off_after_sum",
+        "off_after_min",
+        "area",
+        "attached_bends",
+        "offset_change",
+        "gap_before",
+        "nearer",
+        "candidates",
+        "issues_here_rank",
+        "attached_bends_rank",
+        "straightened_rank",
+        "share_nudge",
+        "share_reroute",
+        "share_line",
+        "share_align",
+        "share_together",
+        "nodes_with_moves",
+        "connectors_per_node",
+        "bends_per_connector",
+        "crossings_per_connector",
+    ];
+    const KINDS: [&str; 5] = ["nudge", "reroute", "line", "align", "together"];
+
+    /// A model and how many candidates a step evaluates with it.
+    #[derive(Clone)]
+    pub struct Screen {
+        forest: Arc<Forest>,
+        keep: usize,
+    }
+
+    impl Screen {
+        /// From an XGBoost model saved as JSON (`Booster.save_model` to a
+        /// `.json` file) whose features are all among `FEATURES`; `keep`
+        /// candidates a step are evaluated.
+        pub fn from_xgboost_json(text: &str, keep: usize) -> Result<Screen, String> {
+            let model: Value = serde_json::from_str(text).map_err(|error| error.to_string())?;
+            let learner = &model["learner"];
+            let names: Vec<String> = learner["feature_names"]
+                .as_array()
+                .ok_or("a model without feature names")?
+                .iter()
+                .map(|name| name.as_str().map(str::to_owned).ok_or("a feature name that is no text"))
+                .collect::<Result<_, _>>()?;
+            if let Some(name) = names.iter().find(|name| !FEATURES.contains(&name.as_str())) {
+                return Err(format!("the model uses \"{name}\", which screening does not compute"));
+            }
+            let trees = learner["gradient_booster"]["model"]["trees"]
+                .as_array()
+                .ok_or("a model without trees")?
+                .iter()
+                .map(Tree::from_json)
+                .collect::<Result<_, _>>()?;
+            // The base score as a margin: a logistic model keeps it as a probability.
+            let base = learner["learner_model_param"]["base_score"]
+                .as_str()
+                .map(|text| text.trim_matches(|c| c == '[' || c == ']'))
+                .and_then(|text| text.parse::<f64>().ok())
+                .unwrap_or(0.5);
+            let logistic = learner["objective"]["name"].as_str() == Some("binary:logistic");
+            let base = if logistic { (base / (1.0 - base)).ln() } else { base };
+            Ok(Screen {
+                forest: Arc::new(Forest { names, trees, base }),
+                keep: keep.max(1),
+            })
+        }
+
+        /// The model's margin for each row of features, given in the order
+        /// `names` lists them; a missing value is NaN.
+        pub fn margins(&self, rows: &[Vec<f64>]) -> Vec<f64> {
+            rows.iter().map(|row| self.forest.margin(row)).collect()
+        }
+
+        /// The model's features, in the order `margins` takes them.
+        pub fn names(&self) -> &[String] {
+            &self.forest.names
+        }
+    }
+
+    struct Forest {
+        names: Vec<String>,
+        trees: Vec<Tree>,
+        base: f64,
+    }
+
+    impl Forest {
+        fn margin(&self, row: &[f64]) -> f64 {
+            self.base + self.trees.iter().map(|tree| tree.leaf(row)).sum::<f64>()
+        }
+    }
+
+    /// A tree as XGBoost saves it: per node, its children (-1 at a leaf),
+    /// the feature it splits on, the split value (its output at a leaf),
+    /// and which way a missing value goes.
+    struct Tree {
+        left: Vec<i64>,
+        right: Vec<i64>,
+        feature: Vec<usize>,
+        condition: Vec<f32>,
+        default_left: Vec<bool>,
+    }
+
+    impl Tree {
+        fn from_json(tree: &Value) -> Result<Tree, String> {
+            let numbers = |key: &str| -> Result<Vec<f64>, String> {
+                tree[key]
+                    .as_array()
+                    .ok_or(format!("a tree without {key}"))?
+                    .iter()
+                    .map(|v| {
+                        v.as_f64()
+                            .or_else(|| v.as_bool().map(f64::from))
+                            .ok_or(format!("{key} that are not numbers"))
+                    })
+                    .collect()
+            };
+            Ok(Tree {
+                left: numbers("left_children")?.into_iter().map(|v| v as i64).collect(),
+                right: numbers("right_children")?.into_iter().map(|v| v as i64).collect(),
+                feature: numbers("split_indices")?.into_iter().map(|v| v as usize).collect(),
+                condition: numbers("split_conditions")?.into_iter().map(|v| v as f32).collect(),
+                default_left: numbers("default_left")?.into_iter().map(|v| v != 0.0).collect(),
+            })
+        }
+
+        /// As XGBoost walks it: left when the value, as a 32-bit float, is
+        /// less than the split; a missing value goes its default way.
+        fn leaf(&self, row: &[f64]) -> f64 {
+            let mut node = 0;
+            while self.left[node] >= 0 {
+                let value = row[self.feature[node]];
+                let left = if value.is_nan() {
+                    self.default_left[node]
+                } else {
+                    (value as f32) < self.condition[node]
+                };
+                node = if left { self.left[node] } else { self.right[node] } as usize;
+            }
+            f64::from(self.condition[node])
+        }
+    }
+
+    /// What a screened arrangement keeps from one step to the next for the
+    /// features.
+    #[derive(Default)]
+    pub(super) struct History {
+        /// The moves evaluated at the step before, with the gain each
+        /// showed, none when it was ruled out.
+        evaluated: HashMap<(String, u64, u64), Option<f64>>,
+        /// The gain of the move taken at the step before (after one pass of
+        /// fixing), none before the first.
+        last_taken: Option<f64>,
+        /// The step each node was last moved at.
+        moved_at: HashMap<String, usize>,
+    }
+
+    fn key(id: &str, step: Move) -> (String, u64, u64) {
+        // Adding 0 makes -0 the same move as 0.
+        (id.to_owned(), (step.dx + 0.0).to_bits(), (step.dy + 0.0).to_bits())
+    }
+
+    /// Of the candidates arrange would try again (`retried`), the ones the
+    /// model ranks first, at most `keep` of them, best first.
+    pub(super) fn kept(
+        context: &Context,
+        screen: &Screen,
+        state: &State,
+        steps: usize,
+        all: &[(String, Move)],
+        mut retried: Vec<(String, Move)>,
+        changed: &[Bounds],
+    ) -> Vec<(String, Move)> {
+        if retried.len() <= screen.keep {
+            return retried;
+        }
+        let rows = {
+            let history = context.history.lock().expect("history lock");
+            features(context, state, steps, all, changed, &history, screen.names())
+        };
+        let scores: HashMap<_, f64> = all
+            .iter()
+            .zip(screen.margins(&rows))
+            .map(|((id, step), score)| (key(id, *step), score))
+            .collect();
+        let score = |(id, step): &(String, Move)| scores[&key(id, *step)];
+        retried.sort_by(|a, b| score(b).total_cmp(&score(a)));
+        retried.truncate(screen.keep);
+        retried
+    }
+
+    /// After a step: the moves it evaluated with their gains, and the move
+    /// it took, if any.
+    pub(super) fn remember(
+        context: &Context,
+        steps: usize,
+        evaluated: &[(String, Move)],
+        gains: &[Option<f64>],
+        taken: Option<usize>,
+    ) {
+        let mut history = context.history.lock().expect("history lock");
+        history.evaluated = evaluated
+            .iter()
+            .zip(gains)
+            .map(|((id, step), gain)| (key(id, *step), *gain))
+            .collect();
+        history.last_taken = taken.and_then(|index| gains[index]);
+        if let Some(index) = taken {
+            for node in evaluated[index].0.split(TOGETHER) {
+                history.moved_at.insert(node.to_owned(), MAX_STEPS - steps);
+            }
+        }
+    }
+
+    /// The step's records as arrange's trace makes them, with a trial
+    /// rerouting of every candidate's lines, on as many threads as there
+    /// are cores. Each part's records count only its own candidates, so
+    /// `features` takes the count from the whole.
+    fn records(
+        context: &Context,
+        state: &State,
+        steps: usize,
+        candidates: &[(String, Move)],
+        changed: &[Bounds],
+    ) -> Vec<Value> {
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+        let threads = std::thread::available_parallelism().map_or(1, |count| count.get());
+        let size = candidates.len().div_ceil(threads).max(1);
+        std::thread::scope(|scope| {
+            let parts: Vec<_> = candidates
+                .chunks(size)
+                .map(|chunk| {
+                    scope.spawn(move || {
+                        let trials: Trials = chunk
+                            .iter()
+                            .enumerate()
+                            .map(|(index, (id, step))| {
+                                let still = Move { dx: 0.0, dy: 0.0 };
+                                (index, [trial(state, id, still).0, trial(state, id, *step).0])
+                            })
+                            .collect();
+                        let gains = vec![None; chunk.len()];
+                        table(
+                            context,
+                            state,
+                            steps,
+                            chunk,
+                            &gains,
+                            None,
+                            changed,
+                            &trials,
+                            &Times::new(),
+                        )
+                    })
+                })
+                .collect();
+            parts
+                .into_iter()
+                .flat_map(|part| part.join().expect("a features thread"))
+                .collect()
+        })
+    }
+
+    /// Percent ranks within the step, ties sharing their average place, as
+    /// pandas' `rank(pct=True)` gives them.
+    fn ranks(values: &[f64]) -> Vec<f64> {
+        let mut order: Vec<usize> = (0..values.len()).collect();
+        order.sort_by(|&a, &b| values[a].total_cmp(&values[b]));
+        let mut out = vec![0.0; values.len()];
+        let mut start = 0;
+        while start < order.len() {
+            let mut end = start + 1;
+            while end < order.len() && values[order[end]] == values[order[start]] {
+                end += 1;
+            }
+            let place = (start + 1 + end) as f64 / 2.0;
+            for &index in &order[start..end] {
+                out[index] = place / values.len() as f64;
+            }
+            start = end;
+        }
+        out
+    }
+
+    /// Each candidate's features, in the order `names` gives: from the
+    /// step's records, and from what the steps before left.
+    fn features(
+        context: &Context,
+        state: &State,
+        steps: usize,
+        candidates: &[(String, Move)],
+        changed: &[Bounds],
+        history: &History,
+        names: &[String],
+    ) -> Vec<Vec<f64>> {
+        let records = records(context, state, steps, candidates, changed);
+        let count = candidates.len() as f64;
+        let number = |record: &Value, field: &str| match &record[field] {
+            Value::Bool(flag) => f64::from(u8::from(*flag)),
+            value => value.as_f64().unwrap_or(f64::NAN),
+        };
+        let column = |field: &str| records.iter().map(|r| number(r, field)).collect::<Vec<f64>>();
+        let issues_rank = ranks(&column("issues_here"));
+        let bends_rank = ranks(&column("attached_bends"));
+        let straightened_rank = ranks(&column("straightened"));
+        let shares: HashMap<&str, f64> = KINDS
+            .iter()
+            .map(|kind| {
+                let of_kind = records.iter().filter(|r| r["kind"].as_str() == Some(*kind)).count();
+                (*kind, of_kind as f64 / count)
+            })
+            .collect();
+        let nodes_with_moves = candidates
+            .iter()
+            .flat_map(|(id, _)| id.split(TOGETHER))
+            .collect::<HashSet<_>>()
+            .len() as f64;
+        let step = MAX_STEPS - steps;
+        // What each move showed a step before, when it was evaluated then.
+        let known: Vec<Option<Option<f64>>> = candidates
+            .iter()
+            .map(|(id, step)| history.evaluated.get(&key(id, *step)).copied())
+            .collect();
+        let mut by_node: HashMap<&str, (usize, Vec<f64>)> = HashMap::new();
+        for ((id, _), seen) in candidates.iter().zip(&known) {
+            if let Some(gain) = seen {
+                let entry = by_node.entry(id.as_str()).or_default();
+                entry.0 += 1;
+                entry.1.extend(*gain);
+            }
+        }
+        records
+            .iter()
+            .enumerate()
+            .map(|(index, record)| {
+                let id = candidates[index].0.as_str();
+                let (node_count, node_gains) = by_node.get(id).cloned().unwrap_or_default();
+                let since = id
+                    .split(TOGETHER)
+                    .filter_map(|node| history.moved_at.get(node))
+                    .max()
+                    .map_or(f64::NAN, |at| (step - at) as f64);
+                let score = number(record, "score");
+                let connectors = number(record, "diagram_connectors").max(1.0);
+                let change =
+                    |what: &str| number(record, &format!("{what}_after")) - number(record, &format!("{what}_before"));
+                names
+                    .iter()
+                    .map(|name| match name.as_str() {
+                        "prior_gain~" => known[index].flatten().unwrap_or(f64::NAN),
+                        "prior_tried" => f64::from(u8::from(known[index].is_some())),
+                        "node_prior_best~" => node_gains.iter().copied().reduce(f64::min).unwrap_or(f64::NAN),
+                        "node_prior_mean~" if node_gains.is_empty() => f64::NAN,
+                        "node_prior_mean~" => node_gains.iter().sum::<f64>() / node_gains.len() as f64,
+                        "node_prior_count" => node_count as f64,
+                        "last_taken_gain~" => history.last_taken.unwrap_or(f64::NAN),
+                        "last_taken_share~" => history
+                            .last_taken
+                            .map_or(f64::NAN, |gain| gain / if score != 0.0 { score } else { 1.0 }),
+                        "steps_since_moved~" => since,
+                        "trial_total_change" => change("trial_cost") + change("trial_against"),
+                        "trial_cost_change" => change("trial_cost"),
+                        "candidates" => count,
+                        "issues_here_rank" => issues_rank[index],
+                        "attached_bends_rank" => bends_rank[index],
+                        "straightened_rank" => straightened_rank[index],
+                        "nodes_with_moves" => nodes_with_moves,
+                        "connectors_per_node" => {
+                            number(record, "diagram_connectors") / number(record, "diagram_nodes").max(1.0)
+                        }
+                        "bends_per_connector" => number(record, "diagram_bends") / connectors,
+                        "crossings_per_connector" => number(record, "diagram_crossings") / connectors,
+                        share if share.starts_with("share_") => shares[&share["share_".len()..]],
+                        field => number(record, field),
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Each candidate's features at each step of a recorded arrangement
+    /// (a log of the record example), in the order `screen.names()` gives
+    /// them, as screening computes them when every candidate was evaluated:
+    /// to check them against the ones learning computes from the records,
+    /// and the model's margin on them. A missing value is null.
+    #[cfg(feature = "trace-candidates")]
+    pub fn replay_features(log: &Value, screen: &Screen) -> Result<Vec<Value>, String> {
+        let mut rows = Vec::new();
+        let mut history = History::default();
+        super::trace::walk(log, |context, state, steps, candidates, changed, step| {
+            let features = features(context, state, steps, candidates, changed, &history, screen.names());
+            let margins = screen.margins(&features);
+            for (((id, step), row), margin) in candidates.iter().zip(features).zip(margins) {
+                rows.push(serde_json::json!({
+                    "step": MAX_STEPS - steps,
+                    "id": id.replace(TOGETHER, "+"),
+                    "dx": step.dx,
+                    "dy": step.dy,
+                    "margin": margin,
+                    "features": row.iter().map(|v| if v.is_nan() { Value::Null } else { serde_json::json!(v) }).collect::<Vec<_>>(),
+                }));
+            }
+            let gains: Vec<Option<f64>> = step["results"]
+                .as_array()
+                .ok_or("a step without results")?
+                .iter()
+                .map(|r| r["gain"].as_f64())
+                .collect();
+            let taken = step["chosen"].as_u64().map(|c| c as usize);
+            history.evaluated = candidates
+                .iter()
+                .zip(&gains)
+                .map(|((id, m), gain)| (key(id, *m), *gain))
+                .collect();
+            history.last_taken = taken.and_then(|index| gains[index]);
+            if let Some(index) = taken {
+                for node in candidates[index].0.split(TOGETHER) {
+                    history.moved_at.insert(node.to_owned(), MAX_STEPS - steps);
+                }
+            }
+            Ok(())
+        })?;
+        Ok(rows)
+    }
+
+    /// Arranges as `arrange` does, evaluating at each step only the moves
+    /// `screen` ranks first.
+    pub fn arrange_screened(svg: &str, screen: &Screen) -> Result<FixResult, SvgInputError> {
+        super::arranged(svg, |context| context.screen = Some(screen.clone()))
     }
 }
