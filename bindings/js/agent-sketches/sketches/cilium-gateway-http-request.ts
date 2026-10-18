@@ -1,0 +1,82 @@
+import type { Sketch, SketchNode } from "nicevg";
+import { box } from "nicevg/style/simple";
+
+// Cilium Gateway API request path, based on:
+// https://docs.cilium.io/en/stable/network/servicemesh/gateway-api/gateway-api/
+// https://docs.cilium.io/en/stable/network/servicemesh/ingress-reference/
+// https://docs.cilium.io/en/stable/security/network/proxy/envoy/
+// Shows an external HTTP request entering a Gateway Service, passing through Cilium's
+// node datapath and per-node Envoy, reaching a selected Kubernetes backend, and returning.
+type Node = SketchNode & { class: "box"; label: string; fill?: string };
+
+export default {
+  nodes: [
+    { id: "client", class: "box", x: 0, y: 330, label: "External client\nHTTP request\nHost + path + headers", fill: "#dbeafe" },
+    { id: "lb", class: "box", x: 240, y: 330, label: "LoadBalancer / NodePort\nGateway Service address\nlistener port", fill: "#e0e7ff" },
+    { id: "host", class: "box", x: 500, y: 330, label: "Gateway node\npacket arrives at Service port", fill: "#f1f5f9" },
+    { id: "ebpf", class: "box", x: 770, y: 330, label: "Cilium eBPF service datapath\nintercepts Service traffic\npolicy identity: world", fill: "#dcfce7" },
+    { id: "tproxy", class: "box", x: 1060, y: 330, label: "TPROXY redirect\ntransparent L7 handoff\niptables by default; eBPF option", fill: "#fef3c7" },
+    { id: "agent", class: "box", x: 1370, y: 330, label: "Cilium agent pod\nnode-local proxy owner", fill: "#e0e7ff" },
+    { id: "envoy", class: "box", x: 1650, y: 330, label: "Cilium Envoy\nper-node HTTP proxy\nGateway listener", fill: "#dbeafe" },
+    { id: "ingressid", class: "box", x: 1650, y: 80, label: "Ingress identity\nrequest arriving at Envoy\nsecond policy boundary", fill: "#fae8ff" },
+    { id: "policy1", class: "box", x: 800, y: 80, label: "Cilium policy: world → ingress\npre-Envoy authorization\nblocked traffic is dropped", fill: "#fee2e2" },
+    { id: "policy2", class: "box", x: 1960, y: 80, label: "Cilium policy: ingress → backend\nEnvoy policy lookup\nbackend identity must be allowed", fill: "#fee2e2" },
+    { id: "listener", class: "box", x: 1960, y: 330, label: "Gateway listener\nprotocol + port + hostname\nTLS termination if configured", fill: "#ffedd5" },
+    { id: "route", class: "box", x: 2250, y: 330, label: "HTTPRoute match\nparentRef + listener attachment\nhostname, method, path, headers", fill: "#ffedd5" },
+    { id: "nomatch", class: "box", x: 2250, y: 590, label: "No matching route\nEnvoy local 404 response", fill: "#fee2e2" },
+    { id: "filters", class: "box", x: 2530, y: 330, label: "HTTPRoute filters\nrequest header edits / URL rewrite\nredirect or direct response", fill: "#fef3c7" },
+    { id: "direct", class: "box", x: 2530, y: 590, label: "Redirect / direct response\nlocal status + headers\nno backend connection", fill: "#fce7f3" },
+    { id: "backendref", class: "box", x: 2820, y: 330, label: "BackendRef\nService name + port\nweight when multiple refs", fill: "#e0e7ff" },
+    { id: "service", class: "box", x: 3100, y: 330, label: "Kubernetes Service\nbackend port + selector", fill: "#dcfce7" },
+    { id: "endpointslice", class: "box", x: 3360, y: 330, label: "EndpointSlice\nready endpoint addresses\nService port mapping", fill: "#dcfce7" },
+    { id: "endpoint", class: "box", x: 3620, y: 330, label: "Selected backend Pod\nendpoint IP:port", fill: "#dbeafe" },
+    { id: "app", class: "box", x: 3880, y: 330, label: "Application container\nhandles HTTP request", fill: "#dbeafe" },
+    { id: "response", class: "box", x: 3880, y: 590, label: "HTTP response\nstatus + headers + body", fill: "#dcfce7" },
+    { id: "envoyresponse", class: "box", x: 3620, y: 590, label: "Envoy upstream stream\nreceives backend response", fill: "#e0e7ff" },
+    { id: "returnpolicy", class: "box", x: 3100, y: 590, label: "Return through Cilium\npolicy + service datapath\nconnection state", fill: "#f1f5f9" },
+    { id: "clientreply", class: "box", x: 2530, y: 850, label: "Client receives response\noriginal HTTP connection", fill: "#dbeafe" },
+    { id: "controller", class: "box", x: 240, y: 850, label: "Cilium Gateway API controller\nwatches GatewayClass, Gateway, HTTPRoute\ncreates listener and Service config", fill: "#f1f5f9" },
+    { id: "gatewayclass", class: "box", x: 0, y: 1100, label: "GatewayClass\ncontrollerName: cilium\nselects Cilium implementation", fill: "#e0e7ff" },
+    { id: "gateway", class: "box", x: 350, y: 1100, label: "Gateway\nlisteners + allowedRoutes\naddress and TLS configuration", fill: "#e0e7ff" },
+    { id: "httproute", class: "box", x: 700, y: 1100, label: "HTTPRoute\nparentRefs + rules\nmatches, filters, backendRefs", fill: "#e0e7ff" },
+    { id: "xds", class: "box", x: 1400, y: 850, label: "xDS configuration\nCilium agent → Envoy\nvia UNIX domain socket", fill: "#fef3c7" },
+    { id: "xff", class: "box", x: 3360, y: 850, label: "Forwarded client address\nX-Forwarded-For appended\nX-Envoy-External-Address", fill: "#fef3c7" },
+  ],
+  edges: [
+    { from: "client", to: "lb", label: "HTTP/TCP connection" },
+    { from: "lb", to: "host", label: "Service port packet" },
+    { from: "host", to: "ebpf", label: "packet enters node datapath" },
+    { from: "ebpf", to: "policy1", label: "world identity policy check" },
+    { from: "policy1", to: "tproxy", label: "allowed packet" },
+    { from: "ebpf", to: "tproxy", label: "Service traffic redirect" },
+    { from: "tproxy", to: "agent", label: "transparent socket handoff" },
+    { from: "agent", to: "envoy", label: "node-local HTTP stream" },
+    { from: "envoy", to: "ingressid", label: "assign ingress identity" },
+    { from: "ingressid", to: "policy2", label: "authorize egress identity" },
+    { from: "policy2", to: "listener", label: "allowed request" },
+    { from: "listener", to: "route", label: "HTTP authority + request fields" },
+    { from: "route", to: "nomatch", label: "no attached route matches" },
+    { from: "route", to: "filters", label: "matching rule" },
+    { from: "filters", to: "direct", label: "redirect or direct response filter" },
+    { from: "filters", to: "backendref", label: "forward request after edits" },
+    { from: "backendref", to: "service", label: "resolve named Service port" },
+    { from: "service", to: "endpointslice", label: "select ready endpoints" },
+    { from: "endpointslice", to: "endpoint", label: "endpoint IP + target port" },
+    { from: "endpoint", to: "app", label: "proxied HTTP request" },
+    { from: "app", to: "response", label: "status, headers, body" },
+    { from: "response", to: "envoyresponse", label: "upstream response bytes" },
+    { from: "envoyresponse", to: "returnpolicy", label: "Envoy response stream" },
+    { from: "returnpolicy", to: "clientreply", label: "response over established flow" },
+    { from: "envoy", to: "xds", label: "listener and route configuration" },
+    { from: "controller", to: "xds", label: "translated Gateway config" },
+    { from: "gatewayclass", to: "controller", label: "implementation selection" },
+    { from: "gateway", to: "controller", label: "listener and address spec" },
+    { from: "httproute", to: "controller", label: "route rules and backend refs" },
+    { from: "controller", to: "lb", label: "provisions Gateway LoadBalancer Service" },
+    { from: "envoy", to: "xff", label: "forward source address" },
+    { from: "xff", to: "endpoint", label: "X-Forwarded-For request header" },
+    { from: "direct", to: "envoyresponse", label: "local reply" },
+  ],
+  style: { box },
+  rootAttrs: { "font-family": "sans-serif" },
+} satisfies Sketch<Node>;

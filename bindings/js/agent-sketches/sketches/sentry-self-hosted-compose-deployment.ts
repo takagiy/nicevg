@@ -1,0 +1,97 @@
+import type { Sketch } from "nicevg";
+import { box } from "nicevg/style/simple";
+
+type Node = { id: string; class: "box"; x: number; y: number; label: string; parent?: string; width?: number; height?: number; fill?: string };
+
+// Sources:
+// https://github.com/getsentry/self-hosted/blob/master/docker-compose.yml
+// https://develop.sentry.dev/self-hosted/
+// This sketch follows the self-hosted Compose deployment: the public ingress, event ingestion and processing
+// services, task workers, and the databases and queues they share. All containers run on the Compose host.
+
+const nodes: Node[] = [
+  { id: "sdk", class: "box", x: 20, y: 300, label: "Application SDKs\nSentry clients", fill: "#f1f5f9" },
+  { id: "browser", class: "box", x: 20, y: 80, label: "Operator / browser", fill: "#f1f5f9" },
+  { id: "mail-provider", class: "box", x: 20, y: 900, label: "Configured SMTP relay\nexternal delivery", fill: "#f1f5f9" },
+  { id: "host", class: "box", x: 250, y: 20, label: "Single Docker Compose host\nself-hosted/docker-compose.yml", width: 1540, height: 1040, fill: "#f8fafc" },
+  { id: "nginx", class: "box", x: 290, y: 80, label: "nginx\n$SENTRY_BIND:80", parent: "host", fill: "#dbeafe" },
+  { id: "web", class: "box", x: 530, y: 80, label: "web\nSentry Django / API :9000", parent: "host", fill: "#dcfce7" },
+  { id: "relay", class: "box", x: 290, y: 220, label: "relay\nSDK envelope intake", parent: "host", fill: "#dcfce7" },
+  { id: "events", class: "box", x: 530, y: 220, label: "events-consumer\ningest-events", parent: "host" },
+  { id: "attachments", class: "box", x: 760, y: 220, label: "attachments-consumer\ningest-attachments", parent: "host" },
+  { id: "postprocess", class: "box", x: 1000, y: 220, label: "post-process-forwarder-errors\npost-process-forwarder group", parent: "host" },
+  { id: "worker", class: "box", x: 760, y: 80, label: "worker\nCelery background jobs", parent: "host" },
+  { id: "cron", class: "box", x: 1000, y: 80, label: "cron + sentry-cleanup\nscheduled jobs / retention", parent: "host" },
+  { id: "taskscheduler", class: "box", x: 1250, y: 80, label: "taskscheduler\ntaskworker-scheduler", parent: "host" },
+  { id: "taskworker", class: "box", x: 1250, y: 220, label: "taskworker\nSentry task execution", parent: "host" },
+  { id: "taskbroker", class: "box", x: 1510, y: 220, label: "taskbroker\ngRPC :50051", parent: "host" },
+  { id: "pgbouncer", class: "box", x: 530, y: 390, label: "pgbouncer\ntransaction pooling", parent: "host" },
+  { id: "postgres", class: "box", x: 760, y: 390, label: "postgres\nmetadata / relational state", parent: "host", fill: "#fef3c7" },
+  { id: "redis", class: "box", x: 1000, y: 390, label: "redis (Valkey)\ncache / coordination", parent: "host", fill: "#fef3c7" },
+  { id: "memcached", class: "box", x: 1250, y: 390, label: "memcached\ncache", parent: "host" },
+  { id: "kafka", class: "box", x: 290, y: 570, label: "kafka\nKRaft broker + controller :9092", parent: "host", fill: "#fef3c7" },
+  { id: "snuba-api", class: "box", x: 530, y: 570, label: "snuba-api\nquery / ingestion API :1218", parent: "host", fill: "#dcfce7" },
+  { id: "snuba-errors", class: "box", x: 760, y: 570, label: "snuba-errors-consumer\nerrors → ClickHouse", parent: "host" },
+  { id: "snuba-outcomes", class: "box", x: 1000, y: 570, label: "snuba-outcomes-consumer\noutcomes_raw → ClickHouse", parent: "host" },
+  { id: "snuba-replacer", class: "box", x: 1250, y: 570, label: "snuba-replacer\nerror event replacement", parent: "host" },
+  { id: "snuba-subscriptions", class: "box", x: 1510, y: 570, label: "snuba-subscription-consumer-events\nquery subscriptions", parent: "host" },
+  { id: "clickhouse", class: "box", x: 760, y: 740, label: "clickhouse\nevent analytics :8123 / :9000", parent: "host", fill: "#fef3c7" },
+  { id: "symbolicator", class: "box", x: 1000, y: 740, label: "symbolicator\nsymbolication API", parent: "host", fill: "#dcfce7" },
+  { id: "symbol-cleanup", class: "box", x: 1250, y: 740, label: "symbolicator-cleanup\ncache cleanup", parent: "host" },
+  { id: "seaweedfs", class: "box", x: 1510, y: 740, label: "seaweedfs mini\nS3-compatible object storage", parent: "host", fill: "#fef3c7" },
+  { id: "smtp", class: "box", x: 530, y: 900, label: "smtp (Exim)\nmail spool", parent: "host" },
+  { id: "data-volume", class: "box", x: 760, y: 900, label: "Named Compose volumes\nPostgres · Kafka · ClickHouse · Redis\nSeaweedFS · Sentry / symbol data", parent: "host", fill: "#e2e8f0" },
+];
+
+const edges = [
+  { from: "browser", to: "nginx", label: "HTTP :80" },
+  { from: "sdk", to: "nginx", label: "envelopes / store requests" },
+  { from: "nginx", to: "web", label: "UI / API proxy" },
+  { from: "nginx", to: "relay", label: "ingest route" },
+  { from: "relay", to: "web", label: "project configuration / registration" },
+  { from: "relay", to: "kafka", label: "validated envelopes → ingest topics" },
+  { from: "relay", to: "redis", label: "rate-limit / coordination state" },
+  { from: "kafka", to: "events", label: "ingest-events messages" },
+  { from: "kafka", to: "attachments", label: "ingest-attachments messages" },
+  { from: "events", to: "kafka", label: "processed event topics" },
+  { from: "attachments", to: "seaweedfs", label: "attachment objects" },
+  { from: "events", to: "snuba-errors", label: "event stream" },
+  { from: "kafka", to: "snuba-errors", label: "errors storage consumer" },
+  { from: "kafka", to: "snuba-outcomes", label: "outcomes_raw topic" },
+  { from: "kafka", to: "snuba-replacer", label: "errors topic" },
+  { from: "kafka", to: "snuba-subscriptions", label: "events + subscription work" },
+  { from: "snuba-errors", to: "clickhouse", label: "insert errors rows" },
+  { from: "snuba-outcomes", to: "clickhouse", label: "insert outcomes rows" },
+  { from: "snuba-replacer", to: "clickhouse", label: "replace event rows" },
+  { from: "snuba-subscriptions", to: "clickhouse", label: "scheduled queries" },
+  { from: "web", to: "snuba-api", label: "event search / analytics queries" },
+  { from: "worker", to: "snuba-api", label: "background query work" },
+  { from: "snuba-api", to: "clickhouse", label: "query / insert" },
+  { from: "postprocess", to: "kafka", label: "consume errors; wait on snuba-commit-log" },
+  { from: "web", to: "pgbouncer", label: "SQL connections" },
+  { from: "worker", to: "pgbouncer", label: "SQL connections" },
+  { from: "pgbouncer", to: "postgres", label: "pooled transactions" },
+  { from: "web", to: "redis", label: "cache / task state" },
+  { from: "worker", to: "redis", label: "task queue / cache" },
+  { from: "web", to: "memcached", label: "cache lookups" },
+  { from: "web", to: "symbolicator", label: "symbolication requests" },
+  { from: "symbolicator", to: "data-volume", label: "symbol cache (/data)" },
+  { from: "symbol-cleanup", to: "data-volume", label: "prune symbol cache" },
+  { from: "symbolicator", to: "seaweedfs", label: "source files / debug files as configured" },
+  { from: "web", to: "seaweedfs", label: "attachments / blobs" },
+  { from: "taskscheduler", to: "taskbroker", label: "schedule task activation" },
+  { from: "taskbroker", to: "kafka", label: "task topics" },
+  { from: "taskworker", to: "taskbroker", label: "gRPC poll / execute task" },
+  { from: "taskworker", to: "web", label: "Sentry task callbacks" },
+  { from: "cron", to: "postgres", label: "cleanup expired relational data" },
+  { from: "web", to: "smtp", label: "send email" },
+  { from: "worker", to: "smtp", label: "notification email" },
+  { from: "smtp", to: "mail-provider", label: "SMTP delivery" },
+  { from: "postgres", to: "data-volume", label: "sentry-postgres" },
+  { from: "kafka", to: "data-volume", label: "sentry-kafka + logs" },
+  { from: "clickhouse", to: "data-volume", label: "sentry-clickhouse" },
+  { from: "redis", to: "data-volume", label: "sentry-redis" },
+  { from: "seaweedfs", to: "data-volume", label: "sentry-seaweedfs" },
+];
+
+export default { nodes, edges, style: { box }, rootAttrs: { "font-family": "sans-serif" } } satisfies Sketch<Node>;

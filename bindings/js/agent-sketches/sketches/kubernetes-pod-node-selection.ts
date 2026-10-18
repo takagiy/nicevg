@@ -1,0 +1,98 @@
+/**
+ * Kubernetes kube-scheduler.
+ * Sources: https://kubernetes.io/docs/concepts/scheduling-eviction/kube-scheduler/,
+ * https://kubernetes.io/docs/concepts/scheduling-eviction/scheduling-framework/,
+ * https://kubernetes.io/docs/reference/scheduling/config/,
+ * https://github.com/kubernetes/kubernetes/blob/master/pkg/scheduler/schedule_one.go,
+ * https://github.com/kubernetes/kubernetes/blob/master/pkg/scheduler/framework/plugins/volumebinding/volume_binding.go.
+ * Shows one unscheduled Pod's node-selection decision through the default scheduler
+ * profile: queueing, filtering, scoring, the no-fit preemption path, and binding.
+ */
+import { box } from "nicevg/style/simple";
+import type { Sketch } from "nicevg";
+
+type Node = { id: string; class: "box"; x: number; y: number; label: string; parent?: string };
+
+const nodes: Node[] = [
+  { id: "control", class: "box", x: 30, y: 20, label: "kube-scheduler / default-scheduler profile" },
+  { id: "pod", class: "box", x: 40, y: 100, label: "Pending Pod\nspec: requests, selectors, affinity, tolerations, PVCs" },
+  { id: "queue", class: "box", x: 350, y: 100, label: "SchedulingQueue\nactiveQ → backoffQ → unschedulablePods" },
+  { id: "priority", class: "box", x: 350, y: 210, label: "PrioritySort\npriority, then creation timestamp" },
+  { id: "cycle", class: "box", x: 650, y: 100, label: "Scheduling cycle\nserial for this Pod" },
+  { id: "prefilter", class: "box", x: 650, y: 210, label: "PreFilter plugins\nNodeResourcesFit, NodePorts, VolumeBinding,\nPodTopologySpread, InterPodAffinity" },
+  { id: "cycle-state", class: "box", x: 950, y: 210, label: "CycleState\nprecomputed Pod / cluster data" },
+  { id: "snapshot", class: "box", x: 650, y: 340, label: "NodeInfo snapshot\nNode labels, taints, allocatable, requested" },
+  { id: "filter", class: "box", x: 950, y: 340, label: "Filter plugins (per Node; may run concurrently)" },
+  { id: "node-name", class: "box", x: 1240, y: 270, label: "NodeName\n.spec.nodeName match" },
+  { id: "unsched", class: "box", x: 1240, y: 340, label: "NodeUnschedulable\n.spec.unschedulable" },
+  { id: "taint", class: "box", x: 1240, y: 410, label: "TaintToleration\nuntolerated NoSchedule / NoExecute" },
+  { id: "affinity", class: "box", x: 1240, y: 480, label: "NodeAffinity\nnodeSelector + required terms" },
+  { id: "resources", class: "box", x: 1240, y: 550, label: "NodeResourcesFit\nrequests fit remaining allocatable" },
+  { id: "ports", class: "box", x: 1240, y: 620, label: "NodePorts\nrequested host ports available" },
+  { id: "pod-affinity", class: "box", x: 1240, y: 690, label: "InterPodAffinity\nrequired affinity / anti-affinity" },
+  { id: "spread", class: "box", x: 1240, y: 760, label: "PodTopologySpread\nhard maxSkew constraints" },
+  { id: "vol-filter", class: "box", x: 1240, y: 830, label: "VolumeBinding.Filter\nPV topology / claims feasible here" },
+  { id: "fit-result", class: "box", x: 950, y: 500, label: "Feasible nodes + per-node status\nshort-circuit on first failing Filter" },
+  { id: "postfilter", class: "box", x: 650, y: 500, label: "PostFilter only if no feasible node" },
+  { id: "preemption", class: "box", x: 350, y: 500, label: "DefaultPreemption\nfind lower-priority victims; check PDBs;\nselect candidate and nominate node" },
+  { id: "retry-no-fit", class: "box", x: 40, y: 500, label: "Still unschedulable\nretain failure diagnosis; wait for relevant event" },
+  { id: "prescore", class: "box", x: 650, y: 620, label: "PreScore\nPodTopologySpread, InterPodAffinity, TaintToleration" },
+  { id: "score", class: "box", x: 950, y: 620, label: "Score feasible nodes\nNodeResourcesFit, NodeAffinity, ImageLocality,\nPodTopologySpread, InterPodAffinity, others" },
+  { id: "normalize", class: "box", x: 950, y: 740, label: "NormalizeScore per plugin\nthen sum score × configured weight" },
+  { id: "winner", class: "box", x: 650, y: 740, label: "Host priority queue\nhighest total wins; random among ties" },
+  { id: "assume", class: "box", x: 350, y: 740, label: "Assume + reserve in scheduler cache\noptimistic local placement" },
+  { id: "volume-reserve", class: "box", x: 350, y: 850, label: "VolumeBinding.Reserve\ncache selected PV / PVC decisions" },
+  { id: "permit", class: "box", x: 650, y: 850, label: "Permit plugins (if configured)\napprove, deny, or wait with timeout" },
+  { id: "unbind-clean", class: "box", x: 950, y: 870, label: "Unreserve + forget assumption\non reserve / permit / later failure" },
+  { id: "prebind", class: "box", x: 950, y: 990, label: "PreBind\nVolumeBinding binds claims / provisions volume" },
+  { id: "bind", class: "box", x: 650, y: 990, label: "DefaultBinder\nAPI binding: Pod → selected Node" },
+  { id: "apiserver", class: "box", x: 350, y: 990, label: "kube-apiserver\nPod binding persisted; watch update" },
+  { id: "postbind", class: "box", x: 40, y: 990, label: "PostBind\nthen kubelet on assigned Node observes Pod" },
+  { id: "bind-retry", class: "box", x: 40, y: 850, label: "PreBind / Bind failure\nbackoff and retry scheduling" },
+];
+
+const edges = [
+  { from: "pod", to: "queue", label: "unassigned Pod" },
+  { from: "queue", to: "priority", label: "pop next Pod" },
+  { from: "priority", to: "cycle", label: "PrioritySort.Less" },
+  { from: "cycle", to: "prefilter", label: "run enabled plugins" },
+  { from: "prefilter", to: "cycle-state", label: "PreFilter extensions write state" },
+  { from: "cycle-state", to: "filter", label: "CycleState" },
+  { from: "snapshot", to: "filter", label: "NodeInfo list" },
+  { from: "filter", to: "node-name", label: "candidate Node" },
+  { from: "node-name", to: "unsched", label: "passes" },
+  { from: "unsched", to: "taint", label: "passes" },
+  { from: "taint", to: "affinity", label: "passes" },
+  { from: "affinity", to: "resources", label: "passes" },
+  { from: "resources", to: "ports", label: "passes" },
+  { from: "ports", to: "pod-affinity", label: "passes" },
+  { from: "pod-affinity", to: "spread", label: "passes" },
+  { from: "spread", to: "vol-filter", label: "passes" },
+  { from: "vol-filter", to: "fit-result", label: "feasible" },
+  { from: "filter", to: "fit-result", label: "infeasible Node + failing plugin status" },
+  { from: "fit-result", to: "postfilter", label: "zero feasible nodes" },
+  { from: "postfilter", to: "preemption", label: "DefaultPreemption" },
+  { from: "preemption", to: "retry-no-fit", label: "no candidate can help" },
+  { from: "retry-no-fit", to: "queue", label: "node / Pod / PVC event or backoff expiry" },
+  { from: "fit-result", to: "prescore", label: "one or more feasible" },
+  { from: "prescore", to: "score", label: "shared pre-score state" },
+  { from: "fit-result", to: "score", label: "feasible Node set" },
+  { from: "score", to: "normalize", label: "plugin scores per Node" },
+  { from: "normalize", to: "winner", label: "weighted totals" },
+  { from: "winner", to: "assume", label: "SuggestedHost" },
+  { from: "assume", to: "volume-reserve", label: "Reserve extension points" },
+  { from: "volume-reserve", to: "permit", label: "reserve succeeds" },
+  { from: "volume-reserve", to: "unbind-clean", label: "reserve fails" },
+  { from: "permit", to: "prebind", label: "approve / wait then approve" },
+  { from: "permit", to: "unbind-clean", label: "deny / timeout" },
+  { from: "prebind", to: "bind", label: "pre-bind work succeeds" },
+  { from: "prebind", to: "unbind-clean", label: "error" },
+  { from: "bind", to: "apiserver", label: "Bind Pod to Node" },
+  { from: "bind", to: "unbind-clean", label: "binding error" },
+  { from: "apiserver", to: "postbind", label: "successful binding" },
+  { from: "unbind-clean", to: "bind-retry", label: "clear reservation / assumed Pod" },
+  { from: "bind-retry", to: "queue", label: "retry" },
+  { from: "preemption", to: "queue", label: "victims deleted; nominated Pod retried" },
+];
+
+export default { nodes, edges, style: { box } } satisfies Sketch<Node>;

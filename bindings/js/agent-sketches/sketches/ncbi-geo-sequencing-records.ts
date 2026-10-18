@@ -1,0 +1,77 @@
+// NCBI Gene Expression Omnibus (GEO).
+// Sources: https://www.ncbi.nlm.nih.gov/geo/info/overview.html,
+// https://www.ncbi.nlm.nih.gov/geo/info/faq.html,
+// https://www.ncbi.nlm.nih.gov/geo/info/download.html,
+// https://www.ncbi.nlm.nih.gov/geo/info/geo_paccess.html
+// Follows a sequencing study from its submitter supplied GEO records through
+// curation, SRA raw-read brokerage, and the linked files and citations.
+
+import type { Sketch } from "nicevg";
+import { area, table, type ErNode } from "../styles/er.ts";
+
+const sketch = {
+  nodes: [
+    { id: "submitter", class: "area", x: 0, y: 0, width: 460, height: 770, title: "Submitter supplied GEO records", fill: "#eff6ff" },
+    { id: "curated", class: "area", x: 490, y: 0, width: 470, height: 770, title: "GEO curation", fill: "#f0fdf4" },
+    { id: "archive", class: "area", x: 990, y: 0, width: 470, height: 770, title: "NCBI linked archives and files", fill: "#fff7ed" },
+    { id: "series", class: "table", parent: "submitter", x: 35, y: 60, columns: [["accession", "GSE", "PK"], ["title", "text"], ["summary", "text"], ["type", "assay"], ["overall_design", "text"], ["submission_date", "date"], ["pubmed_id", "PMID FK"]] },
+    { id: "sample_a", class: "table", parent: "submitter", x: 35, y: 245, title: "Sample GSM A", columns: [["accession", "GSM", "PK"], ["series_id", "GSE", "FK"], ["platform_id", "GPL", "FK"], ["source_name_ch1", "text"], ["characteristics_ch1", "key:value"], ["treatment_protocol", "text"], ["data_processing", "text"], ["supplementary_file", "URL"]] },
+    { id: "sample_b", class: "table", parent: "submitter", x: 255, y: 245, title: "Sample GSM B", columns: [["accession", "GSM", "PK"], ["series_id", "GSE", "FK"], ["platform_id", "GPL", "FK"], ["source_name_ch1", "text"], ["characteristics_ch1", "key:value"], ["treatment_protocol", "text"], ["data_processing", "text"], ["supplementary_file", "URL"]] },
+    { id: "sample_c", class: "table", parent: "submitter", x: 35, y: 475, title: "Sample GSM C", columns: [["accession", "GSM", "PK"], ["series_id", "GSE", "FK"], ["platform_id", "GPL", "FK"], ["source_name_ch1", "text"], ["characteristics_ch1", "key:value"], ["treatment_protocol", "text"], ["data_processing", "text"], ["supplementary_file", "URL"]] },
+    { id: "sample_d", class: "table", parent: "submitter", x: 255, y: 475, title: "Sample GSM D", columns: [["accession", "GSM", "PK"], ["series_id", "GSE", "FK"], ["platform_id", "GPL", "FK"], ["source_name_ch1", "text"], ["characteristics_ch1", "key:value"], ["treatment_protocol", "text"], ["data_processing", "text"], ["supplementary_file", "URL"]] },
+    { id: "platform", class: "table", parent: "submitter", x: 35, y: 690, title: "Platform GPL", columns: [["accession", "GPL", "PK"], ["title", "text"], ["technology", "sequencing"], ["organism", "taxon"], ["manufacturer", "text"], ["distribution", "text"]] },
+    { id: "processed", class: "table", parent: "submitter", x: 255, y: 690, title: "Processed data table", columns: [["sample_id", "GSM", "FK"], ["element_ref", "feature"], ["value", "integer/float"], ["file", "supplementary"]] },
+    { id: "dataset", class: "table", parent: "curated", x: 520, y: 60, columns: [["accession", "GDS", "PK"], ["series_id", "GSE", "FK"], ["platform_id", "GPL", "FK"], ["title", "text"], ["value_type", "count/normalized"], ["curation_status", "selected"]] },
+    { id: "subset", class: "table", parent: "curated", x: 740, y: 60, columns: [["subset_id", "GDS subset", "PK"], ["dataset_id", "GDS", "FK"], ["description", "factor group"], ["sample_ids", "GSM list"]] },
+    { id: "profile", class: "table", parent: "curated", x: 520, y: 245, columns: [["profile_id", "gene profile", "PK"], ["dataset_id", "GDS", "FK"], ["gene_id", "gene", "FK"], ["measurements", "per GSM"], ["chart", "derived"]] },
+    { id: "gene", class: "table", parent: "curated", x: 740, y: 245, columns: [["gene_id", "NCBI Gene", "PK"], ["symbol", "text"], ["organism", "taxon"], ["platform_elements", "GPL probes"]] },
+    { id: "matrix", class: "table", parent: "curated", x: 520, y: 425, title: "Series Matrix file", columns: [["series_id", "GSE", "FK"], ["sample_columns", "GSM list"], ["series_matrix_table", "values"], ["format", "TXT.GZ"]] },
+    { id: "gds_matrix", class: "table", parent: "curated", x: 740, y: 425, title: "DataSet SOFT file", columns: [["dataset_id", "GDS", "FK"], ["sample_records", "GSM"], ["value_table", "curated"], ["format", "SOFT.GZ"]] },
+    { id: "submitter_org", class: "table", parent: "curated", x: 520, y: 610, title: "Submitter contact", columns: [["series_id", "GSE", "FK"], ["contact_name", "text"], ["email", "text"], ["institution", "text"], ["country", "text"]] },
+    { id: "pubmed", class: "table", parent: "curated", x: 740, y: 610, title: "PubMed citation", columns: [["pmid", "PMID", "PK"], ["title", "text"], ["authors", "text"], ["journal", "text"], ["doi", "identifier"]] },
+    { id: "sra", class: "area", parent: "archive", x: 1015, y: 55, width: 410, height: 400, title: "Sequence Read Archive (SRA)", fill: "#fffbeb" },
+    { id: "bioproject", class: "table", parent: "sra", x: 1035, y: 100, columns: [["accession", "PRJNA", "PK"], ["title", "text"], ["description", "text"], ["geo_series", "GSE link"]] },
+    { id: "biosample", class: "table", parent: "sra", x: 1240, y: 100, columns: [["accession", "SAMN", "PK"], ["bioproject_id", "PRJNA", "FK"], ["sample_name", "text"], ["attributes", "key:value"], ["geo_sample", "GSM link"]] },
+    { id: "experiment", class: "table", parent: "sra", x: 1035, y: 275, columns: [["accession", "SRX", "PK"], ["biosample_id", "SAMN", "FK"], ["platform", "instrument"], ["library_strategy", "RNA-Seq"], ["geo_sample", "GSM link"]] },
+    { id: "run", class: "table", parent: "sra", x: 1240, y: 275, columns: [["accession", "SRR", "PK"], ["experiment_id", "SRX", "FK"], ["read_count", "integer"], ["file", "SRA/FASTQ"], ["run_date", "date"]] },
+    { id: "geo_raw", class: "table", parent: "archive", x: 1015, y: 500, title: "GEO raw-file link", columns: [["sample_id", "GSM", "FK"], ["sra_run_id", "SRR", "FK"], ["brokered_by_geo", "true"], ["download_route", "SRA Run Selector"]] },
+    { id: "series_suppl", class: "table", parent: "archive", x: 1240, y: 500, title: "Series supplementary bundle", columns: [["series_id", "GSE", "FK"], ["filename", "GSE*_RAW.tar"], ["contents", "original raw files"], ["format", "TAR/GZIP"]] },
+    { id: "sample_suppl", class: "table", parent: "archive", x: 1015, y: 660, title: "Sample processed file", columns: [["sample_id", "GSM", "FK"], ["filename", "submitter named"], ["contents", "processed sequence data"], ["format", "file-specific"]] },
+    { id: "family_soft", class: "table", parent: "archive", x: 1240, y: 660, title: "Series family SOFT", columns: [["series_id", "GSE", "FK"], ["records", "GSE/GSM/GPL"], ["data_tables", "tab-delimited"], ["format", "SOFT.GZ"]] },
+  ] satisfies ErNode[],
+  edges: [
+    { from: "sample_a.series_id", to: "series.accession", label: "GSE accession" },
+    { from: "sample_b.series_id", to: "series.accession", label: "GSE accession" },
+    { from: "sample_c.series_id", to: "series.accession", label: "GSE accession" },
+    { from: "sample_d.series_id", to: "series.accession", label: "GSE accession" },
+    { from: "sample_a.platform_id", to: "platform.accession", label: "one GPL per GSM" },
+    { from: "sample_b.platform_id", to: "platform.accession" },
+    { from: "sample_c.platform_id", to: "platform.accession" },
+    { from: "sample_d.platform_id", to: "platform.accession" },
+    { from: "processed.sample_id", to: "sample_a.accession", label: "sample measurement rows" },
+    { from: "series.pubmed_id", to: "pubmed.pmid", label: "publication PMID" },
+    { from: "submitter_org.series_id", to: "series.accession", label: "contact for submission" },
+    { from: "dataset.series_id", to: "series.accession", label: "curated from selected GSE" },
+    { from: "dataset.platform_id", to: "platform.accession", label: "comparable Samples share GPL" },
+    { from: "subset.dataset_id", to: "dataset.accession", label: "factor-defined GSM groups" },
+    { from: "profile.dataset_id", to: "dataset.accession", label: "gene measurements across Samples" },
+    { from: "profile.gene_id", to: "gene.gene_id", label: "gene-level record" },
+    { from: "matrix.series_id", to: "series.accession", label: "Series Matrix download" },
+    { from: "gds_matrix.dataset_id", to: "dataset.accession", label: "curated full SOFT" },
+    { from: "bioproject.geo_series", to: "series.accession", label: "GEO submission brokers raw reads" },
+    { from: "biosample.bioproject_id", to: "bioproject.accession" },
+    { from: "biosample.geo_sample", to: "sample_a.accession", label: "GSM cross-reference" },
+    { from: "experiment.biosample_id", to: "biosample.accession" },
+    { from: "experiment.geo_sample", to: "sample_a.accession", label: "GSM cross-reference" },
+    { from: "run.experiment_id", to: "experiment.accession", label: "sequencing run" },
+    { from: "geo_raw.sample_id", to: "sample_a.accession", label: "raw reads for Sample" },
+    { from: "geo_raw.sra_run_id", to: "run.accession", label: "SRR download route" },
+    { from: "series_suppl.series_id", to: "series.accession", label: "GSE family download" },
+    { from: "sample_suppl.sample_id", to: "sample_a.accession", label: "processed file on GSM" },
+    { from: "family_soft.series_id", to: "series.accession", label: "complete original GSE/GSM/GPL records" },
+  ],
+  style: { table, area },
+  rootAttrs: { "font-family": "sans-serif" },
+} satisfies Sketch<ErNode>;
+
+export default sketch;
