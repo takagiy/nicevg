@@ -3,6 +3,8 @@
 //!
 //! ```text
 //! cargo run --release --features screening --example screen -- eval model.json 24 out.jsonl drafts/a drafts/b.svg
+//! cargo run --release --features screening --example screen -- plain out.jsonl drafts/a
+//! cargo run --release --features screening --example screen -- screened model.json 24 out.jsonl drafts/a
 //! cargo run --release --features screening,trace-candidates --example screen -- features model.json steps.jsonl out.jsonl
 //! ```
 //!
@@ -11,6 +13,10 @@
 //! model saved as JSON) evaluating `keep` candidates a step, and writes a
 //! line per diagram: each one's wall time and badness (the quality measure
 //! the tests snapshot).
+//!
+//! `plain` and `screened` write the same lines with only one of the two:
+//! the arrangement without the model does not change with the model, so
+//! it is arranged once and kept.
 //!
 //! `draw` writes each SVG arranged both ways, as `<name>.plain.svg` and
 //! `<name>.screened.svg` in the directory given, to look at.
@@ -49,7 +55,9 @@ fn svgs(paths: &[String]) -> Vec<PathBuf> {
     files
 }
 
-fn eval(screen: &Screen, out: &str, paths: &[String]) {
+/// Arranges each SVG without the model when `plain`, and with it when
+/// there is a `screen`.
+fn eval(screen: Option<&Screen>, plain: bool, out: &str, paths: &[String]) {
     let mut sink = std::io::BufWriter::new(std::fs::File::create(out).expect("the output can be written"));
     let files = svgs(paths);
     for (index, file) in files.iter().enumerate() {
@@ -57,30 +65,29 @@ fn eval(screen: &Screen, out: &str, paths: &[String]) {
             .file_stem()
             .map_or_else(String::new, |s| s.to_string_lossy().into_owned());
         let svg = std::fs::read_to_string(file).expect("the SVG is readable");
-        let started = Instant::now();
-        let Ok(plain) = nicevg::arrange(&svg) else {
+        let mut line = serde_json::json!({ "diagram": name });
+        let mut timed = |key: &str, arrange: &dyn Fn() -> Result<nicevg::FixResult, nicevg::SvgInputError>| {
+            let started = Instant::now();
+            let arranged = arrange();
+            let ms = started.elapsed().as_secs_f64() * 1000.0;
+            let result = arranged.ok()?;
+            line["nodes"] = result.report.diagram.nodes.len().into();
+            line[format!("{key}_ms")] = ms.into();
+            line[format!("{key}_badness")] = support::quality_of(&result.report).badness.into();
+            Some(ms)
+        };
+        let plain_ms = if plain { timed("plain", &|| nicevg::arrange(&svg)) } else { Some(0.0) };
+        let screened_ms = match screen {
+            Some(screen) => timed("screened", &|| arrange_screened(&svg, screen)),
+            None => Some(0.0),
+        };
+        let (Some(plain_ms), Some(screened_ms)) = (plain_ms, screened_ms) else {
             eprintln!("{name}: not readable");
             continue;
         };
-        let plain_ms = started.elapsed().as_secs_f64() * 1000.0;
-        let started = Instant::now();
-        let screened = arrange_screened(&svg, screen).expect("read once already");
-        let screened_ms = started.elapsed().as_secs_f64() * 1000.0;
-        let line = serde_json::json!({
-            "diagram": name,
-            "nodes": plain.report.diagram.nodes.len(),
-            "plain_ms": plain_ms,
-            "screened_ms": screened_ms,
-            "plain_badness": support::quality_of(&plain.report).badness,
-            "screened_badness": support::quality_of(&screened.report).badness,
-        });
         writeln!(sink, "{line}").expect("the line is written");
         sink.flush().expect("the line is written");
-        eprintln!(
-            "[{}/{}] {name}: {plain_ms:.0} ms -> {screened_ms:.0} ms",
-            index + 1,
-            files.len()
-        );
+        eprintln!("[{}/{}] {name}: {plain_ms:.0} ms, {screened_ms:.0} ms", index + 1, files.len());
     }
 }
 
@@ -119,16 +126,20 @@ fn features(screen: &Screen, logs: &str, out: &str) {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let usage = "usage: screen eval <model.json> <keep> <out.jsonl> <svg or directory>... | screen draw <model.json> <keep> <out dir> <svg or directory>... | screen features <model.json> <steps.jsonl> <out.jsonl>";
+    let usage = "usage: screen eval|screened <model.json> <keep> <out.jsonl> <svg or directory>... | screen plain <out.jsonl> <svg or directory>... | screen draw <model.json> <keep> <out dir> <svg or directory>... | screen features <model.json> <steps.jsonl> <out.jsonl>";
     let (Some(command), Some(model)) = (args.first(), args.get(1)) else {
         panic!("{usage}");
     };
+    if command == "plain" {
+        eval(None, true, model, &args[2..]);
+        return;
+    }
     let text = std::fs::read_to_string(model).expect("the model is readable");
     match command.as_str() {
-        "eval" => {
+        "eval" | "screened" => {
             let keep: usize = args.get(2).and_then(|k| k.parse().ok()).expect(usage);
             let screen = Screen::from_xgboost_json(&text, keep).unwrap_or_else(|error| panic!("{error}"));
-            eval(&screen, args.get(3).expect(usage), &args[4..]);
+            eval(Some(&screen), command == "eval", args.get(3).expect(usage), &args[4..]);
         }
         "draw" => {
             let keep: usize = args.get(2).and_then(|k| k.parse().ok()).expect(usage);
