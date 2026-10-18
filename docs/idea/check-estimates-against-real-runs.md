@@ -1,5 +1,7 @@
 # ふるい分けの見積もりを、実際に arrange を回した結果に近づける
 
+決着: N は補正せず、実際に回して測ることにした（docs/adr/measure-screening-loss-by-real-runs.md）。補正モデル（下の案 A）は、記録から作れる値では平均値を答えるのと変わらない精度しか出なかった。
+
 ## きっかけ
 
 ふるい分けは、記録から見積もった「badness の悪化を 3% に抑えて減らせる時間」（N と M）で比べ、Optuna の目的にもしている（docs/adr/judge-screening-by-time-saved.md）。この見積もりは記録を使ったシミュレーションで、実際に arrange を回した結果とは次の 2 点でずれる。
