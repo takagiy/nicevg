@@ -101,7 +101,6 @@ pub fn arrange(svg: &str) -> Result<FixResult, SvgInputError> {
 /// Arranges as `arrange` does, with the context `prepare` has set up.
 fn arranged(svg: &str, prepare: impl FnOnce(&mut Context)) -> Result<FixResult, SvgInputError> {
     let fixed = fix_after_moves(Draft::new(parse(svg)?, Changes::default(), Vec::new()), PASSES);
-    #[allow(unused_mut)]
     let mut context = Context::new(fixed.report().diagram.clone());
     prepare(&mut context);
     let start = State {
@@ -2512,7 +2511,7 @@ pub mod screening {
                 .as_array()
                 .ok_or("a model without trees")?
                 .iter()
-                .map(Tree::from_json)
+                .map(|tree| Tree::from_json(tree, names.len()))
                 .collect::<Result<_, _>>()?;
             // The base score as a margin: a logistic model keeps it as a probability.
             let base = learner["learner_model_param"]["base_score"]
@@ -2564,7 +2563,10 @@ pub mod screening {
     }
 
     impl Tree {
-        fn from_json(tree: &Value) -> Result<Tree, String> {
+        /// A tree of a model with `features` features; fails unless every
+        /// array has a value per node, every child is a later node of the
+        /// tree and every split is on one of the features.
+        fn from_json(tree: &Value, features: usize) -> Result<Tree, String> {
             let numbers = |key: &str| -> Result<Vec<f64>, String> {
                 tree[key]
                     .as_array()
@@ -2577,13 +2579,41 @@ pub mod screening {
                     })
                     .collect()
             };
-            Ok(Tree {
+            let tree = Tree {
                 left: numbers("left_children")?.into_iter().map(|v| v as i64).collect(),
                 right: numbers("right_children")?.into_iter().map(|v| v as i64).collect(),
                 feature: numbers("split_indices")?.into_iter().map(|v| v as usize).collect(),
                 condition: numbers("split_conditions")?.into_iter().map(|v| v as f32).collect(),
                 default_left: numbers("default_left")?.into_iter().map(|v| v != 0.0).collect(),
-            })
+            };
+            let nodes = tree.left.len();
+            if nodes == 0
+                || [
+                    tree.right.len(),
+                    tree.feature.len(),
+                    tree.condition.len(),
+                    tree.default_left.len(),
+                ]
+                .iter()
+                .any(|&length| length != nodes)
+            {
+                return Err("a tree whose arrays do not have a value per node".to_owned());
+            }
+            // XGBoost puts children after their parent, so walking a tree ends.
+            let child = |node: usize, c: i64| c == -1 || (c as usize > node && (c as usize) < nodes);
+            for node in 0..nodes {
+                let (left, right) = (tree.left[node], tree.right[node]);
+                if !child(node, left) || !child(node, right) || (left == -1) != (right == -1) {
+                    return Err(format!("a tree node {node} with children {left} and {right}"));
+                }
+                if left >= 0 && tree.feature[node] >= features {
+                    return Err(format!(
+                        "a tree node {node} split on feature {} of {features}",
+                        tree.feature[node]
+                    ));
+                }
+            }
+            Ok(tree)
         }
 
         /// As XGBoost walks it: left when the value, as a 32-bit float, is
@@ -2891,5 +2921,54 @@ pub mod screening {
     /// `screen` ranks first.
     pub fn arrange_screened(svg: &str, screen: &Screen) -> Result<FixResult, SvgInputError> {
         super::arranged(svg, |context| context.screen = Some(screen.clone()))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{Screen, Tree, ranks};
+
+        /// One tree on two features: by the second (missing goes left)
+        /// to a leaf of -1 or 1.
+        const MODEL: &str = r#"{"learner": {
+            "feature_names": ["candidates", "prior_gain~"],
+            "learner_model_param": {"base_score": "[5E-1]"},
+            "objective": {"name": "binary:logistic"},
+            "gradient_booster": {"model": {"trees": [{
+                "left_children": [1, -1, -1], "right_children": [2, -1, -1],
+                "split_indices": [1, 0, 0], "split_conditions": [0.0, -1.0, 1.0],
+                "default_left": [1, 0, 0]
+            }]}}
+        }}"#;
+
+        #[test]
+        fn a_tree_sends_a_missing_value_its_default_way() {
+            // Given a model splitting on a feature, missing values going left
+            let screen = Screen::from_xgboost_json(MODEL, 4).expect("the model reads");
+
+            // When rows below, above and missing on that feature are scored
+            let margins = screen.margins(&[vec![10.0, -5.0], vec![10.0, 5.0], vec![10.0, f64::NAN]]);
+
+            // Then they go left, right and left (a base score of 0.5 adds nothing as a margin)
+            assert_eq!(margins, vec![-1.0, 1.0, -1.0]);
+        }
+
+        #[test]
+        fn a_model_splitting_on_a_feature_it_lacks_is_refused() {
+            // Given a model whose tree splits on a third feature of two
+            let broken = MODEL.replace(r#""split_indices": [1, 0, 0]"#, r#""split_indices": [2, 0, 0]"#);
+
+            // When it is read, then it is refused rather than crashing later
+            assert!(Screen::from_xgboost_json(&broken, 4).is_err());
+            assert!(Tree::from_json(&serde_json::json!({}), 2).is_err());
+        }
+
+        #[test]
+        fn ranks_share_the_average_place_of_ties() {
+            // Given values with a tie, when ranked as pandas' rank(pct=True) does
+            let ranked = ranks(&[3.0, 1.0, 3.0, 2.0]);
+
+            // Then the tie shares places 3 and 4, out of 4
+            assert_eq!(ranked, vec![0.875, 0.25, 0.875, 0.5]);
+        }
     }
 }
