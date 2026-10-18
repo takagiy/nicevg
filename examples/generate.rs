@@ -15,7 +15,10 @@
 //! `--grow` grows each kind from a few nodes by rewriting a part at a time
 //! (a step split, a check that branches, a store, a junction table, a
 //! service in a boundary of its own), instead of drawing it from one fixed
-//! plan; their files are `<kind>-<size>-<mess>-grown-<seed>.svg`.
+//! plan; their files are `<kind>-<size>-<mess>-grown-<seed>.svg`. Each
+//! is grown by a hand of its own, which leans to some rewrites, draws
+//! nodes as boxes or circles more or less as the kind usually does, and
+//! boxes them within boxes more, less or not at all.
 //! `--mess` picks how rough: `tidy`, `sloppy`, `messy` or `wild`. Each file
 //! is `<kind>-<size>-<mess>-<seed>.svg`. The same arguments always give
 //! the same files. Each draft is read back with `nicevg::analyze`, and its
@@ -1271,6 +1274,16 @@ struct SpecNode {
     x: Option<f64>,
     #[serde(default)]
     y: Option<f64>,
+    /// How the node is drawn, when not as its shape says: a grown node
+    /// keeps the shape its part has and is drawn as its hand draws it.
+    #[serde(skip)]
+    drawn: Option<SpecShape>,
+}
+
+impl SpecNode {
+    fn look(&self) -> SpecShape {
+        self.drawn.unwrap_or(self.shape)
+    }
 }
 
 #[derive(Clone, Copy, Default, Deserialize, PartialEq)]
@@ -1559,11 +1572,11 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
                 )
             } else {
                 // A wide layer wraps onto the rows below it.
-                let width = if n.shape == SpecShape::Table { 300.0 } else { 230.0 };
+                let width = if n.look() == SpecShape::Table { 300.0 } else { 230.0 };
                 let below = (i / PER_ROW) as f64 * (tallest + 80.0);
                 (160.0 + (i % PER_ROW) as f64 * width, row_top + below + tallest / 2.0)
             };
-            let (class, shape, lines) = match n.shape {
+            let (class, shape, lines) = match n.look() {
                 SpecShape::Table => {
                     let lines = std::iter::once(n.label.clone())
                         .chain(n.columns.iter().cloned())
@@ -1579,7 +1592,7 @@ fn from_spec(rng: &mut Rng, spec: &Spec, mess: Mess, layout: Option<Layout>) -> 
                 SpecShape::Rect => (if flow { "task" } else { "box" }, Shape::Rect, wrapped(&n.label)),
             };
             let node = d.add(rng, class, shape, lines, at);
-            if n.shape == SpecShape::Circle && !n.label.is_empty() {
+            if n.look() == SpecShape::Circle && !n.label.is_empty() {
                 d.captions.push((node, n.label.chars().take(30).collect()));
             }
             placed[*v] = Some(node);
@@ -1696,12 +1709,14 @@ impl Grower {
         id
     }
 
-    fn node(&mut self, label: String, shape: SpecShape, group: Option<String>, columns: Vec<String>) -> String {
+    fn node(&mut self, label: String, role: Role, group: Option<String>, columns: Vec<String>) -> String {
         let id = format!("n{}", self.spec.nodes.len() + 1);
+        let drawn = self.hand.draws(role, self.spec.nodes.len());
         self.spec.nodes.push(SpecNode {
             id: id.clone(),
             label,
-            shape,
+            shape: role.shape,
+            drawn: (drawn != role.shape).then_some(drawn),
             columns,
             group,
             x: None,
@@ -1716,7 +1731,7 @@ impl Grower {
         if let Some(size) = self.sizes.get(&n.id) {
             return *size;
         }
-        let lines = match n.shape {
+        let lines = match n.look() {
             SpecShape::Circle => vec![String::new()],
             SpecShape::Table => std::iter::once(n.label.clone())
                 .chain(n.columns.iter().cloned())
@@ -1724,7 +1739,7 @@ impl Grower {
             _ => wrapped(&n.label),
         };
         let widest = lines.iter().map(|l| l.chars().count()).max().unwrap_or(1) as f64;
-        match n.shape {
+        match n.look() {
             SpecShape::Circle | SpecShape::Process => {
                 let d = (widest * FONT * 0.62 + 24.0).max(64.0);
                 (d, d)
@@ -2134,6 +2149,14 @@ impl Grower {
 
     /// The finished spec, checked: ids unique, every edge between nodes
     /// it has, and every group a node names among its groups.
+    /// Everything out of its box, and no boxes left.
+    fn unboxed(&mut self) {
+        for n in &mut self.spec.nodes {
+            n.group = None;
+        }
+        self.spec.groups.clear();
+    }
+
     fn done(self) -> Spec {
         let mut spec = self.spec;
         // Placed in drawn pixels; a spec's drawn positions are spread by
@@ -2164,8 +2187,8 @@ impl Grower {
 
 /// How one hand grows a diagram, drawn once per diagram so drafts of a
 /// kind differ in manner as well as in detail: which rewrites it reaches
-/// for, how much it keeps to simple parts, how roomy it is, and how close
-/// what it joins up lies.
+/// for, how much it keeps to simple parts, how roomy it is, how close
+/// what it joins up lies, how it draws nodes and how much it boxes them.
 #[derive(Clone, Copy)]
 struct Hand {
     /// Each rewrite's weight is multiplied by its own of these.
@@ -2181,6 +2204,64 @@ struct Hand {
     /// How much likelier a node two links away is joined than one three
     /// away.
     reach: f64,
+    shapes: Shapes,
+    /// How closely it keeps to the usual notation, from 0 to 1. The less
+    /// careful, the likelier it draws in a way of its own, and the more
+    /// parts it draws against its own way: a box where it would draw a
+    /// circle or a circle for a box, the same for every node of the part,
+    /// so a process comes out boxed and a store round.
+    care: f64,
+    /// Settles which parts a hand draws oddly, and the shapes of a mixed
+    /// hand's nodes.
+    seed: u64,
+    /// How keen it is on boxes within boxes: the chance of a new inner box
+    /// is multiplied by this; at zero it draws no boxes at all.
+    nesting: f64,
+}
+
+/// How a hand draws the parts that are boxes or circles (a table stays a
+/// table, an event or a check keeps its shape unless drawn oddly): as the
+/// kind of diagram usually does, all as boxes, all as circles, or each
+/// node a circle with a chance of its own.
+#[derive(Clone, Copy)]
+enum Shapes {
+    Usual,
+    Boxes,
+    Circles,
+    Mixed(f64),
+}
+
+/// What a node stands for in its diagram, with the shape it usually has.
+#[derive(Clone, Copy)]
+struct Role {
+    name: &'static str,
+    shape: SpecShape,
+}
+
+impl Role {
+    const STEP: Role = Role::new("step", SpecShape::Rect);
+    const EVENT: Role = Role::new("event", SpecShape::Circle);
+    const CHECK: Role = Role::new("check", SpecShape::Decision);
+    const GATE: Role = Role::new("gate", SpecShape::Decision);
+    const PROCESS: Role = Role::new("process", SpecShape::Process);
+    const STORE: Role = Role::new("store", SpecShape::Rect);
+    const EXTERNAL: Role = Role::new("external", SpecShape::Rect);
+    const TABLE: Role = Role::new("table", SpecShape::Table);
+    const APP: Role = Role::new("app", SpecShape::Rect);
+    const DATABASE: Role = Role::new("database", SpecShape::Rect);
+    const PERSON: Role = Role::new("person", SpecShape::Rect);
+    const SYSTEM: Role = Role::new("system", SpecShape::Rect);
+    const QUEUE: Role = Role::new("queue", SpecShape::Rect);
+    const DOOR: Role = Role::new("door", SpecShape::Rect);
+    const SERVICE: Role = Role::new("service", SpecShape::Rect);
+    const DATA_STORE: Role = Role::new("data store", SpecShape::Rect);
+    const CLIENT: Role = Role::new("client", SpecShape::Rect);
+    const OUTSIDE: Role = Role::new("outside", SpecShape::Rect);
+    const WORKER: Role = Role::new("worker", SpecShape::Rect);
+
+    const fn new(name: &'static str, shape: SpecShape) -> Role {
+        Role { name, shape }
+    }
 }
 
 impl Hand {
@@ -2191,9 +2272,26 @@ impl Hand {
         wander: 1.0 / 7.0,
         room: 1.0,
         reach: 2.0,
+        shapes: Shapes::Usual,
+        care: 1.0,
+        seed: 0,
+        nesting: 1.0,
     };
 
     fn new(rng: &mut Rng) -> Hand {
+        // Most hands fairly careful, a few not at all.
+        let care = 1.0 - rng.unit().powi(2);
+        // A careful hand draws as the kind usually does; another in a way of
+        // its own.
+        let shapes = if rng.chance(care) {
+            Shapes::Usual
+        } else {
+            match rng.unit() {
+                u if u < 0.45 => Shapes::Boxes,
+                u if u < 0.65 => Shapes::Circles,
+                _ => Shapes::Mixed(rng.unit()),
+            }
+        };
         // Between a sixth and six times as keen, evenly on a log scale.
         let mut tastes = [1.0; 8];
         for taste in &mut tastes {
@@ -2210,6 +2308,48 @@ impl Hand {
             // From half as likely (three links away preferred) to six times,
             // evenly on a log scale.
             reach: 0.5 * 12f64.powf(rng.unit()),
+            shapes,
+            care,
+            seed: rng.next(),
+            // A quarter draw no boxes; the rest from a third as keen to three
+            // times, evenly on a log scale.
+            nesting: if rng.chance(0.25) {
+                0.0
+            } else {
+                3f64.powf(rng.unit() * 2.0 - 1.0)
+            },
+        }
+    }
+
+    /// How this hand draws the `index`th node, standing for `role`.
+    fn draws(&self, role: Role, index: usize) -> SpecShape {
+        use SpecShape::{Circle, Decision, Process, Rect, Table};
+        let either = matches!(role.shape, Rect | Process);
+        let shape = match self.shapes {
+            Shapes::Boxes if either => Rect,
+            Shapes::Circles if either => Process,
+            // Each node its own fixed draw, however often it is asked for.
+            Shapes::Mixed(round) if either => {
+                if Rng::new(self.seed ^ index as u64).chance(round) {
+                    Process
+                } else {
+                    Rect
+                }
+            }
+            _ => role.shape,
+        };
+        let part = role
+            .name
+            .bytes()
+            .fold(self.seed, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3));
+        // Half the parts at most, for a hand with no care at all.
+        if !Rng::new(part).chance((1.0 - self.care) * 0.5) {
+            return shape;
+        }
+        match shape {
+            Rect | Decision => Process,
+            Process | Circle => Rect,
+            Table => Table,
         }
     }
 
@@ -2334,9 +2474,9 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
         Some(id)
     };
     let first = new_lane(&mut g);
-    let start = g.node("Start".into(), SpecShape::Circle, first.clone(), Vec::new());
-    let step = g.node(steps.take(), SpecShape::Rect, first.clone(), Vec::new());
-    let end = g.node("Done".into(), SpecShape::Circle, first, Vec::new());
+    let start = g.node("Start".into(), Role::EVENT, first.clone(), Vec::new());
+    let step = g.node(steps.take(), Role::STEP, first.clone(), Vec::new());
+    let end = g.node("Done".into(), Role::EVENT, first, Vec::new());
     g.put(&start, (0.0, 60.0));
     let room = g.hand.room;
     let gap = |rng: &mut Rng| ([40.0, 60.0, 80.0, 110.0][rng.below(4)] * room).max(32.0);
@@ -2382,7 +2522,7 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
                 };
                 let e = g.spec.edges.remove(i);
                 let lane = lane_for(g, rng, &e.from);
-                let t = g.node(steps.take(), SpecShape::Rect, lane, Vec::new());
+                let t = g.node(steps.take(), Role::STEP, lane, Vec::new());
                 let (x, row) = (g.after(&e.from, &t, gap(rng)), row_after(g, &e.from, &t));
                 g.in_row(&t, x, row);
                 g.edge(&e.from, &t, e.label);
@@ -2395,15 +2535,10 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
                 };
                 let e = g.spec.edges.remove(i);
                 let lane = g.get(&e.from).group.clone();
-                let d = g.node(
-                    rng.pick(QUESTIONS).into(),
-                    SpecShape::Decision,
-                    lane.clone(),
-                    Vec::new(),
-                );
-                let yes = g.node(steps.take(), SpecShape::Rect, lane, Vec::new());
+                let d = g.node(rng.pick(QUESTIONS).into(), Role::CHECK, lane.clone(), Vec::new());
+                let yes = g.node(steps.take(), Role::STEP, lane, Vec::new());
                 let other = lane_for(g, rng, &e.from);
-                let no = g.node(steps.take(), SpecShape::Rect, other.clone(), Vec::new());
+                let no = g.node(steps.take(), Role::STEP, other.clone(), Vec::new());
                 // "Yes" goes on along the row, "no" drops to the row below.
                 let row = g.row_of(&e.from);
                 let x = g.after(&e.from, &d, gap(rng));
@@ -2422,7 +2557,7 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
                 g.edge(&yes, &e.to, None);
                 g.edge(&d, &no, Some("no".into()));
                 if rng.chance(0.3) {
-                    let failed = g.node(rng.pick(FAILED_ENDS).into(), SpecShape::Circle, other, Vec::new());
+                    let failed = g.node(rng.pick(FAILED_ENDS).into(), Role::EVENT, other, Vec::new());
                     let (x, row) = (g.after(&no, &failed, gap(rng)), g.row_of(&no));
                     g.in_lane(&failed, x, row);
                     g.edge(&no, &failed, None);
@@ -2437,7 +2572,7 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
                 };
                 let e = g.spec.edges.remove(i);
                 let lane = g.get(&e.from).group.clone();
-                let d = g.node(rng.pick(QUESTIONS).into(), SpecShape::Decision, lane, Vec::new());
+                let d = g.node(rng.pick(QUESTIONS).into(), Role::CHECK, lane, Vec::new());
                 let (x, row) = (g.after(&e.from, &d, gap(rng)), g.row_of(&e.from));
                 g.in_lane(&d, x, row);
                 g.edge(&e.from, &d, e.label);
@@ -2451,11 +2586,11 @@ fn grow_flow(rng: &mut Rng, size: Size) -> Spec {
                 };
                 let e = g.spec.edges.remove(i);
                 let lane = g.get(&e.from).group.clone();
-                let split = g.node("+".into(), SpecShape::Decision, lane.clone(), Vec::new());
-                let join = g.node("+".into(), SpecShape::Decision, lane.clone(), Vec::new());
-                let one = g.node(steps.take(), SpecShape::Rect, lane, Vec::new());
+                let split = g.node("+".into(), Role::GATE, lane.clone(), Vec::new());
+                let join = g.node("+".into(), Role::GATE, lane.clone(), Vec::new());
+                let one = g.node(steps.take(), Role::STEP, lane, Vec::new());
                 let other = lane_for(g, rng, &e.from);
-                let two = g.node(steps.take(), SpecShape::Rect, other, Vec::new());
+                let two = g.node(steps.take(), Role::STEP, other, Vec::new());
                 // One above the other between the split and the join.
                 let row = g.row_of(&e.from);
                 let x = g.after(&e.from, &split, gap(rng));
@@ -2514,11 +2649,11 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
     let mut stored = 0;
     let mut process = |g: &mut Grower, name: String| {
         numbered += 1;
-        g.node(format!("{numbered} {name}"), SpecShape::Process, None, Vec::new())
+        g.node(format!("{numbered} {name}"), Role::PROCESS, None, Vec::new())
     };
     let mut store = |g: &mut Grower, name: String| {
         stored += 1;
-        g.node(format!("D{stored} {name}"), SpecShape::Rect, None, Vec::new())
+        g.node(format!("D{stored} {name}"), Role::STORE, None, Vec::new())
     };
     let flow = |rng: &mut Rng| Some(rng.pick(FLOWS).to_owned());
     // Which way this diagram reads: work moves ahead, stores sit to the side.
@@ -2537,9 +2672,9 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
     ];
     let first = process(&mut g, processes.take());
     g.put(&first, (0.0, 0.0));
-    let source = g.node(entities.take(), SpecShape::Rect, None, Vec::new());
+    let source = g.node(entities.take(), Role::EXTERNAL, None, Vec::new());
     g.beside(rng, &source, &first, &[back, side, other_side]);
-    let sink = g.node(entities.take(), SpecShape::Rect, None, Vec::new());
+    let sink = g.node(entities.take(), Role::EXTERNAL, None, Vec::new());
     g.beside(rng, &sink, &first, &[ahead, side, other_side]);
     let kept = store(&mut g, stores.take());
     g.beside(rng, &kept, &first, &aside);
@@ -2587,7 +2722,7 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
                 let Some(p) = g.simple_node(rng, is_process) else {
                     return;
                 };
-                let e = g.node(entities.take(), SpecShape::Rect, None, Vec::new());
+                let e = g.node(entities.take(), Role::EXTERNAL, None, Vec::new());
                 let outward = g.outward(&p);
                 g.beside(rng, &e, &p, &outward);
                 if rng.chance(0.5) {
@@ -2633,13 +2768,13 @@ fn grow_dfd(rng: &mut Rng, size: Size) -> Spec {
                 g.get_mut(&p).label = format!("{number}.1 {name}");
                 let second = g.node(
                     format!("{number}.2 {}", processes.take()),
-                    SpecShape::Process,
+                    Role::PROCESS,
                     None,
                     Vec::new(),
                 );
                 let third = g.node(
                     format!("{number}.3 {}", processes.take()),
-                    SpecShape::Process,
+                    Role::PROCESS,
                     None,
                     Vec::new(),
                 );
@@ -2685,7 +2820,7 @@ fn grow_er(rng: &mut Rng, size: Size) -> Spec {
         let columns = std::iter::once("id".to_owned())
             .chain(own.iter().map(|c| (*c).to_owned()))
             .collect();
-        g.node(name, SpecShape::Table, None, columns)
+        g.node(name, Role::TABLE, None, columns)
     };
     let taken = |g: &Grower, name: &str| g.spec.nodes.iter().any(|n| n.label == name);
     // `child` gains a key to `parent`, after its id and the keys before.
@@ -2897,6 +3032,7 @@ fn place_boxed(g: &mut Grower, rng: &mut Rng, [ahead, side, other_side, back]: [
                 id: item.clone(),
                 label: node.map_or_else(String::new, |n| n.label.clone()),
                 shape: node.map_or(SpecShape::Rect, |n| n.shape),
+                drawn: node.and_then(|n| n.drawn),
                 columns: node.map_or_else(Vec::new, |n| n.columns.clone()),
                 group: None,
                 x: None,
@@ -3005,10 +3141,10 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
     let reads = reading(rng);
     let verb = |rng: &mut Rng| Some(rng.pick(VERBS).to_owned());
     let system = g.group("Platform", None);
-    let web = g.node(apps.take(), SpecShape::Rect, Some(system.clone()), Vec::new());
-    let api = g.node(apps.take(), SpecShape::Rect, Some(system.clone()), Vec::new());
-    let db = g.node(databases.take(), SpecShape::Rect, Some(system), Vec::new());
-    let person = g.node(people.take(), SpecShape::Rect, None, Vec::new());
+    let web = g.node(apps.take(), Role::APP, Some(system.clone()), Vec::new());
+    let api = g.node(apps.take(), Role::APP, Some(system.clone()), Vec::new());
+    let db = g.node(databases.take(), Role::DATABASE, Some(system), Vec::new());
+    let person = g.node(people.take(), Role::PERSON, None, Vec::new());
     g.edge(&person, &web, Some("Uses".into()));
     g.edge(&web, &api, verb(rng));
     g.edge(&api, &db, verb(rng));
@@ -3023,13 +3159,13 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
                 let Some(caller) = g.simple_node(rng, is_app) else {
                     return;
                 };
-                let group = if rng.chance(0.3) {
+                let group = if rng.chance(0.3 * g.hand.nesting) {
                     let parent = g.get(&caller).group.clone();
                     Some(g.group(&domains.take(), parent))
                 } else {
                     g.get(&caller).group.clone()
                 };
-                let s = g.node(apps.take(), SpecShape::Rect, group, Vec::new());
+                let s = g.node(apps.take(), Role::APP, group, Vec::new());
                 g.edge(&caller, &s, verb(rng));
             }
             // A database a service keeps, beside it in its boundary.
@@ -3038,13 +3174,13 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
                     return;
                 };
                 let group = g.get(&owner).group.clone();
-                let d = g.node(databases.take(), SpecShape::Rect, group, Vec::new());
+                let d = g.node(databases.take(), Role::DATABASE, group, Vec::new());
                 g.edge(&owner, &d, verb(rng));
             }
             // Someone using an app.
             2 => {
                 let Some(app) = g.simple_node(rng, is_app) else { return };
-                let p = g.node(people.take(), SpecShape::Rect, None, Vec::new());
+                let p = g.node(people.take(), Role::PERSON, None, Vec::new());
                 g.edge(&p, &app, Some("Uses".into()));
             }
             // An outside system a service calls.
@@ -3052,7 +3188,7 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
                 let Some(caller) = g.simple_node(rng, is_app) else {
                     return;
                 };
-                let x = g.node(systems.take(), SpecShape::Rect, None, Vec::new());
+                let x = g.node(systems.take(), Role::SYSTEM, None, Vec::new());
                 g.edge(&caller, &x, verb(rng));
             }
             // A queue between two services.
@@ -3062,7 +3198,7 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
                 };
                 let e = g.spec.edges.remove(i);
                 let group = g.get(&e.from).group.clone();
-                let q = g.node(queues.take(), SpecShape::Rect, group, Vec::new());
+                let q = g.node(queues.take(), Role::QUEUE, group, Vec::new());
                 g.edge(&e.from, &q, Some("Sends events to".into()));
                 g.edge(&q, &e.to, Some("Delivers to".into()));
             }
@@ -3076,6 +3212,9 @@ fn grow_c4(rng: &mut Rng, size: Size) -> Spec {
             }
         }
     });
+    if g.hand.nesting == 0.0 {
+        g.unboxed();
+    }
     place_boxed(&mut g, rng, reads);
     g.done()
 }
@@ -3098,10 +3237,10 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
     let public = g.group("Public subnet", Some(network.clone()));
     let private = g.group("Private subnet", Some(network.clone()));
     let data = g.group("Data subnet", Some(network.clone()));
-    let entry = g.node(doors.take(), SpecShape::Rect, Some(public.clone()), Vec::new());
-    let first = g.node(services.take(), SpecShape::Rect, Some(private.clone()), Vec::new());
-    let store = g.node(stores.take(), SpecShape::Rect, Some(data.clone()), Vec::new());
-    let client = g.node(clients.take(), SpecShape::Rect, None, Vec::new());
+    let entry = g.node(doors.take(), Role::DOOR, Some(public.clone()), Vec::new());
+    let first = g.node(services.take(), Role::SERVICE, Some(private.clone()), Vec::new());
+    let store = g.node(stores.take(), Role::DATA_STORE, Some(data.clone()), Vec::new());
+    let client = g.node(clients.take(), Role::CLIENT, None, Vec::new());
     g.edge(&client, &entry, protocol(rng));
     g.edge(&entry, &first, protocol(rng));
     g.edge(&first, &store, protocol(rng));
@@ -3119,13 +3258,13 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
                 let Some(caller) = g.simple_node(rng, is_service) else {
                     return;
                 };
-                let group = if rng.chance(0.2) {
+                let group = if rng.chance(0.2 * g.hand.nesting) {
                     clusters += 1;
                     Some(g.group(&format!("Cluster {clusters}"), Some(private.clone())))
                 } else {
                     g.get(&caller).group.clone()
                 };
-                let s = g.node(services.take(), SpecShape::Rect, group, Vec::new());
+                let s = g.node(services.take(), Role::SERVICE, group, Vec::new());
                 g.edge(&caller, &s, protocol(rng));
             }
             // A data store a service uses, among the other stores.
@@ -3133,7 +3272,7 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
                 let Some(user) = g.simple_node(rng, is_service) else {
                     return;
                 };
-                let d = g.node(stores.take(), SpecShape::Rect, Some(data.clone()), Vec::new());
+                let d = g.node(stores.take(), Role::DATA_STORE, Some(data.clone()), Vec::new());
                 g.edge(&user, &d, protocol(rng));
             }
             // A client coming in at the edge.
@@ -3141,7 +3280,7 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
                 let Some(door) = g.simple_node(rng, |n| in_group(n, &public)) else {
                     return;
                 };
-                let c = g.node(clients.take(), SpecShape::Rect, None, Vec::new());
+                let c = g.node(clients.take(), Role::CLIENT, None, Vec::new());
                 g.edge(&c, &door, protocol(rng));
             }
             // Another edge service in front of what a client reaches.
@@ -3150,7 +3289,7 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
                     return;
                 };
                 let e = g.spec.edges.remove(i);
-                let front = g.node(doors.take(), SpecShape::Rect, Some(public.clone()), Vec::new());
+                let front = g.node(doors.take(), Role::DOOR, Some(public.clone()), Vec::new());
                 g.edge(&e.from, &front, e.label);
                 g.edge(&front, &e.to, protocol(rng));
             }
@@ -3162,16 +3301,11 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
                 let group = g.get(&producer).group.clone();
                 let q = g.node(
                     format!("{} queue", services.take()),
-                    SpecShape::Rect,
+                    Role::QUEUE,
                     group.clone(),
                     Vec::new(),
                 );
-                let w = g.node(
-                    format!("{} worker", services.take()),
-                    SpecShape::Rect,
-                    group,
-                    Vec::new(),
-                );
+                let w = g.node(format!("{} worker", services.take()), Role::WORKER, group, Vec::new());
                 g.edge(&producer, &q, Some("events".into()));
                 g.edge(&q, &w, Some("events".into()));
             }
@@ -3180,7 +3314,7 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
                 let Some(caller) = g.simple_node(rng, is_service) else {
                     return;
                 };
-                let x = g.node(outside.take(), SpecShape::Rect, None, Vec::new());
+                let x = g.node(outside.take(), Role::OUTSIDE, None, Vec::new());
                 g.edge(&caller, &x, protocol(rng));
             }
             // A link between what is already there, closing a small loop: a
@@ -3198,6 +3332,9 @@ fn grow_arch(rng: &mut Rng, size: Size) -> Spec {
             }
         }
     });
+    if g.hand.nesting == 0.0 {
+        g.unboxed();
+    }
     place_boxed(&mut g, rng, reads);
     g.done()
 }
