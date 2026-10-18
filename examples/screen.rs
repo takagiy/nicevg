@@ -12,6 +12,9 @@
 //! line per diagram: each one's wall time and badness (the quality measure
 //! the tests snapshot).
 //!
+//! `draw` writes each SVG arranged both ways, as `<name>.plain.svg` and
+//! `<name>.screened.svg` in the directory given, to look at.
+//!
 //! `features` writes, for each candidate of each step of the record
 //! example's logs, the features the model would be given, to check them
 //! against the ones learning computes from the same records.
@@ -81,6 +84,22 @@ fn eval(screen: &Screen, out: &str, paths: &[String]) {
     }
 }
 
+fn draw(screen: &Screen, out: &str, paths: &[String]) {
+    std::fs::create_dir_all(out).expect("the directory can be made");
+    for file in svgs(paths) {
+        let name = file
+            .file_stem()
+            .map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+        let svg = std::fs::read_to_string(&file).expect("the SVG is readable");
+        let plain = nicevg::arrange(&svg).expect("the SVG reads");
+        let screened = arrange_screened(&svg, screen).expect("the SVG reads");
+        let dir = std::path::Path::new(out);
+        std::fs::write(dir.join(format!("{name}.plain.svg")), plain.svg).expect("written");
+        std::fs::write(dir.join(format!("{name}.screened.svg")), screened.svg).expect("written");
+        eprintln!("{name}");
+    }
+}
+
 #[cfg(feature = "trace-candidates")]
 fn features(screen: &Screen, logs: &str, out: &str) {
     use std::io::BufRead as _;
@@ -100,7 +119,7 @@ fn features(screen: &Screen, logs: &str, out: &str) {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let usage = "usage: screen eval <model.json> <keep> <out.jsonl> <svg or directory>... | screen features <model.json> <steps.jsonl> <out.jsonl>";
+    let usage = "usage: screen eval <model.json> <keep> <out.jsonl> <svg or directory>... | screen draw <model.json> <keep> <out dir> <svg or directory>... | screen features <model.json> <steps.jsonl> <out.jsonl>";
     let (Some(command), Some(model)) = (args.first(), args.get(1)) else {
         panic!("{usage}");
     };
@@ -110,6 +129,11 @@ fn main() {
             let keep: usize = args.get(2).and_then(|k| k.parse().ok()).expect(usage);
             let screen = Screen::from_xgboost_json(&text, keep).unwrap_or_else(|error| panic!("{error}"));
             eval(&screen, args.get(3).expect(usage), &args[4..]);
+        }
+        "draw" => {
+            let keep: usize = args.get(2).and_then(|k| k.parse().ok()).expect(usage);
+            let screen = Screen::from_xgboost_json(&text, keep).unwrap_or_else(|error| panic!("{error}"));
+            draw(&screen, args.get(3).expect(usage), &args[4..]);
         }
         #[cfg(feature = "trace-candidates")]
         "features" => {
