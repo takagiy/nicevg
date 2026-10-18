@@ -1,0 +1,80 @@
+/**
+ * Synapse worker architecture, based on https://github.com/matrix-org/synapse/blob/develop/docs/workers.md
+ * and https://github.com/element-hq/synapse/blob/develop/docker/configure_workers_and_start.py.
+ * Shows a worker deployment's request routing, event persistence and replication, plus
+ * the shared database and outbound federation, application-service and push work.
+ */
+import type { Sketch } from "nicevg";
+import { box, type SimpleNode } from "nicevg/style/simple";
+
+const sketch = {
+  nodes: [
+    { id: "synapse", class: "box", x: 60, y: 50, width: 1100, height: 720, label: "Synapse deployment", fill: "#eff6ff" },
+    { id: "destinations", class: "box", x: 1280, y: 80, width: 340, height: 620, label: "External systems", fill: "#fff7ed" },
+    { id: "clients", class: "box", x: 100, y: 0, label: "Matrix clients" },
+    { id: "remote", class: "box", x: 1320, y: 0, label: "Remote homeservers" },
+    { id: "proxy", class: "box", x: 480, y: 100, label: "HTTP reverse proxy\n(e.g. nginx / HAProxy)" },
+    { id: "main", class: "box", x: 140, y: 260, label: "Main Synapse process" },
+    { id: "creator", class: "box", x: 390, y: 260, label: "event_creator\n(generic_worker)" },
+    { id: "persister", class: "box", x: 650, y: 260, label: "event_persister\n(generic_worker)" },
+    { id: "sync", class: "box", x: 900, y: 260, label: "synchrotron\n(generic_worker)" },
+    { id: "media", class: "box", x: 140, y: 420, label: "media_repository\n(generic_worker)" },
+    { id: "userdir", class: "box", x: 390, y: 420, label: "user directory worker\n(generic_worker)" },
+    { id: "fed_sender", class: "box", x: 650, y: 420, label: "federation_sender\n(generic_worker)" },
+    { id: "appservice_worker", class: "box", x: 900, y: 420, label: "appservice notifier\n(generic_worker)" },
+    { id: "pusher", class: "box", x: 140, y: 580, label: "pusher\n(generic_worker)" },
+    { id: "redis", class: "box", x: 390, y: 580, label: "Redis\nreplication pub/sub + cache" },
+    { id: "postgres", class: "box", x: 650, y: 580, label: "PostgreSQL\nshared Synapse database" },
+    { id: "config", class: "box", x: 900, y: 580, label: "Shared config\ninstance_map, stream_writers" },
+    { id: "sygnal", class: "box", x: 1360, y: 190, label: "Push gateway\n(e.g. Sygnal)" },
+    { id: "appservice", class: "box", x: 1360, y: 330, label: "Matrix Application Service" },
+    { id: "email", class: "box", x: 1360, y: 470, label: "Email transport" },
+    { id: "replication", class: "box", x: 500, y: 700, label: "HTTP replication listeners" },
+    { id: "matrix_federation", class: "box", x: 1360, y: 610, label: "Matrix federation API" },
+  ],
+  edges: [
+    { from: "clients", to: "proxy", label: "Client-Server API HTTP" },
+    { from: "remote", to: "proxy", label: "federation transactions / requests" },
+    { from: "proxy", to: "main", label: "unmatched endpoints" },
+    { from: "proxy", to: "creator", label: "room event send endpoints" },
+    { from: "proxy", to: "persister", label: "event endpoints (optional direct route)" },
+    { from: "proxy", to: "sync", label: "`/_matrix/client/.../sync`" },
+    { from: "proxy", to: "media", label: "`/_matrix/media/`" },
+    { from: "proxy", to: "userdir", label: "user directory search" },
+    { from: "proxy", to: "main", label: "inbound federation `send/` (or generic worker)" },
+    { from: "creator", to: "persister", label: "created events via HTTP replication" },
+    { from: "persister", to: "postgres", label: "persist event DAG + update events stream" },
+    { from: "main", to: "postgres", label: "shared reads and writes" },
+    { from: "creator", to: "postgres", label: "event creation state reads" },
+    { from: "sync", to: "postgres", label: "sync state / event reads" },
+    { from: "main", to: "redis", label: "replication commands; shared cache" },
+    { from: "creator", to: "redis", label: "subscribe / publish replication streams" },
+    { from: "persister", to: "redis", label: "publish events stream updates" },
+    { from: "sync", to: "redis", label: "consume replication streams" },
+    { from: "media", to: "redis", label: "replication + shared cache" },
+    { from: "userdir", to: "redis", label: "replication + shared cache" },
+    { from: "main", to: "replication", label: "HTTP replication listener" },
+    { from: "creator", to: "replication", label: "HTTP replication listener" },
+    { from: "persister", to: "replication", label: "HTTP replication listener" },
+    { from: "sync", to: "replication", label: "HTTP replication listener" },
+    { from: "config", to: "main", label: "shared homeserver settings" },
+    { from: "config", to: "creator", label: "worker_name, instance_map" },
+    { from: "config", to: "persister", label: "events stream writer assignment" },
+    { from: "config", to: "fed_sender", label: "federation_sender_instances" },
+    { from: "config", to: "pusher", label: "pusher_instances" },
+    { from: "config", to: "appservice_worker", label: "notify_appservices_from_worker" },
+    { from: "main", to: "fed_sender", label: "outbound federation work via replication" },
+    { from: "fed_sender", to: "matrix_federation", label: "federation transactions" },
+    { from: "matrix_federation", to: "remote", label: "Matrix federation HTTP" },
+    { from: "main", to: "appservice_worker", label: "appservice notification stream" },
+    { from: "appservice_worker", to: "appservice", label: "Application Service transactions" },
+    { from: "main", to: "pusher", label: "push actions / pusher stream" },
+    { from: "pusher", to: "sygnal", label: "push gateway HTTP" },
+    { from: "pusher", to: "email", label: "email notifications" },
+    { from: "media", to: "postgres", label: "media metadata" },
+    { from: "userdir", to: "postgres", label: "directory search/update data" },
+  ],
+  style: { box: (node) => box(node as SimpleNode) },
+} satisfies Sketch;
+
+export default sketch;

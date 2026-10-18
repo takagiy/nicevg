@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "nicevg": ["../src/index.ts"],
+      "nicevg/style/simple": ["../src/style/simple.ts"]
+    }
+  },
+  "include": ["sketches", "styles"]
+}
