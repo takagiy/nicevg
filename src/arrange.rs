@@ -119,6 +119,8 @@ struct Context {
     /// Pairs of nodes, either way round, joined by a connector running
     /// straight between them: along a row (`false`) or a column (`true`).
     joined: HashSet<(String, String, bool)>,
+    #[cfg(feature = "trace-candidates")]
+    step: trace::Step,
 }
 
 #[derive(Clone)]
@@ -196,6 +198,10 @@ fn improve<'scope>(
         .partition(|(_, next)| keeps(next));
     compared.sort_by(|a, b| a.1.score.total_cmp(&b.1.score));
     let mut compared = compared.into_iter();
+    // Each candidate given the further passes: its score after them and
+    // whether it kept to the rules.
+    #[cfg(feature = "trace-candidates")]
+    let mut further = Vec::new();
     let best = compared
         .by_ref()
         .map(|(index, next)| {
@@ -205,6 +211,8 @@ fn improve<'scope>(
                 result,
                 offsets: next.offsets,
             };
+            #[cfg(feature = "trace-candidates")]
+            further.push((index, next.score, keeps(&next)));
             (index, next)
         })
         .find(|(_, next)| keeps(next) && next.score < state.score - 1e-9);
@@ -215,8 +223,9 @@ fn improve<'scope>(
         steps,
         &retried,
         &gains,
-        best.as_ref().map(|(index, _)| *index),
+        best.as_ref(),
         &changed,
+        &further,
     );
     let best = best.map(|(_, next)| next);
     // The candidates not taken are many documents to free: let another
@@ -383,6 +392,18 @@ fn evaluate_all<'scope>(
 /// around them may have moved since they were last routed.
 #[tracing::instrument(skip_all)]
 fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<State> {
+    let (draft, offsets) = moved(state, id, step)?;
+    let result = fix_after_moves(draft, 1);
+    Some(State {
+        score: context.score(result.report(), &offsets),
+        result,
+        offsets,
+    })
+}
+
+/// Moves `id` by `step` with nothing fixed yet: the draft fixing starts
+/// from, and every node's offset after the move.
+fn moved(state: &State, id: &str, step: Move) -> Option<(Draft, HashMap<String, Point>)> {
     let in_place = step.dx == 0.0 && step.dy == 0.0;
     let ids: Vec<String> = id.split(TOGETHER).map(str::to_owned).collect();
     let mut document = state.result.document.clone();
@@ -425,12 +446,7 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
     } else {
         Draft::new(document, state.result.changes.with(change), ids)
     };
-    let result = fix_after_moves(draft, 1);
-    Some(State {
-        score: context.score(result.report(), &offsets),
-        result,
-        offsets,
-    })
+    Some((draft, offsets))
 }
 
 static TRAILING_TRANSLATE: LazyLock<Regex> = LazyLock::new(|| {
@@ -740,6 +756,8 @@ impl Context {
                 })
                 .collect(),
             baseline,
+            #[cfg(feature = "trace-candidates")]
+            step: trace::Step::default(),
         }
     }
 
@@ -818,8 +836,16 @@ impl Context {
                 })
     }
 
-    #[tracing::instrument(skip_all)]
     fn score(&self, report: &AnalysisReport, offsets: &HashMap<String, Point>) -> f64 {
+        // Added up in this order, as before the terms were named.
+        let terms = self.score_terms(report, offsets);
+        terms[1..].iter().fold(terms[0], |sum, term| sum + term)
+    }
+
+    /// What the score adds up: issues, routes, bent connectors, jogs, port
+    /// spacing, lone ports off centre, unclear ends, movement, alignments.
+    #[tracing::instrument(name = "score", skip_all)]
+    fn score_terms(&self, report: &AnalysisReport, offsets: &HashMap<String, Point>) -> [f64; 9] {
         let connectors = &report.diagram.connectors;
         let pairs = connectors
             .iter()
@@ -832,15 +858,17 @@ impl Context {
         let bent = connectors.iter().filter(|c| turns(&c.points) > 0).count();
         let movement: f64 = offsets.values().map(|offset| offset.x.abs() + offset.y.abs()).sum();
         let sides = uneven_sides(&report.diagram);
-        report.issues.len() as f64 * ISSUE_COST
-            + routes
-            + bent as f64 * BENT_COST
-            + jog_cost(&report.diagram)
-            + port_unevenness(&sides) * PORT_SPACING_COST
-            + lone_port_offset(&sides) * LONE_PORT_COST
-            + unclear_ends(connectors)
-            + movement * MOVEMENT_COST
-            + self.alignment_cost(&report.diagram)
+        [
+            report.issues.len() as f64 * ISSUE_COST,
+            routes,
+            bent as f64 * BENT_COST,
+            jog_cost(&report.diagram),
+            port_unevenness(&sides) * PORT_SPACING_COST,
+            lone_port_offset(&sides) * LONE_PORT_COST,
+            unclear_ends(connectors),
+            movement * MOVEMENT_COST,
+            self.alignment_cost(&report.diagram),
+        ]
     }
 
     /// The cost of the alignments a diagram breaks: each pair in a line
@@ -1455,26 +1483,54 @@ mod tests {
 /// could be known of it before trying it, and what trying it showed.
 #[cfg(feature = "trace-candidates")]
 pub mod trace {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
     use std::sync::Mutex;
 
     use serde_json::json;
 
     use super::{
-        Context, MAX_STEPS, Move, State, TOGETHER, changed_areas_touch, crossings, route_cost, routes_cost,
-        segment_intersects_interior, segments, turns,
+        Changes, Context, Draft, MAX_STEPS, Move, State, TOGETHER, changed_areas_touch, crossings, route_cost,
+        routes_cost, segment_intersects_interior, segments, turns,
     };
     use crate::diagram::{Diagram, ancestor_ids};
     use crate::geometry::Point;
     use crate::geometry::{Bounds, hypot};
 
-    static RECORDS: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
-    /// For each candidate of the step under way, by its place: how long a
-    /// trial rerouting of its lines took, how many searches that ran, and
-    /// how long its real evaluation took.
-    static TIMES: Mutex<Vec<(usize, u128, usize, u128)>> = Mutex::new(Vec::new());
-    /// For each candidate of the step under way, by its place: what its
-    /// trial rerouting found, before and after the move.
-    static TRIALS: Mutex<Vec<(usize, [Trial; 2])>> = Mutex::new(Vec::new());
+    // Arranging records on the thread that called it, so arrangements on
+    // other threads keep their own records and logs.
+    thread_local! {
+        static RECORDS: RefCell<Vec<serde_json::Value>> = const { RefCell::new(Vec::new()) };
+        /// What arranging went through, to replay it without arranging
+        /// again: the document it started from, each step's candidates with
+        /// how they came out and the move taken, and the document now.
+        static LOG: RefCell<Log> = const {
+            RefCell::new(Log {
+                start: String::new(),
+                now: String::new(),
+                steps: Vec::new(),
+            })
+        };
+    }
+
+    struct Log {
+        start: String,
+        now: String,
+        steps: Vec<serde_json::Value>,
+    }
+
+    /// What the workers find of the step under way, each candidate by its
+    /// place; one per arrangement.
+    #[derive(Default)]
+    pub(super) struct Step {
+        /// How long a trial rerouting of its lines took, how many searches
+        /// that ran, and how long its real evaluation took.
+        times: Mutex<Vec<(usize, u128, usize, u128)>>,
+        /// What its trial rerouting found, before and after the move.
+        trials: Mutex<Vec<(usize, [Trial; 2])>>,
+        /// What its evaluation came to, none when it could not be made.
+        outcomes: Mutex<Vec<(usize, serde_json::Value)>>,
+    }
 
     /// What a trial rerouting of a candidate's lines found: their bends,
     /// crossings with the other lines, own cost (length, bends, short
@@ -1503,15 +1559,99 @@ pub mod trace {
         let after = trial(state, id, step);
         let searches = 2 * after.1;
         let trial_ns = started.elapsed().as_nanos();
-        TRIALS.lock().expect("trials lock").push((index, [before.0, after.0]));
+        context
+            .step
+            .trials
+            .lock()
+            .expect("trials lock")
+            .push((index, [before.0, after.0]));
         let started = std::time::Instant::now();
         let next = super::evaluate(context, state, id, step);
         let eval_ns = started.elapsed().as_nanos();
-        TIMES
+        context
+            .step
+            .times
             .lock()
             .expect("times lock")
             .push((index, trial_ns, searches, eval_ns));
+        let outcome = next
+            .as_ref()
+            .map_or(serde_json::Value::Null, |next| outcome(context, state, next));
+        context
+            .step
+            .outcomes
+            .lock()
+            .expect("outcomes lock")
+            .push((index, outcome));
         next
+    }
+
+    /// What one pass of fixing after a move came to, beyond its score: the
+    /// score's terms, the issues and jogs left, and how many connectors and
+    /// labels it changed.
+    fn outcome(context: &Context, state: &State, next: &State) -> serde_json::Value {
+        let (before, after) = (&state.result.report().diagram, &next.result.report().diagram);
+        let rerouted = after
+            .connectors
+            .iter()
+            .filter(|c| before.connector(&c.id).is_none_or(|old| old.points != c.points))
+            .count();
+        let labels_moved = after
+            .labels
+            .iter()
+            .filter(|l| {
+                before
+                    .labels
+                    .iter()
+                    .find(|old| old.id == l.id)
+                    .is_none_or(|old| old.bounds != l.bounds)
+            })
+            .count();
+        json!({
+            "score": next.score,
+            "terms": context.score_terms(next.result.report(), &next.offsets),
+            "issues": next.result.report().issues.len(),
+            "jogs": super::total_jogs(after),
+            "rerouted": rerouted,
+            "labels_moved": labels_moved,
+        })
+    }
+
+    /// A document cut after each `>`: a move changes some tags and keeps
+    /// their number, so a step is told by the tags it changes.
+    fn tags(svg: &str) -> Vec<&str> {
+        svg.split_inclusive('>').collect()
+    }
+
+    /// How to get from one document to the next: the tags that differ by
+    /// place, or the whole next document when the number of tags changed.
+    fn difference(before: &str, after: &str) -> serde_json::Value {
+        let (old, new) = (tags(before), tags(after));
+        if old.len() != new.len() {
+            return json!({ "svg": after });
+        }
+        let changed: Vec<_> = old
+            .iter()
+            .zip(&new)
+            .enumerate()
+            .filter(|(_, (old, new))| old != new)
+            .map(|(index, (_, new))| json!([index, new]))
+            .collect();
+        json!({ "tags": changed })
+    }
+
+    fn applied(before: &str, difference: &serde_json::Value) -> Result<String, String> {
+        if let Some(svg) = difference["svg"].as_str() {
+            return Ok(svg.to_owned());
+        }
+        let mut tags = tags(before);
+        for change in difference["tags"].as_array().ok_or("a difference without tags")? {
+            let (Some(index), Some(tag)) = (change[0].as_u64(), change[1].as_str()) else {
+                return Err(format!("a tag change that cannot be read: {change}"));
+            };
+            *tags.get_mut(index as usize).ok_or("a tag change past the end")? = tag;
+        }
+        Ok(tags.concat())
     }
 
     /// A trial rerouting: for each line of the moved nodes, the side choice
@@ -1575,7 +1715,7 @@ pub mod trace {
 
     /// The records made since the last call, one per candidate tried.
     pub fn take() -> Vec<serde_json::Value> {
-        std::mem::take(&mut *RECORDS.lock().expect("records lock"))
+        RECORDS.take()
     }
 
     /// What a candidate is, from how it was made: rerouting in place, the
@@ -1913,7 +2053,187 @@ pub mod trace {
         })
     }
 
+    /// Records a step: a line per candidate of what could be known of it
+    /// before trying it and the gain trying it showed, and the step in the
+    /// log, with the move taken.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn record(
+        context: &Context,
+        state: &State,
+        steps: usize,
+        candidates: &[(String, Move)],
+        gains: &[Option<f64>],
+        best: Option<&(usize, State)>,
+        changed: &[Bounds],
+        further: &[(usize, f64, bool)],
+    ) {
+        let trials: Trials = std::mem::take(&mut *context.step.trials.lock().expect("trials lock"))
+            .into_iter()
+            .collect();
+        let times: Times = std::mem::take(&mut *context.step.times.lock().expect("times lock"))
+            .into_iter()
+            .map(|(index, trial, searches, eval)| (index, (trial, searches, eval)))
+            .collect();
+        let mut outcomes: HashMap<usize, serde_json::Value> =
+            std::mem::take(&mut *context.step.outcomes.lock().expect("outcomes lock"))
+                .into_iter()
+                .collect();
+        let chosen = best.map(|(index, _)| *index);
+        let records = table(
+            context, state, steps, candidates, gains, chosen, changed, &trials, &times,
+        );
+        RECORDS.with_borrow_mut(|all| all.extend(records));
+
+        let results: Vec<_> = gains
+            .iter()
+            .enumerate()
+            .map(|(index, gain)| {
+                let (trial_ns, trial_searches, eval_ns) = times[&index];
+                json!({
+                    "gain": gain,
+                    "trial_ns": trial_ns,
+                    "trial_searches": trial_searches,
+                    "eval_ns": eval_ns,
+                    "outcome": outcomes.remove(&index).unwrap_or_default(),
+                })
+            })
+            .collect();
+        LOG.with_borrow_mut(|log| {
+            if steps == MAX_STEPS {
+                log.start = crate::xml::serialize(&state.result.document);
+                log.now = log.start.clone();
+                log.steps.clear();
+            }
+            let next = best.map(|(_, next)| crate::xml::serialize(&next.result.document));
+            let difference = next.as_deref().map(|next| difference(&log.now, next));
+            log.steps.push(json!({
+                "score": state.score,
+                "candidates": candidates.iter().map(|(id, step)| json!([id, step.dx, step.dy])).collect::<Vec<_>>(),
+                "results": results,
+                "further": further.iter().map(|(index, score, kept)| json!([index, score, kept])).collect::<Vec<_>>(),
+                "chosen": chosen,
+                "next": difference,
+            }));
+            if let Some(next) = next {
+                log.now = next;
+            }
+        });
+    }
+
+    type Trials = HashMap<usize, [Trial; 2]>;
+    type Times = HashMap<usize, (u128, usize, u128)>;
+
+    /// The log of the arrangement just made: the document arranging started
+    /// from (after fixing), and its steps.
+    pub fn take_log() -> serde_json::Value {
+        LOG.with_borrow_mut(|log| {
+            log.now.clear();
+            json!({
+                "version": env!("CARGO_PKG_VERSION"),
+                "start": std::mem::take(&mut log.start),
+                "steps": std::mem::take(&mut log.steps),
+            })
+        })
+    }
+
+    /// The records arranging would have made, from its log: each step's
+    /// document is rebuilt from the start and the tags each step changed,
+    /// and what could be known of each candidate is worked out again from
+    /// it; the gains, the move taken and the times are the log's. Fails
+    /// when a rebuilt document does not score what the log says it did.
+    pub fn replay(log: &serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
+        let mut now = log["start"].as_str().ok_or("a log without its start")?.to_owned();
+        let read = |svg: &str| crate::parse(svg).map_err(|e| e.0);
+        let draft = Draft::new(read(&now)?, Changes::default(), Vec::new());
+        let context = Context::new(draft.report().diagram.clone());
+        let mut state = State {
+            score: context.score(draft.report(), &HashMap::new()),
+            result: draft,
+            offsets: HashMap::new(),
+        };
+        let mut changed = Vec::new();
+        let mut records = Vec::new();
+        let steps = log["steps"].as_array().ok_or("a log without steps")?;
+        for (index, step) in steps.iter().enumerate() {
+            if step["score"].as_f64() != Some(state.score) {
+                return Err(format!(
+                    "step {index}: the rebuilt document scores {}, the log {}",
+                    state.score, step["score"]
+                ));
+            }
+            let candidates: Vec<(String, Move)> = step["candidates"]
+                .as_array()
+                .ok_or("a step without candidates")?
+                .iter()
+                .map(|c| {
+                    let (Some(id), Some(dx), Some(dy)) = (c[0].as_str(), c[1].as_f64(), c[2].as_f64()) else {
+                        return Err(format!("a candidate that cannot be read: {c}"));
+                    };
+                    Ok((id.to_owned(), Move { dx, dy }))
+                })
+                .collect::<Result<_, String>>()?;
+            let results = step["results"].as_array().ok_or("a step without results")?;
+            let gains: Vec<Option<f64>> = results.iter().map(|r| r["gain"].as_f64()).collect();
+            let times: Times = results
+                .iter()
+                .enumerate()
+                .map(|(i, r)| {
+                    let number = |key: &str| r[key].as_u64().unwrap_or_default();
+                    (
+                        i,
+                        (
+                            number("trial_ns").into(),
+                            number("trial_searches") as usize,
+                            number("eval_ns").into(),
+                        ),
+                    )
+                })
+                .collect();
+            let trials: Trials = candidates
+                .iter()
+                .enumerate()
+                .map(|(i, (id, step))| {
+                    (
+                        i,
+                        [
+                            trial(&state, id, Move { dx: 0.0, dy: 0.0 }).0,
+                            trial(&state, id, *step).0,
+                        ],
+                    )
+                })
+                .collect();
+            let chosen = step["chosen"].as_u64().map(|c| c as usize);
+            let steps_left = MAX_STEPS - index;
+            records.extend(table(
+                &context,
+                &state,
+                steps_left,
+                &candidates,
+                &gains,
+                chosen,
+                &changed,
+                &trials,
+                &times,
+            ));
+            let Some(chosen) = chosen else { break };
+            let (id, taken) = candidates.get(chosen).ok_or("a move taken past the candidates")?;
+            let (_, offsets) = super::moved(&state, id, *taken).ok_or("a move taken that cannot be made")?;
+            now = applied(&now, &step["next"])?;
+            let result = Draft::new(read(&now)?, Changes::default(), Vec::new());
+            changed = super::changed_areas(&state.result.report().diagram, &result.report().diagram);
+            state = State {
+                score: context.score(result.report(), &offsets),
+                result,
+                offsets,
+            };
+        }
+        Ok(records)
+    }
+
+    /// A line per candidate: what could be known of it before trying it,
+    /// with the gain trying it showed and whether arrange took it.
+    #[allow(clippy::too_many_arguments)]
+    fn table(
         context: &Context,
         state: &State,
         steps: usize,
@@ -1921,19 +2241,12 @@ pub mod trace {
         gains: &[Option<f64>],
         chosen: Option<usize>,
         changed: &[Bounds],
-    ) {
+        trials: &Trials,
+        times: &Times,
+    ) -> Vec<serde_json::Value> {
         let report = state.result.report();
         let diagram = &report.diagram;
-        let trials: std::collections::HashMap<usize, [Trial; 2]> =
-            std::mem::take(&mut *TRIALS.lock().expect("trials lock"))
-                .into_iter()
-                .collect();
-        let times: std::collections::HashMap<usize, (u128, usize, u128)> =
-            std::mem::take(&mut *TIMES.lock().expect("times lock"))
-                .into_iter()
-                .map(|(index, trial, searches, eval)| (index, (trial, searches, eval)))
-                .collect();
-        let records = candidates
+        candidates
             .iter()
             .zip(gains)
             .enumerate()
@@ -2029,7 +2342,28 @@ pub mod trace {
                     record.extend(finer);
                 }
                 record
-            });
-        RECORDS.lock().expect("records lock").extend(records);
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{applied, difference};
+
+        #[test]
+        fn a_difference_applied_gives_the_next_document() {
+            // Given a step that changes a tag in place, and one that adds a tag
+            let start = r#"<svg><g transform="translate(1 2)"><rect/></g></svg>"#;
+            let moved = r#"<svg><g transform="translate(5 2)"><rect/></g></svg>"#;
+            let grown = r#"<svg><g transform="translate(5 2)"><rect/><text>a</text></g></svg>"#;
+
+            // When each is told as a difference and applied
+            let first = applied(start, &difference(start, moved)).expect("applies");
+            let second = applied(&first, &difference(&first, grown)).expect("applies");
+
+            // Then each gives the next document, the first by its changed tag alone
+            assert_eq!((first.as_str(), second.as_str()), (moved, grown));
+            assert_eq!(difference(start, moved)["tags"].as_array().map(Vec::len), Some(1));
+        }
     }
 }

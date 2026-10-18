@@ -24,6 +24,10 @@ trace-candidates = []
 name = "record"
 required-features = ["trace-candidates"]
 
+[[example]]
+name = "replay"
+required-features = ["trace-candidates"]
+
 [dev-dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 mimalloc = "0.1.52"

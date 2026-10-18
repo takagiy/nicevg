@@ -9,6 +9,12 @@
 //! Takes SVG files or directories of them, and writes every record with
 //! the diagram it came from. Trying every candidate (none is skipped as
 //! unchanged) makes arranging slower than usual.
+//!
+//! Each diagram's log goes, a line each, to `steps/` beside the output
+//! under the same name: the document arranging started from, and each
+//! step's candidates, how they came out and the move taken.
+//! `examples/replay.rs` makes the records again from the logs, so new
+//! features need no arranging again.
 
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -34,6 +40,12 @@ fn main() {
         .collect();
     files.sort();
     let mut sink = std::io::BufWriter::new(std::fs::File::create(&out).expect("the output can be written"));
+    let steps = out.parent().unwrap_or(std::path::Path::new(".")).join("steps");
+    std::fs::create_dir_all(&steps).expect("the steps directory can be made");
+    let mut logs = std::io::BufWriter::new(
+        std::fs::File::create(steps.join(out.file_name().expect("the output names a file")))
+            .expect("the log can be written"),
+    );
     for (index, file) in files.iter().enumerate() {
         let name = file
             .file_stem()
@@ -42,6 +54,7 @@ fn main() {
         let started = Instant::now();
         let result = nicevg::arrange(&svg);
         let records = nicevg::candidate_trace::take();
+        let mut log = nicevg::candidate_trace::take_log();
         if let Err(error) = result {
             eprintln!("{name}: {error}");
             continue;
@@ -50,6 +63,8 @@ fn main() {
             record["diagram"] = serde_json::Value::String(name.clone());
             writeln!(sink, "{record}").expect("the record is written");
         }
+        log["diagram"] = serde_json::Value::String(name.clone());
+        writeln!(logs, "{log}").expect("the log is written");
         eprintln!(
             "[{}/{}] {name}: {:.1}s",
             index + 1,
