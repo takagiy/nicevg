@@ -18,6 +18,7 @@ docs/adr/retry-only-moves-near-changes.md までの高速化で、arrange は例
 6. docs/adr/screen-as-top-3-yes-no.md: モデルは、手がステップの上位 3 件に入るかの 2 択を XGBoost で学ぶ。
 7. docs/adr/judge-screening-by-time-saved.md: ふるい分けは、badness の悪化を 3% に抑えて減らせる時間で比べ、評価する候補は決まった数で絞る。記録からの見積もりでは、ステップの時間の 75% ほどを減らせる。
 8. docs/adr/measure-screening-loss-by-real-runs.md: これからは、記録から見積もった M を 60% 以上に保ち、モデルありの arrange を実際に回して測った badness の悪化（悪くなった分だけ数える）を小さくする方向で比べる。記録からの N の見積もりは、実際の結果と図ごとにほとんど合わなかった。
+9. docs/adr/split-learning-data-by-origin.md: 学習と交差検証のデータは、図の由来（エージェントのスケッチはプロジェクト、ほかの図は図そのもの）でまとめて分け、エージェントのスケッチも学習に使う。5 つの組は、何を描いているかの割合が揃うように分ける。
 
 ## まだ決めていないこと
 
