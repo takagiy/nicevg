@@ -32,6 +32,14 @@ name = "replay"
 required-features = ["trace-candidates"]
 
 [[example]]
+name = "explain"
+required-features = ["trace-candidates"]
+
+[[example]]
+name = "snapshot"
+required-features = ["trace-candidates"]
+
+[[example]]
 name = "screen"
 required-features = ["screening"]
 

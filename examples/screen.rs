@@ -76,7 +76,11 @@ fn eval(screen: Option<&Screen>, plain: bool, out: &str, paths: &[String]) {
             line[format!("{key}_badness")] = support::quality_of(&result.report).badness.into();
             Some(ms)
         };
-        let plain_ms = if plain { timed("plain", &|| nicevg::arrange(&svg)) } else { Some(0.0) };
+        let plain_ms = if plain {
+            timed("plain", &|| nicevg::arrange(&svg))
+        } else {
+            Some(0.0)
+        };
         let screened_ms = match screen {
             Some(screen) => timed("screened", &|| arrange_screened(&svg, screen)),
             None => Some(0.0),
@@ -87,7 +91,11 @@ fn eval(screen: Option<&Screen>, plain: bool, out: &str, paths: &[String]) {
         };
         writeln!(sink, "{line}").expect("the line is written");
         sink.flush().expect("the line is written");
-        eprintln!("[{}/{}] {name}: {plain_ms:.0} ms, {screened_ms:.0} ms", index + 1, files.len());
+        eprintln!(
+            "[{}/{}] {name}: {plain_ms:.0} ms, {screened_ms:.0} ms",
+            index + 1,
+            files.len()
+        );
     }
 }
 

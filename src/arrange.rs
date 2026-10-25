@@ -2185,6 +2185,105 @@ pub mod trace {
     /// and what could be known of each candidate is worked out again from
     /// it; the gains, the move taken and the times are the log's. Fails
     /// when a rebuilt document does not score what the log says it did.
+    /// The diagram at each step of a logged arrangement, as learning that
+    /// reads the drawing itself wants it: nodes (id, box, shape, parent),
+    /// connectors (ends, ports, route), labels (box, connector) and issues
+    /// (code, elements).
+    #[cfg(feature = "trace-candidates")]
+    pub fn snapshots(log: &serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
+        let mut out = Vec::new();
+        walk(log, |_context, state, steps_left, _candidates, _changed, _step| {
+            let report = state.result.report();
+            let diagram = &report.diagram;
+            out.push(json!({
+                "step": MAX_STEPS - steps_left,
+                "nodes": diagram.nodes.iter().map(|n| json!({
+                    "id": n.id, "bounds": n.bounds, "shape": n.shape, "parent": n.parent_id,
+                })).collect::<Vec<_>>(),
+                "connectors": diagram.connectors.iter().map(|c| json!({
+                    "id": c.id, "from": c.from, "to": c.to, "from_port": c.from_port, "to_port": c.to_port,
+                    "points": c.points,
+                })).collect::<Vec<_>>(),
+                "labels": diagram.labels.iter().map(|l| json!({
+                    "id": l.id, "bounds": l.bounds, "connector": l.connector,
+                })).collect::<Vec<_>>(),
+                "issues": report.issues.iter().map(|i| json!([i.code, i.elements])).collect::<Vec<_>>(),
+            }));
+            Ok(())
+        })?;
+        Ok(out)
+    }
+
+    /// What evaluating the moves `wanted` (step, node ids, dx, dy) does at
+    /// their steps of a logged arrangement, for finding where their gain
+    /// comes from: the score's terms before and after, how many connectors
+    /// the one pass of fixing rerouted (those of the moved nodes and the
+    /// others), and what the trial rerouting of the moved nodes' lines saw.
+    #[cfg(feature = "trace-candidates")]
+    pub fn explain(
+        log: &serde_json::Value,
+        wanted: &[(usize, String, f64, f64)],
+    ) -> Result<Vec<serde_json::Value>, String> {
+        let mut out = Vec::new();
+        walk(log, |context, state, steps_left, _candidates, _changed, _step| {
+            let index = MAX_STEPS - steps_left;
+            for (step, logged, dx, dy) in wanted.iter().filter(|w| w.0 == index) {
+                // The records write a move of several nodes with "+" between them.
+                let id = &logged.replace('+', TOGETHER);
+                let ids: std::collections::HashSet<&str> = id.split(TOGETHER).collect();
+                let step_move = Move { dx: *dx, dy: *dy };
+                let before = context.score_terms(state.result.report(), &state.offsets);
+                let (trial_before, _) = trial(state, id, Move { dx: 0.0, dy: 0.0 });
+                let (trial_after, _) = trial(state, id, step_move);
+                let Some(next) = super::evaluate(context, state, id, step_move) else {
+                    out.push(json!({"step": step, "id": id, "dx": dx, "dy": dy, "evaluated": false}));
+                    continue;
+                };
+                let after = context.score_terms(next.result.report(), &next.offsets);
+                let old = &state.result.report().diagram;
+                let new = &next.result.report().diagram;
+                let (mut attached, mut others) = (0, 0);
+                for connector in &new.connectors {
+                    let changed = old
+                        .connector(&connector.id)
+                        .is_none_or(|c| c.points != connector.points);
+                    if changed {
+                        if ids.contains(connector.from.as_str()) || ids.contains(connector.to.as_str()) {
+                            attached += 1;
+                        } else {
+                            others += 1;
+                        }
+                    }
+                }
+                // What fixing gains with nothing moved: a pass over the whole
+                // drawing, and the move's nodes fixed where they are.
+                let pass = crate::fix::fix_after_moves(state.result.clone().moving(Vec::new()), 1);
+                let pass_gain = context.score(pass.report(), &state.offsets) - state.score;
+                let still_gain = super::evaluate(context, state, id, Move { dx: 0.0, dy: 0.0 })
+                    .map(|still| still.score - state.score);
+                out.push(json!({
+                    "step": step, "id": id, "dx": dx, "dy": dy, "evaluated": true,
+                    "terms_before": before, "terms_after": after,
+                    "gain": next.score - state.score,
+                    "pass_gain": pass_gain,
+                    "pass_issues": pass.report().issues.len(),
+                    "still_gain": still_gain,
+                    "rerouted_attached": attached, "rerouted_others": others,
+                    "connectors": new.connectors.len(),
+                    "trial_change": (trial_after.cost + trial_after.against) - (trial_before.cost + trial_before.against),
+                    "issues_before": state.result.report().issues.iter().map(|i| json!([i.code, i.elements])).collect::<Vec<_>>(),
+                    "issues_after": next.result.report().issues.iter().map(|i| json!([i.code, i.elements])).collect::<Vec<_>>(),
+                    "attached_ids": old.connectors.iter()
+                        .filter(|c| ids.contains(c.from.as_str()) || ids.contains(c.to.as_str()))
+                        .map(|c| c.id.clone()).collect::<Vec<_>>(),
+                    "labels": old.labels.iter().map(|l| json!([l.id, l.connector])).collect::<Vec<_>>(),
+                }));
+            }
+            Ok(())
+        })?;
+        Ok(out)
+    }
+
     #[cfg(feature = "trace-candidates")]
     pub fn replay(log: &serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
         let mut records = Vec::new();
@@ -2305,6 +2404,21 @@ pub mod trace {
     ) -> Vec<serde_json::Value> {
         let report = state.result.report();
         let diagram = &report.diagram;
+        // Where each element an issue names lies: a node's box, a connector's
+        // segments, a label's box.
+        let mut places: HashMap<&str, Vec<Bounds>> = HashMap::new();
+        for node in &diagram.nodes {
+            places.entry(node.id.as_str()).or_default().push(node.bounds);
+        }
+        for connector in &diagram.connectors {
+            let segments = segments(&connector.points)
+                .into_iter()
+                .filter_map(|(a, b)| crate::geometry::points_bounds(&[a, b]));
+            places.entry(connector.id.as_str()).or_default().extend(segments);
+        }
+        for label in &diagram.labels {
+            places.entry(label.id.as_str()).or_default().push(label.bounds);
+        }
         candidates
             .iter()
             .zip(gains)
@@ -2336,6 +2450,24 @@ pub mod trace {
                     .iter()
                     .filter(|issue| issue.elements.iter().any(|e| names.contains(&e.as_str())))
                     .count();
+                // The issues within reach of the move (its nodes and their connectors'
+                // segments, widened as `reach` does): the pass of fixing after a move
+                // clears issues there that the issues naming the move do not show.
+                let near: Vec<&str> = {
+                    let reach = super::reach(diagram, id);
+                    report
+                        .issues
+                        .iter()
+                        .filter(|issue| {
+                            issue.elements.iter().any(|e| {
+                                places.get(e.as_str()).is_some_and(|boxes| {
+                                    boxes.iter().any(|b| reach.iter().any(|r| super::touches_area(b, r)))
+                                })
+                            })
+                        })
+                        .map(|issue| issue.code.as_str())
+                        .collect()
+                };
                 let offset: f64 = ids
                     .iter()
                     .filter_map(|id| state.offsets.get(*id))
@@ -2365,6 +2497,9 @@ pub mod trace {
                     "attached_crossings": crossed,
                     "attached_cost": attached.iter().map(|c| route_cost(&c.points)).sum::<f64>(),
                     "issues_here": issues,
+                    "issues_near": near.len(),
+                    "label_issues_near": near.iter().filter(|code| code.contains("label")).count(),
+                    "near_miss_near": near.iter().filter(|code| **code == "connector-near-miss").count(),
                     "offset": offset,
                     "alignments": aligned,
                     "area": area,
@@ -2481,8 +2616,104 @@ pub mod screening {
         "connectors_per_node",
         "bends_per_connector",
         "crossings_per_connector",
+        // Every other numeric column learning has (nicevg-lab's exp.py with
+        // "all"): the records' own fields, and what train.features and
+        // with_priors make from them.
+        "step",
+        "dx",
+        "dy",
+        "nodes_moved",
+        "attached",
+        "attached_crossings",
+        "attached_cost",
+        "issues_here",
+        "issues_near",
+        "label_issues_near",
+        "near_miss_near",
+        "offset",
+        "alignments",
+        "diagram_nodes",
+        "diagram_connectors",
+        "diagram_issues",
+        "score",
+        "straightened",
+        "unstraightened",
+        "gap_after",
+        "overlaps_after",
+        "lands_on",
+        "move_per_size",
+        "trial_searches",
+        "trial_bends_before",
+        "trial_crossings_before",
+        "trial_cost_before",
+        "trial_against_before",
+        "trial_unrouted_before",
+        "trial_bends_after",
+        "trial_crossings_after",
+        "trial_cost_after",
+        "trial_against_after",
+        "trial_unrouted_after",
+        "off_before_sum",
+        "off_before_min",
+        "along_ends",
+        "across_ends",
+        "room_ahead",
+        "sitting_before",
+        "sitting_after",
+        "internal_crossings",
+        "l_bends_before",
+        "l_bends_after",
+        "l_crossings_before",
+        "l_crossings_after",
+        "l_hits_before",
+        "l_hits_after",
+        "diagram_bends",
+        "diagram_crossings",
+        "move",
+        "gap_change",
+        "kind_reroute",
+        "kind_together",
+        "kind_line",
+        "kind_nudge",
+        "kind_align",
+        "attached_cost_rank",
+        "attached_crossings_rank",
+        "attached_rank",
+        "nearer_rank",
+        "gap_after_rank",
+        "lands_on_rank",
+        "off_change",
+        "l_bends_change",
+        "l_crossings_change",
+        "l_hits_change",
+        "sitting_change",
+        "nudge_off_rank",
+        "nudge_l_crossings_rank",
+        "nudge_room_rank",
+        "steps_since_moved",
+        "score_ratio",
+        "issues_ratio",
+        "last_taken_gain",
+        "last_taken_share",
+        "trial_bends_change",
+        "trial_crossings_change",
+        "trial_against_change",
+        "trial_total_change_rank",
+        "trial_crossings_change_rank",
+        "trial_total_after_rank",
+        "prior_ruled_out",
+        "prior_gain",
+        "node_prior_best",
+        "node_prior_mean",
     ];
     const KINDS: [&str; 5] = ["nudge", "reroute", "line", "align", "together"];
+    /// The nudges' ranks among the same node's nudges: the column ranked,
+    /// and whether larger ranks first.
+    const NUDGE_RANKS: [(&str, &str, bool); 3] = [
+        ("nudge_off_rank", "off_after_sum", false),
+        ("nudge_l_crossings_rank", "l_crossings_after", false),
+        ("nudge_room_rank", "room_ahead", true),
+    ];
 
     /// A model and how many candidates a step evaluates with it.
     #[derive(Clone)]
@@ -2645,6 +2876,16 @@ pub mod screening {
         last_taken: Option<f64>,
         /// The step each node was last moved at.
         moved_at: HashMap<String, usize>,
+        /// The score and the number of issues at the first step.
+        first: Option<(f64, f64)>,
+    }
+
+    impl History {
+        fn begin(&mut self, state: &State, steps: usize) {
+            if steps == MAX_STEPS {
+                self.first = Some((state.score, state.result.report().issues.len() as f64));
+            }
+        }
     }
 
     fn key(id: &str, step: Move) -> (String, u64, u64) {
@@ -2663,6 +2904,7 @@ pub mod screening {
         mut retried: Vec<(String, Move)>,
         changed: &[Bounds],
     ) -> Vec<(String, Move)> {
+        context.history.lock().expect("history lock").begin(state, steps);
         if retried.len() <= screen.keep {
             return retried;
         }
@@ -2725,26 +2967,20 @@ pub mod screening {
                 .chunks(size)
                 .map(|chunk| {
                     scope.spawn(move || {
+                        let mut times = Times::new();
                         let trials: Trials = chunk
                             .iter()
                             .enumerate()
                             .map(|(index, (id, step))| {
                                 let still = Move { dx: 0.0, dy: 0.0 };
-                                (index, [trial(state, id, still).0, trial(state, id, *step).0])
+                                let after = trial(state, id, *step);
+                                // As the recorder counts them; its times are not features.
+                                times.insert(index, (0, 2 * after.1, 0));
+                                (index, [trial(state, id, still).0, after.0])
                             })
                             .collect();
                         let gains = vec![None; chunk.len()];
-                        table(
-                            context,
-                            state,
-                            steps,
-                            chunk,
-                            &gains,
-                            None,
-                            changed,
-                            &trials,
-                            &Times::new(),
-                        )
+                        table(context, state, steps, chunk, &gains, None, changed, &trials, &times)
                     })
                 })
                 .collect();
@@ -2756,11 +2992,12 @@ pub mod screening {
     }
 
     /// Percent ranks within the step, ties sharing their average place, as
-    /// pandas' `rank(pct=True)` gives them.
+    /// pandas' `rank(pct=True)` gives them: a missing value has none and
+    /// does not count.
     fn ranks(values: &[f64]) -> Vec<f64> {
-        let mut order: Vec<usize> = (0..values.len()).collect();
+        let mut order: Vec<usize> = (0..values.len()).filter(|&i| !values[i].is_nan()).collect();
         order.sort_by(|&a, &b| values[a].total_cmp(&values[b]));
-        let mut out = vec![0.0; values.len()];
+        let mut out = vec![f64::NAN; values.len()];
         let mut start = 0;
         while start < order.len() {
             let mut end = start + 1;
@@ -2769,7 +3006,7 @@ pub mod screening {
             }
             let place = (start + 1 + end) as f64 / 2.0;
             for &index in &order[start..end] {
-                out[index] = place / values.len() as f64;
+                out[index] = place / order.len() as f64;
             }
             start = end;
         }
@@ -2793,10 +3030,6 @@ pub mod screening {
             Value::Bool(flag) => f64::from(u8::from(*flag)),
             value => value.as_f64().unwrap_or(f64::NAN),
         };
-        let column = |field: &str| records.iter().map(|r| number(r, field)).collect::<Vec<f64>>();
-        let issues_rank = ranks(&column("issues_here"));
-        let bends_rank = ranks(&column("attached_bends"));
-        let straightened_rank = ranks(&column("straightened"));
         let shares: HashMap<&str, f64> = KINDS
             .iter()
             .map(|kind| {
@@ -2810,6 +3043,7 @@ pub mod screening {
             .collect::<HashSet<_>>()
             .len() as f64;
         let step = MAX_STEPS - steps;
+        let (first_score, first_issues) = history.first.unwrap_or((f64::NAN, f64::NAN));
         // What each move showed a step before, when it was evaluated then.
         let known: Vec<Option<Option<f64>>> = candidates
             .iter()
@@ -2823,49 +3057,112 @@ pub mod screening {
                 entry.1.extend(*gain);
             }
         }
-        records
-            .iter()
-            .enumerate()
-            .map(|(index, record)| {
-                let id = candidates[index].0.as_str();
-                let (node_count, node_gains) = by_node.get(id).cloned().unwrap_or_default();
-                let since = id
-                    .split(TOGETHER)
+        // A candidate's feature other than a rank; those ending in `~` are
+        // missing where their twins fill in 0 (or the step plus one).
+        let own = |index: usize, name: &str| -> f64 {
+            let record = &records[index];
+            let id = candidates[index].0.as_str();
+            let field = |name: &str| number(record, name);
+            let change = |what: &str| field(&format!("{what}_after")) - field(&format!("{what}_before"));
+            let (node_count, node_gains) = by_node.get(id).map_or((0, &[][..]), |(n, g)| (*n, g.as_slice()));
+            let node_best = node_gains.iter().copied().reduce(f64::min);
+            let node_mean = (!node_gains.is_empty()).then(|| node_gains.iter().sum::<f64>() / node_gains.len() as f64);
+            let since = || {
+                id.split(TOGETHER)
                     .filter_map(|node| history.moved_at.get(node))
                     .max()
-                    .map_or(f64::NAN, |at| (step - at) as f64);
-                let score = number(record, "score");
-                let connectors = number(record, "diagram_connectors").max(1.0);
-                let change =
-                    |what: &str| number(record, &format!("{what}_after")) - number(record, &format!("{what}_before"));
+                    .map(|at| (step - at) as f64)
+            };
+            let score = field("score");
+            let per_score = |gain: f64| gain / if score != 0.0 { score } else { 1.0 };
+            let connectors = field("diagram_connectors").max(1.0);
+            match name {
+                "prior_gain~" => known[index].flatten().unwrap_or(f64::NAN),
+                "prior_gain" => known[index].flatten().unwrap_or(0.0),
+                "prior_tried" => f64::from(u8::from(known[index].is_some())),
+                "prior_ruled_out" => f64::from(u8::from(known[index] == Some(None))),
+                "node_prior_best~" => node_best.unwrap_or(f64::NAN),
+                "node_prior_best" => node_best.unwrap_or(0.0),
+                "node_prior_mean~" => node_mean.unwrap_or(f64::NAN),
+                "node_prior_mean" => node_mean.unwrap_or(0.0),
+                "node_prior_count" => node_count as f64,
+                "last_taken_gain~" => history.last_taken.unwrap_or(f64::NAN),
+                "last_taken_gain" => history.last_taken.unwrap_or(0.0),
+                "last_taken_share~" => history.last_taken.map_or(f64::NAN, per_score),
+                "last_taken_share" => per_score(history.last_taken.unwrap_or(0.0)),
+                "steps_since_moved~" => since().unwrap_or(f64::NAN),
+                "steps_since_moved" => since().unwrap_or(step as f64 + 1.0),
+                "score_ratio" => score / first_score,
+                "issues_ratio" => (field("diagram_issues") + 1.0) / (first_issues + 1.0),
+                "candidates" => count,
+                "move" => field("dx").abs() + field("dy").abs(),
+                "off_change" => field("off_after_sum") - field("off_before_sum"),
+                "trial_total_change" => change("trial_cost") + change("trial_against"),
+                "trial_total_after" => field("trial_cost_after") + field("trial_against_after"),
+                "nodes_with_moves" => nodes_with_moves,
+                "connectors_per_node" => field("diagram_connectors") / field("diagram_nodes").max(1.0),
+                "bends_per_connector" => field("diagram_bends") / connectors,
+                "crossings_per_connector" => field("diagram_crossings") / connectors,
+                share if share.starts_with("share_") => shares[&share["share_".len()..]],
+                kind if kind.starts_with("kind_") => {
+                    f64::from(u8::from(record["kind"].as_str() == Some(&kind["kind_".len()..])))
+                }
+                // `offset_change` is a field of its own: there is no `offset_after`.
+                what if what
+                    .strip_suffix("_change")
+                    .is_some_and(|base| record.get(format!("{base}_after")).is_some()) =>
+                {
+                    change(&what[..what.len() - "_change".len()])
+                }
+                name => field(name),
+            }
+        };
+        // The ranks within the step, of a column `own` gives; the nudges'
+        // among the same node's nudges, 0 for other moves.
+        let ranked: HashMap<&str, Vec<f64>> = names
+            .iter()
+            .filter_map(|name| {
+                let name = name.as_str();
+                if let Some(&(_, column, larger_first)) = NUDGE_RANKS.iter().find(|(n, ..)| *n == name) {
+                    let mut by_id: HashMap<&str, Vec<usize>> = HashMap::new();
+                    for (index, record) in records.iter().enumerate() {
+                        if record["kind"].as_str() == Some("nudge") {
+                            by_id.entry(candidates[index].0.as_str()).or_default().push(index);
+                        }
+                    }
+                    let mut out = vec![0.0; records.len()];
+                    for members in by_id.values() {
+                        let values: Vec<f64> = members
+                            .iter()
+                            .map(|&index| {
+                                if larger_first {
+                                    -own(index, column)
+                                } else {
+                                    own(index, column)
+                                }
+                            })
+                            .collect();
+                        for (&index, rank) in members.iter().zip(ranks(&values)) {
+                            out[index] = rank;
+                        }
+                    }
+                    return Some((name, out));
+                }
+                let base = name.strip_suffix("_rank")?;
+                Some((
+                    name,
+                    ranks(&(0..records.len()).map(|index| own(index, base)).collect::<Vec<_>>()),
+                ))
+            })
+            .collect();
+        (0..records.len())
+            .map(|index| {
                 names
                     .iter()
-                    .map(|name| match name.as_str() {
-                        "prior_gain~" => known[index].flatten().unwrap_or(f64::NAN),
-                        "prior_tried" => f64::from(u8::from(known[index].is_some())),
-                        "node_prior_best~" => node_gains.iter().copied().reduce(f64::min).unwrap_or(f64::NAN),
-                        "node_prior_mean~" if node_gains.is_empty() => f64::NAN,
-                        "node_prior_mean~" => node_gains.iter().sum::<f64>() / node_gains.len() as f64,
-                        "node_prior_count" => node_count as f64,
-                        "last_taken_gain~" => history.last_taken.unwrap_or(f64::NAN),
-                        "last_taken_share~" => history
-                            .last_taken
-                            .map_or(f64::NAN, |gain| gain / if score != 0.0 { score } else { 1.0 }),
-                        "steps_since_moved~" => since,
-                        "trial_total_change" => change("trial_cost") + change("trial_against"),
-                        "trial_cost_change" => change("trial_cost"),
-                        "candidates" => count,
-                        "issues_here_rank" => issues_rank[index],
-                        "attached_bends_rank" => bends_rank[index],
-                        "straightened_rank" => straightened_rank[index],
-                        "nodes_with_moves" => nodes_with_moves,
-                        "connectors_per_node" => {
-                            number(record, "diagram_connectors") / number(record, "diagram_nodes").max(1.0)
-                        }
-                        "bends_per_connector" => number(record, "diagram_bends") / connectors,
-                        "crossings_per_connector" => number(record, "diagram_crossings") / connectors,
-                        share if share.starts_with("share_") => shares[&share["share_".len()..]],
-                        field => number(record, field),
+                    .map(|name| {
+                        ranked
+                            .get(name.as_str())
+                            .map_or_else(|| own(index, name), |values| values[index])
                     })
                     .collect()
             })
@@ -2882,6 +3179,7 @@ pub mod screening {
         let mut rows = Vec::new();
         let mut history = History::default();
         super::trace::walk(log, |context, state, steps, candidates, changed, step| {
+            history.begin(state, steps);
             let features = features(context, state, steps, candidates, changed, &history, screen.names());
             let margins = screen.margins(&features);
             for (((id, step), row), margin) in candidates.iter().zip(features).zip(margins) {
@@ -2969,6 +3267,16 @@ pub mod screening {
 
             // Then the tie shares places 3 and 4, out of 4
             assert_eq!(ranked, vec![0.875, 0.25, 0.875, 0.5]);
+        }
+
+        #[test]
+        fn a_missing_value_has_no_rank_and_does_not_count() {
+            // Given values with one missing, when ranked
+            let ranked = ranks(&[2.0, f64::NAN, 1.0]);
+
+            // Then it has no rank and the others rank out of 2, as pandas ranks them
+            assert!(ranked[1].is_nan());
+            assert_eq!((ranked[0], ranked[2]), (1.0, 0.5));
         }
     }
 }
