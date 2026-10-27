@@ -135,13 +135,26 @@ pub fn ancestor_ids<'a>(nodes: &'a [DiagramNode], id: &str) -> Vec<&'a str> {
         .collect()
 }
 
-/// Whether a node is one of the connector's ends or a container around one,
-/// which the connector legitimately reaches into.
+/// Whether a node is one of the connector's ends, a container around one,
+/// or a container one lies across the border of: the connector
+/// legitimately reaches into each.
 pub fn holds_end(nodes: &[DiagramNode], connector: &DiagramConnector, node: &DiagramNode) -> bool {
+    let is_container = || {
+        nodes
+            .iter()
+            .any(|child| child.parent_id.as_deref() == Some(node.id.as_str()))
+    };
+    let lies_across = || {
+        nodes
+            .iter()
+            .filter(|end| end.id == connector.from || end.id == connector.to)
+            .any(|end| crate::geometry::intersection(&end.bounds, &node.bounds).is_some())
+    };
     node.id == connector.from
         || node.id == connector.to
         || ancestor_ids(nodes, &connector.from).contains(&node.id.as_str())
         || ancestor_ids(nodes, &connector.to).contains(&node.id.as_str())
+        || (is_container() && lies_across())
 }
 
 static TRANSLATE: LazyLock<Regex> = LazyLock::new(|| {

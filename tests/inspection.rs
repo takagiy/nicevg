@@ -944,3 +944,40 @@ fn does_not_report_an_orthogonal_connector_as_slanted() {
         Vec::<Vec<String>>::new()
     );
 }
+
+/// Given a gateway outside a VPC lying across the top border of a cluster in
+/// it, and a connector from a queue in the VPC entering the gateway's left
+/// side through the top of the cluster
+/// When the diagram is analyzed
+/// Then the connector is not reported crossing the cluster
+#[test]
+fn does_not_report_a_connector_crossing_a_container_its_end_lies_across() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500">
+        <g data-node="vpc">
+          <rect x="40" y="40" width="640" height="420" rx="8" />
+          <g data-node="queue">
+            <rect x="100" y="80" width="124" height="48" rx="6" />
+            <text x="162" y="108" text-anchor="middle" font-size="13">Billing queue</text>
+          </g>
+          <g data-node="cluster">
+            <rect x="60" y="200" width="780" height="200" rx="8" />
+            <g data-node="orders">
+              <rect x="150" y="300" width="100" height="48" rx="6" />
+              <text x="200" y="328" text-anchor="middle" font-size="13">Orders</text>
+            </g>
+          </g>
+        </g>
+        <g data-node="gateway">
+          <rect x="700" y="190" width="121" height="48" rx="6" />
+          <text x="760" y="218" text-anchor="middle" font-size="13">SMS gateway</text>
+        </g>
+        <path id="sms" data-from="queue" data-to="gateway" d="M 162 128 L 162 214 L 700 214" />
+      </svg>
+    "#;
+
+    assert_eq!(
+        issues_with_code(&analyze(svg), "connector-node-crossing"),
+        Vec::<Vec<String>>::new()
+    );
+}

@@ -2397,3 +2397,51 @@ fn routes_round_into_a_box_too_close_to_reach_straight() {
     assert!(is_orthogonal(&connector_points(&result.report, "f")));
     assert!(!has_issue(&result.report, "connector-slanted"));
 }
+
+/// A VPC holding a queue, a worker beside it and, below them, a cluster;
+/// outside the VPC, a gateway lies across the cluster's top border, joined
+/// from the queue by a slanted connector.
+const GATEWAY_ACROSS_A_CLUSTER: &str = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500">
+    <g data-node="vpc">
+      <rect x="40" y="40" width="640" height="420" rx="8" />
+      <g data-node="queue">
+        <rect x="100" y="80" width="124" height="48" rx="6" />
+        <text x="162" y="108" text-anchor="middle" font-size="13">Billing queue</text>
+      </g>
+      <g data-node="worker">
+        <rect x="300" y="80" width="150" height="48" rx="6" />
+        <text x="375" y="108" text-anchor="middle" font-size="13">Messaging worker</text>
+      </g>
+      <g data-node="cluster">
+        <rect x="60" y="200" width="780" height="200" rx="8" />
+        <g data-node="orders">
+          <rect x="150" y="300" width="100" height="48" rx="6" />
+          <text x="200" y="328" text-anchor="middle" font-size="13">Orders</text>
+        </g>
+      </g>
+    </g>
+    <g data-node="gateway">
+      <rect x="700" y="190" width="121" height="48" rx="6" />
+      <text x="760" y="218" text-anchor="middle" font-size="13">SMS gateway</text>
+    </g>
+    <path id="sms" data-from="queue" data-to="gateway" d="M 162 128 L 760 190" />
+</svg>"#;
+
+/// Given a gateway lying across a cluster's top border, below and to the
+/// right of a queue, with a worker blocking the way across from the queue
+/// When the diagram is fixed
+/// Then the connector leaves the queue's bottom, turns once, and enters the
+/// gateway's left side through the cluster
+#[test]
+fn routes_into_a_node_across_a_container_border_through_the_container() {
+    let result = fix(GATEWAY_ACROSS_A_CLUSTER);
+    let points = connector_points(&result.report, "sms");
+    let queue = node_bounds(&result.report, "queue");
+    let gateway = node_bounds(&result.report, "gateway");
+
+    assert!(is_orthogonal(&points), "{points:?}");
+    assert_eq!(points.first().map(|p| p.y), Some(queue.y + queue.height), "{points:?}");
+    assert_eq!(points.last().map(|p| p.x), Some(gateway.x), "{points:?}");
+    assert_eq!(bend_count(&points), 1, "{points:?}");
+}
