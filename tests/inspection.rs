@@ -898,3 +898,49 @@ fn does_not_report_the_turn_where_connectors_merge_into_a_port_as_a_near_miss() 
         Vec::<Vec<String>>::new()
     );
 }
+
+/// Source, and a target lower to the right, joined by a connector drawn as
+/// `d`.
+fn source_and_lower_target(d: &str) -> String {
+    format!(
+        r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
+        <g data-node="source">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+        </g>
+        <g data-node="target">
+          <rect x="260" y="140" width="100" height="56" />
+          <text x="310" y="173" text-anchor="middle" font-size="14">Target</text>
+        </g>
+        <path id="flow" data-from="source" data-to="target" d="{d}" />
+      </svg>
+    "#
+    )
+}
+
+/// Given a connector drawn straight across to a node lower down
+/// When the diagram is analyzed
+/// Then the connector is reported as slanted
+#[test]
+fn reports_a_slanted_connector() {
+    let svg = source_and_lower_target("M 120 48 L 260 168");
+
+    assert_eq!(
+        issues_with_code(&analyze(&svg), "connector-slanted"),
+        vec![vec!["flow".to_owned()]]
+    );
+}
+
+/// Given a connector of horizontal and vertical segments only
+/// When the diagram is analyzed
+/// Then it is not reported as slanted
+#[test]
+fn does_not_report_an_orthogonal_connector_as_slanted() {
+    let svg = source_and_lower_target("M 120 48 L 190 48 L 190 168 L 260 168");
+
+    assert_eq!(
+        issues_with_code(&analyze(&svg), "connector-slanted"),
+        Vec::<Vec<String>>::new()
+    );
+}

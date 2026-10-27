@@ -53,6 +53,7 @@ pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue>
         label_node_overlaps(&diagram.nodes, &diagram.labels),
         connector_label_clearance(&diagram.connectors, &diagram.labels),
         connector_endpoints(&diagram.nodes, &diagram.connectors),
+        slanted_connectors(&diagram.connectors),
         connector_ends_off_ports(&diagram.nodes, &diagram.connectors),
         connector_ends_along_sides(&diagram.nodes, &diagram.connectors),
         connector_overlaps(&diagram.connectors),
@@ -367,6 +368,28 @@ fn distance_to_node(target: Point, node: &DiagramNode) -> f64 {
     } else {
         distance_to_route(&node.bounds, &[target, target])
     }
+}
+
+/// Connectors with a segment neither horizontal nor vertical: nicevg routes
+/// orthogonally, and a slanted line counts as straight to the bend count.
+fn slanted_connectors(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
+    connectors
+        .iter()
+        .filter(|connector| {
+            connector
+                .points
+                .windows(2)
+                .any(|pair| pair[0].x != pair[1].x && pair[0].y != pair[1].y)
+        })
+        .map(|connector| {
+            issue(
+                "connector-slanted",
+                format!("Connector \"{}\" runs slanted.", connector.id),
+                &[&connector.id],
+                None,
+            )
+        })
+        .collect()
 }
 
 fn connector_endpoints(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {

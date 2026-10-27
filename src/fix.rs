@@ -504,6 +504,7 @@ fn pick_reroutes<'a>(
         "connector-label-clearance",
         "connector-endpoint-inside",
         "connector-endpoint-detached",
+        "connector-slanted",
         "connector-end-off-port",
         "connector-end-along-side",
         "connector-overlap",

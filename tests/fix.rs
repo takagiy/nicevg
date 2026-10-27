@@ -2347,3 +2347,27 @@ fn routes_every_connector_into_a_port_they_share() {
     }
     assert_eq!(issue_codes(&result.report), Vec::<String>::new());
 }
+
+/// Given a connector drawn straight across to a node lower down
+/// When the diagram is fixed
+/// Then it follows an orthogonal path and is no longer slanted
+#[test]
+fn reroutes_a_slanted_connector_orthogonally() {
+    let svg = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
+    <g data-node="source">
+      <rect x="20" y="20" width="100" height="56" />
+      <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+    </g>
+    <g data-node="target">
+      <rect x="260" y="140" width="100" height="56" />
+      <text x="310" y="173" text-anchor="middle" font-size="14">Target</text>
+    </g>
+    <path id="flow" data-from="source" data-to="target" d="M 120 48 L 260 168" />
+  </svg>"#;
+
+    let result = fix(svg);
+
+    assert!(is_orthogonal(&connector_points(&result.report, "flow")));
+    assert!(!has_issue(&result.report, "connector-slanted"));
+}
