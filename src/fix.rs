@@ -910,9 +910,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
                     ),
                 };
                 let route = route_with(reroute, ports, &settled);
-                // A route that found no way is drawn straight across.
-                let orthogonal = segments(&route).iter().all(|(a, b)| a.x == b.x || a.y == b.y);
-                if !orthogonal {
+                if !orthogonal(&route) {
                     return f64::INFINITY;
                 }
                 route_cost(&route) + settled.iter().map(|other| routes_cost(&route, other)).sum::<f64>()
@@ -1503,6 +1501,12 @@ type RouteWith<'a> = dyn Fn(&Reroute, Ports, &[Vec<Point>]) -> Vec<Point> + 'a;
 /// along the side to the line it arrives on. A change stays
 /// when the connectors it reroutes cross less without turning more, or
 /// turn less without crossing more.
+/// Whether a route runs only across and down: one that found no way is
+/// drawn straight across, slanted, and turns no corner.
+fn orthogonal(route: &[Point]) -> bool {
+    segments(route).iter().all(|(a, b)| a.x == b.x || a.y == b.y)
+}
+
 #[tracing::instrument(skip_all)]
 fn improve_ports(
     reroutes: &[Reroute],
@@ -1569,7 +1573,7 @@ fn improve_ports(
             .expect("at least one order");
         let current: Vec<Vec<Point>> = changed.iter().map(|(index, _)| routes[*index].clone()).collect();
         let (old, new) = (cost(&current), cost(&rerouted));
-        if new.0 <= old.0 && new.1 <= old.1 && new != old {
+        if new.0 <= old.0 && new.1 <= old.1 && new != old && rerouted.iter().all(|route| orthogonal(route)) {
             changed
                 .iter()
                 .zip(rerouted)

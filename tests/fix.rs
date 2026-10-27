@@ -2371,3 +2371,29 @@ fn reroutes_a_slanted_connector_orthogonally() {
     assert!(is_orthogonal(&connector_points(&result.report, "flow")));
     assert!(!has_issue(&result.report, "connector-slanted"));
 }
+
+/// Given a round node 13px under a box, too close for a route straight up
+/// between them, joined to it by a slanted connector
+/// When the diagram is fixed
+/// Then the connector leaves the circle's side and turns back into the
+/// box's side, orthogonal, and is no longer slanted
+#[test]
+fn routes_round_into_a_box_too_close_to_reach_straight() {
+    let svg = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 500">
+    <g data-node="db">
+      <rect x="100" y="100" width="193" height="48" rx="6" />
+      <text x="196" y="128" text-anchor="middle" font-size="13">Orders DB</text>
+    </g>
+    <g data-node="web">
+      <circle cx="218" cy="233.5" r="72.5" />
+      <text x="218" y="237" text-anchor="middle" font-size="13">Web app</text>
+    </g>
+    <path id="f" data-from="web" data-to="db" d="M 218 161 L 196 148" />
+  </svg>"#;
+
+    let result = fix(svg);
+
+    assert!(is_orthogonal(&connector_points(&result.report, "f")));
+    assert!(!has_issue(&result.report, "connector-slanted"));
+}
