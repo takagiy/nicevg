@@ -200,6 +200,28 @@ fn rejects_references_to_nodes_not_in_the_sketch() {
     );
 }
 
+/// Given two nodes sharing the id "order"
+/// When the sketch is read
+/// Then it is an error naming the second of them and the id, rather than
+///   one of the nodes left out
+#[test]
+fn rejects_two_nodes_with_the_same_id() {
+    let input = sketch(json!({
+        "nodes": [
+            {"id": "order", "x": 0, "y": 0, "width": 100, "height": 50, "label": "First"},
+            {"id": "order", "x": 300, "y": 200, "width": 100, "height": 50, "label": "Second"}
+        ]
+    }));
+
+    assert_eq!(
+        nicevg::analyze_sketch(&input).unwrap_err(),
+        SketchError::DuplicateNode {
+            referrer: "nodes[1].id".to_owned(),
+            node: "order".to_owned()
+        }
+    );
+}
+
 /// A data store open on its right: its id, a dividing line, then its name.
 const STORE: &str = r#"<path d="M 120 0 H 0 V 40 H 120" fill="none" stroke="black"/><line x1="30" y1="0" x2="30" y2="40" stroke="black"/><text x="15" y="20" font-size="14" text-anchor="middle" dominant-baseline="central">D1</text><text x="42" y="20" font-size="14" dominant-baseline="central">Orders</text>"#;
 

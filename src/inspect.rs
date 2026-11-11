@@ -2,6 +2,7 @@
 //! finds; `inspect` concatenates them in a fixed order.
 
 use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
@@ -46,12 +47,14 @@ pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue>
     [
         viewport(view_box, diagram.drawing_bounds()),
         text_fit(&diagram.nodes),
+        duplicate_node_ids(&diagram.nodes),
         node_overlaps(&diagram.nodes),
         node_gaps(&diagram.nodes),
         connector_crossings(&diagram.nodes, &diagram.connectors),
         label_overlaps(&diagram.labels),
         label_node_overlaps(&diagram.nodes, &diagram.labels),
         connector_label_clearance(&diagram.connectors, &diagram.labels),
+        connector_unknown_nodes(&diagram.nodes, &diagram.connectors),
         connector_endpoints(&diagram.nodes, &diagram.connectors),
         slanted_connectors(&diagram.connectors),
         connector_ends_off_ports(&diagram.nodes, &diagram.connectors),
@@ -477,6 +480,52 @@ fn port_ends<'a>(
 
 /// Ends naming a port their node does not declare, and ends naming one of
 /// its ports that meet none of its points.
+/// Ids more than one node has, once each: a connector naming one meets only
+/// the first of them.
+fn duplicate_node_ids(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for node in nodes {
+        *counts.entry(node.id.as_str()).or_default() += 1;
+    }
+    let mut reported = HashSet::new();
+    nodes
+        .iter()
+        .map(|node| (node.id.as_str(), counts[node.id.as_str()]))
+        .filter(|(id, count)| *count > 1 && reported.insert(*id))
+        .map(|(id, count)| {
+            issue(
+                "node-duplicate-id",
+                format!("{count} nodes share the id \"{id}\"."),
+                &[id],
+                Some(json!({ "count": count })),
+            )
+        })
+        .collect()
+}
+
+/// Connector ends naming a node the diagram does not have, such as a
+/// misspelt id: nothing checks or reroutes them.
+fn connector_unknown_nodes(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
+    connectors
+        .iter()
+        .flat_map(|connector| {
+            [(&connector.from, "starts", "start"), (&connector.to, "ends", "end")]
+                .into_iter()
+                .filter(|(id, _, _)| !id.is_empty() && !nodes.iter().any(|node| node.id == **id))
+                .map(move |(id, verb, which)| {
+                    issue(
+                        "connector-unknown-node",
+                        format!(
+                            "Connector \"{}\" {verb} at node \"{id}\", which the diagram does not have.",
+                            connector.id
+                        ),
+                        &[&connector.id],
+                        Some(json!({ "endpoint": which, "node": id })),
+                    )
+                })
+        })
+        .collect()
+}
 fn connector_ends_off_ports(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
     connectors
         .iter()

@@ -945,6 +945,67 @@ fn does_not_report_an_orthogonal_connector_as_slanted() {
     );
 }
 
+/// Given a connector from `a` to "ghost", which no node is, and a connector
+///   between `a` and `b`, which both are
+/// When the diagram is analyzed
+/// Then the first is reported as ending at a node the diagram does not have,
+///   and the second is not
+#[test]
+fn reports_a_connector_end_naming_a_node_the_diagram_lacks() {
+    let svg = r#"
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+        <g data-node="a"><rect x="20" y="20" width="100" height="50" /></g>
+        <g data-node="b"><rect x="260" y="20" width="100" height="50" /></g>
+        <line id="real" data-from="a" data-to="b" x1="120" y1="45" x2="260" y2="45" />
+        <line id="typo" data-from="a" data-to="ghost" x1="70" y1="70" x2="70" y2="150" />
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    assert_eq!(
+        issues_json(&report)
+            .into_iter()
+            .filter(|issue| issue["code"] == "connector-unknown-node")
+            .collect::<Vec<_>>(),
+        [json!({
+          "code": "connector-unknown-node",
+          "message": "Connector \"typo\" ends at node \"ghost\", which the diagram does not have.",
+          "elements": ["typo"],
+          "details": { "endpoint": "end", "node": "ghost" },
+        })]
+    );
+}
+
+/// Given two nodes both named `a`, and a node `b`
+/// When the diagram is analyzed
+/// Then the id `a` is reported once as used by two nodes
+#[test]
+fn reports_an_id_two_nodes_share() {
+    let svg = r#"
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+        <g data-node="a"><rect x="20" y="20" width="100" height="50" /></g>
+        <g data-node="a"><rect x="20" y="120" width="100" height="50" /></g>
+        <g data-node="b"><rect x="260" y="20" width="100" height="50" /></g>
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    assert_eq!(
+        issues_json(&report)
+            .into_iter()
+            .filter(|issue| issue["code"] == "node-duplicate-id")
+            .collect::<Vec<_>>(),
+        [json!({
+          "code": "node-duplicate-id",
+          "message": "2 nodes share the id \"a\".",
+          "elements": ["a"],
+          "details": { "count": 2 },
+        })]
+    );
+}
+
 /// Given a gateway outside a VPC lying across the top border of a cluster in
 /// it, and a connector from a queue in the VPC entering the gateway's left
 /// side through the top of the cluster
