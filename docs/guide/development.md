@@ -50,7 +50,8 @@ cargo run --release --example profile -- input.svg --fix --chrome trace.json --f
 ## CI とリリース
 
 - CI（`.github/workflows/ci.yml`）は main への push とプルリクエストで、整形と lint と、Linux・macOS・Windows それぞれで Rust のテストと TypeScript ライブラリのビルドとテスト（Bun と Node）を回す。Rust のビルドは [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache) で、Bun の依存は `bun.lock` をキーにキャッシュし、キャッシュは main の実行でだけ保存する。
-- `v*` のタグを push すると、`.github/workflows/npm.yml` が npm に公開し、npm がその版を配り始めたら [takagiy/homebrew-tap](https://github.com/takagiy/homebrew-tap) の formula を npm のパッケージの tarball とその sha256 に書き換えて commit する。formula は Node でそのパッケージを入れる。tap への書き込みには、tap の contents だけに書き込める fine-grained token を `HOMEBREW_TAP_TOKEN` として secret に入れておく。
+- `v*` のタグを push すると、`.github/workflows/npm.yml` が npm に公開する。[takagiy/homebrew-tap](https://github.com/takagiy/homebrew-tap) は 1 時間ごとに npm の `latest` を見て、新しい版があれば formula をその tarball と sha256 に書き換え、入れてテストできたら tap 自身の token で commit する（tap の `.github/workflows/bump-nicevg.yml`）。このリポジトリに tap への token は要らない。formula は Node でそのパッケージを入れる。
+- GitHub は、公開リポジトリで 60 日動きがないと定期実行のワークフローを止める。60 日以上リリースがなかったあとは、tap で `gh workflow enable bump-nicevg.yml` してから `gh workflow run bump-nicevg.yml` を実行する。
 - リリースでは、ルートと `bindings/js` の `Cargo.toml`、`bindings/js/package.json` の版を揃えて上げる。
 
 ## TypeScript ライブラリ
