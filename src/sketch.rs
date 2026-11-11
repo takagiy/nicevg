@@ -103,6 +103,9 @@ pub enum SketchError {
     /// The field at `referrer` (such as `connectors[0].to` or
     /// `nodes[2].parent`) names a node the sketch does not have.
     UnknownNode { referrer: String, node: String },
+    /// The id at `referrer` (such as `nodes[3].id`) is one an earlier node
+    /// already has.
+    DuplicateNode { referrer: String, node: String },
     /// The node at `referrer` has neither `svg` nor both `width` and `height`.
     MissingSize { referrer: String },
     /// The `svg` at `referrer` is not well-formed SVG or draws nothing.
@@ -126,6 +129,9 @@ impl std::fmt::Display for SketchError {
                     formatter,
                     "{referrer} refers to node \"{node}\", which the sketch does not have"
                 )
+            }
+            SketchError::DuplicateNode { referrer, node } => {
+                write!(formatter, "{referrer} is \"{node}\", the id of an earlier node too")
             }
             SketchError::MissingSize { referrer } => {
                 write!(formatter, "{referrer} needs a width and a height, or svg")
@@ -167,7 +173,15 @@ pub fn arrange_sketch(sketch: &Sketch) -> Result<FixResult, SketchError> {
 /// its children nested in it, and a `data-from`/`data-to` path for each
 /// connector, its label a `data-label-for` text.
 pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
-    let nodes: HashMap<&str, &SketchNode> = sketch.nodes.iter().map(|node| (node.id.as_str(), node)).collect();
+    let mut nodes: HashMap<&str, &SketchNode> = HashMap::new();
+    for (index, node) in sketch.nodes.iter().enumerate() {
+        if nodes.insert(node.id.as_str(), node).is_some() {
+            return Err(SketchError::DuplicateNode {
+                referrer: format!("nodes[{index}].id"),
+                node: node.id.clone(),
+            });
+        }
+    }
     for (index, node) in sketch.nodes.iter().enumerate() {
         if let Some(parent) = node.parent.as_deref().filter(|parent| !nodes.contains_key(parent)) {
             return Err(unknown(format!("nodes[{index}].parent"), parent));

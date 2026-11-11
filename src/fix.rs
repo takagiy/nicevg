@@ -1501,24 +1501,23 @@ fn end_container_ids<'a>(diagram: &'a Diagram, connector_id: &str) -> Vec<&'a st
         .unwrap_or_default()
 }
 
-/// Replaces or appends a connector's route, keeping the original order.
 /// Routes a connector with the given ports around the routes occupying the
 /// diagram.
 type RouteWith<'a> = dyn Fn(&Reroute, Ports, &[Vec<Point>]) -> Vec<Point> + 'a;
 
-/// Port changes that spreading ports evenly cannot see, tried once routes
-/// are drawn: two connectors on the same node side whose routes cross
-/// trade their ports there (a connector running straight takes its other
-/// end along), and an end that steps aside just before its node slides
-/// along the side to the line it arrives on. A change stays
-/// when the connectors it reroutes cross less without turning more, or
-/// turn less without crossing more.
 /// Whether a route runs only across and down: one that found no way is
 /// drawn straight across, slanted, and turns no corner.
 fn orthogonal(route: &[Point]) -> bool {
     segments(route).iter().all(|(a, b)| a.x == b.x || a.y == b.y)
 }
 
+/// Port changes that spreading ports evenly cannot see, tried once routes
+/// are drawn: two connectors on the same node side whose routes cross
+/// trade their ports there (a connector running straight takes its other
+/// end along), and an end that steps aside just before its node slides
+/// along the side to the line it arrives on. A change stays when the
+/// connectors it reroutes stay orthogonal and cross less without turning
+/// more, or turn less without crossing more.
 #[tracing::instrument(skip_all)]
 fn improve_ports(
     reroutes: &[Reroute],
@@ -1819,6 +1818,7 @@ fn stepped_end(route: &[Point]) -> Option<f64> {
     }
 }
 
+/// Replaces or appends a connector's route, keeping the original order.
 fn with_route(routes: Vec<(String, Vec<Point>)>, id: &str, route: Vec<Point>) -> Vec<(String, Vec<Point>)> {
     if routes.iter().any(|(existing, _)| existing == id) {
         routes
