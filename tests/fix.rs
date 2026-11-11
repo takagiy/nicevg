@@ -641,6 +641,53 @@ fn places_labels_of_connectors_inside_a_container() {
     assert_fix_snapshots!(result);
 }
 
+/// A cluster 200px wide holding `a`, `b` above each other and `c` to its right.
+fn cluster_too_narrow_for_a_label(to: &str) -> String {
+    format!(
+        r#"
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 320">
+        <g data-node="cluster">
+          <rect x="0" y="0" width="200" height="300" />
+          <g data-node="a">
+            <rect x="60" y="20" width="32" height="42" />
+            <text x="76" y="46" text-anchor="middle" font-size="14">A</text>
+          </g>
+          <g data-node="b">
+            <rect x="60" y="220" width="32" height="42" />
+            <text x="76" y="246" text-anchor="middle" font-size="14">B</text>
+          </g>
+        </g>
+        <g data-node="c">
+          <rect x="250" y="200" width="32" height="42" />
+          <text x="266" y="226" text-anchor="middle" font-size="14">C</text>
+        </g>
+        <line id="edge" data-from="a" data-to="{to}" x1="76" y1="62" x2="76" y2="220" />
+        <text data-label="long" data-label-for="edge" x="76" y="146" text-anchor="middle"
+          font-size="14">a long label on the edge</text>
+      </svg>
+    "#
+    )
+}
+
+/// Given a label wider than the room beside its connector inside the
+///   cluster, on a connector inside the cluster and on one out of it, both
+///   drawn with the label across the line
+/// When the diagram is fixed
+/// Then the label moves beside its connector, across the cluster's border
+///   where nothing else fits, rather than staying on the line or away from it
+#[test]
+fn places_a_label_across_a_container_s_border_when_neither_side_has_room() {
+    for to in ["b", "c"] {
+        let result = fix(&cluster_too_narrow_for_a_label(to));
+        let label = label_bounds(&result.report, "long");
+        let route = connector_points(&result.report, "edge");
+
+        assert!(distance_to_route(&label, &route) <= 16.0, "{to}: {label:?} {route:?}");
+        assert!(!has_issue(&result.report, "connector-label-clearance"), "{to}");
+        assert!(!has_issue(&result.report, "label-detached"), "{to}");
+    }
+}
+
 /// Given a connector that must detour around a node between its ends
 /// When the diagram is fixed
 /// Then it leaves the source side and enters the target side at right
@@ -2346,4 +2393,102 @@ fn routes_every_connector_into_a_port_they_share() {
         );
     }
     assert_eq!(issue_codes(&result.report), Vec::<String>::new());
+}
+
+/// Given a connector drawn straight across to a node lower down
+/// When the diagram is fixed
+/// Then it follows an orthogonal path and is no longer slanted
+#[test]
+fn reroutes_a_slanted_connector_orthogonally() {
+    let svg = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
+    <g data-node="source">
+      <rect x="20" y="20" width="100" height="56" />
+      <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+    </g>
+    <g data-node="target">
+      <rect x="260" y="140" width="100" height="56" />
+      <text x="310" y="173" text-anchor="middle" font-size="14">Target</text>
+    </g>
+    <path id="flow" data-from="source" data-to="target" d="M 120 48 L 260 168" />
+  </svg>"#;
+
+    let result = fix(svg);
+
+    assert!(is_orthogonal(&connector_points(&result.report, "flow")));
+    assert!(!has_issue(&result.report, "connector-slanted"));
+}
+
+/// Given a round node 13px under a box, too close for a route straight up
+/// between them, joined to it by a slanted connector
+/// When the diagram is fixed
+/// Then the connector leaves the circle's side and turns back into the
+/// box's side, orthogonal, and is no longer slanted
+#[test]
+fn routes_round_into_a_box_too_close_to_reach_straight() {
+    let svg = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 500">
+    <g data-node="db">
+      <rect x="100" y="100" width="193" height="48" rx="6" />
+      <text x="196" y="128" text-anchor="middle" font-size="13">Orders DB</text>
+    </g>
+    <g data-node="web">
+      <circle cx="218" cy="233.5" r="72.5" />
+      <text x="218" y="237" text-anchor="middle" font-size="13">Web app</text>
+    </g>
+    <path id="f" data-from="web" data-to="db" d="M 218 161 L 196 148" />
+  </svg>"#;
+
+    let result = fix(svg);
+
+    assert!(is_orthogonal(&connector_points(&result.report, "f")));
+    assert!(!has_issue(&result.report, "connector-slanted"));
+}
+
+/// A VPC holding a queue, a worker beside it and, below them, a cluster;
+/// outside the VPC, a gateway lies across the cluster's top border, joined
+/// from the queue by a slanted connector.
+const GATEWAY_ACROSS_A_CLUSTER: &str = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500">
+    <g data-node="vpc">
+      <rect x="40" y="40" width="640" height="420" rx="8" />
+      <g data-node="queue">
+        <rect x="100" y="80" width="124" height="48" rx="6" />
+        <text x="162" y="108" text-anchor="middle" font-size="13">Billing queue</text>
+      </g>
+      <g data-node="worker">
+        <rect x="300" y="80" width="150" height="48" rx="6" />
+        <text x="375" y="108" text-anchor="middle" font-size="13">Messaging worker</text>
+      </g>
+      <g data-node="cluster">
+        <rect x="60" y="200" width="780" height="200" rx="8" />
+        <g data-node="orders">
+          <rect x="150" y="300" width="100" height="48" rx="6" />
+          <text x="200" y="328" text-anchor="middle" font-size="13">Orders</text>
+        </g>
+      </g>
+    </g>
+    <g data-node="gateway">
+      <rect x="700" y="190" width="121" height="48" rx="6" />
+      <text x="760" y="218" text-anchor="middle" font-size="13">SMS gateway</text>
+    </g>
+    <path id="sms" data-from="queue" data-to="gateway" d="M 162 128 L 760 190" />
+</svg>"#;
+
+/// Given a gateway lying across a cluster's top border, below and to the
+/// right of a queue, with a worker blocking the way across from the queue
+/// When the diagram is fixed
+/// Then the connector leaves the queue's bottom, turns once, and enters the
+/// gateway's left side through the cluster
+#[test]
+fn routes_into_a_node_across_a_container_border_through_the_container() {
+    let result = fix(GATEWAY_ACROSS_A_CLUSTER);
+    let points = connector_points(&result.report, "sms");
+    let queue = node_bounds(&result.report, "queue");
+    let gateway = node_bounds(&result.report, "gateway");
+
+    assert!(is_orthogonal(&points), "{points:?}");
+    assert_eq!(points.first().map(|p| p.y), Some(queue.y + queue.height), "{points:?}");
+    assert_eq!(points.last().map(|p| p.x), Some(gateway.x), "{points:?}");
+    assert_eq!(bend_count(&points), 1, "{points:?}");
 }

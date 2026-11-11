@@ -16,9 +16,9 @@ use crate::diagram::{
 use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, route_is_clear, segments};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
-    CLEARANCE, CLOSE_RUN, CROSSING_PENALTY, END_STUBS, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, PortRequest, Ports,
-    Pushable, Side, Sides, choose_sides, connector_ports, crossings, end_on_shapes, is_on_outline, label_landmarks,
-    overlap, place_label, place_label_clear, route_connector, route_cost, routes_cost, runs_across, side_of,
+    CLEARANCE, CLOSE_RUN, CROSSING_PENALTY, END_STUBS, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, LabelSpot, PortRequest,
+    Ports, Pushable, Side, Sides, choose_sides, connector_ports, crossings, end_on_shapes, is_on_outline,
+    label_landmarks, overlap, place_label, route_connector, route_cost, routes_cost, runs_across, side_of,
     spread_ports, turns,
 };
 use crate::text::{label_text_index, move_label, text_bounds};
@@ -493,6 +493,7 @@ fn pick_reroutes<'a>(
                 &all_routes,
                 &blocked,
                 &label_containers(diagram, connector_id),
+                LabelSpot::Within,
             )
             .is_none()
         })
@@ -504,6 +505,7 @@ fn pick_reroutes<'a>(
         "connector-label-clearance",
         "connector-endpoint-inside",
         "connector-endpoint-detached",
+        "connector-slanted",
         "connector-end-off-port",
         "connector-end-along-side",
         "connector-overlap",
@@ -691,10 +693,21 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             .collect();
         let containers = label_containers(diagram, &connector.id);
         let (width, height) = (label.bounds.width, label.bounds.height);
-        if place_label_clear(width, height, &connector.points, &all_routes, &blocked, &containers).is_some() {
+        let place = |worst| {
+            place_label(
+                width,
+                height,
+                &connector.points,
+                &all_routes,
+                &blocked,
+                &containers,
+                worst,
+            )
+        };
+        if place(LabelSpot::Clear).is_some() {
             return Some(0.0);
         }
-        let spot = place_label(width, height, &connector.points, &all_routes, &blocked, &containers)?;
+        let spot = place(LabelSpot::Within)?;
         let crowding: f64 = diagram
             .connectors
             .iter()
@@ -909,9 +922,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
                     ),
                 };
                 let route = route_with(reroute, ports, &settled);
-                // A route that found no way is drawn straight across.
-                let orthogonal = segments(&route).iter().all(|(a, b)| a.x == b.x || a.y == b.y);
-                if !orthogonal {
+                if !orthogonal(&route) {
                     return f64::INFINITY;
                 }
                 route_cost(&route) + settled.iter().map(|other| routes_cost(&route, other)).sum::<f64>()
@@ -1122,15 +1133,15 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             let blocked = [obstacles.clone(), label_blockers(diagram, &connector_id)].concat();
             let containers = label_containers(diagram, &connector_id);
             let (width, height) = (label.bounds.width, label.bounds.height);
-            // A pushed label takes a spot clear of the other connectors when
-            // there is one.
-            let clear = pushed
-                .contains(label.id.as_str())
-                .then(|| place_label_clear(width, height, route, &all_final, &blocked, &containers))
-                .flatten();
-            let Some(placement) =
-                clear.or_else(|| place_label(width, height, route, &all_final, &blocked, &containers))
-            else {
+            // A label pushed aside with nowhere inside or outside its containers
+            // is stuck and its connector rerouted; its own connector's label
+            // takes a spot across a container's border rather than none.
+            let worst = if pushed.contains(label.id.as_str()) {
+                LabelSpot::Within
+            } else {
+                LabelSpot::Across
+            };
+            let Some(placement) = place_label(width, height, route, &all_final, &blocked, &containers, worst) else {
                 if pushed.contains(label.id.as_str()) {
                     stuck.insert(label.id.clone());
                 }
@@ -1407,14 +1418,14 @@ fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
                 .copied()
                 .chain(label_blockers(diagram, &connector.id))
                 .collect();
-            let place = if stale { place_label } else { place_label_clear };
-            let Some(placement) = place(
+            let Some(placement) = place_label(
                 label.bounds.width,
                 label.bounds.height,
                 &connector.points,
                 &routes,
                 &blocked,
                 &label_containers(diagram, &connector.id),
+                if stale { LabelSpot::Within } else { LabelSpot::Clear },
             )
             .filter(|placement| placement.bounds != label.bounds) else {
                 return (draft, obstacles);
@@ -1502,6 +1513,12 @@ type RouteWith<'a> = dyn Fn(&Reroute, Ports, &[Vec<Point>]) -> Vec<Point> + 'a;
 /// along the side to the line it arrives on. A change stays
 /// when the connectors it reroutes cross less without turning more, or
 /// turn less without crossing more.
+/// Whether a route runs only across and down: one that found no way is
+/// drawn straight across, slanted, and turns no corner.
+fn orthogonal(route: &[Point]) -> bool {
+    segments(route).iter().all(|(a, b)| a.x == b.x || a.y == b.y)
+}
+
 #[tracing::instrument(skip_all)]
 fn improve_ports(
     reroutes: &[Reroute],
@@ -1568,7 +1585,7 @@ fn improve_ports(
             .expect("at least one order");
         let current: Vec<Vec<Point>> = changed.iter().map(|(index, _)| routes[*index].clone()).collect();
         let (old, new) = (cost(&current), cost(&rerouted));
-        if new.0 <= old.0 && new.1 <= old.1 && new != old {
+        if new.0 <= old.0 && new.1 <= old.1 && new != old && rerouted.iter().all(|route| orthogonal(route)) {
             changed
                 .iter()
                 .zip(rerouted)
