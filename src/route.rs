@@ -1651,13 +1651,12 @@ fn set(ports: Ports, end: End, value: Point) -> Ports {
     }
 }
 
-/// Spreads the endpoints that share a node side evenly along that side,
-/// ordered by the position of the node at the other end, so parallel
-/// connectors do not collapse onto one line; then straightens connectors
-/// between facing sides.
 /// Spreads the ports of the requests evenly along each side they share,
-/// counting the ports already on that side (`fixed`, keyed like the sides
-/// and given along it) as taking the even slots nearest them.
+/// ordered by the position of the node at the other end, so parallel
+/// connectors do not collapse onto one line, counting the ports already on
+/// that side (`fixed`, keyed like the sides and given along it) as taking
+/// the even slots nearest them; then straightens connectors between facing
+/// sides.
 #[tracing::instrument(skip_all, fields(requests = requests.len()))]
 pub fn spread_ports(requests: &[PortRequest], fixed: &HashMap<String, Vec<f64>>) -> HashMap<String, Ports> {
     let midpoints: HashMap<String, Ports> = requests
@@ -2042,10 +2041,6 @@ fn bounds_at(x: f64, y: f64, width: f64, height: f64) -> Bounds {
     Bounds { x, y, width, height }
 }
 
-/// Finds a spot for a connector label beside one of the connector's
-/// segments, trying the longest segment first and fanning out from its
-/// midpoint. The label keeps the connector clearance from every route and
-/// stays at least 4px away from other labels and nodes.
 /// Where two crossing segments meet.
 fn crossing_point(a: Point, b: Point, c: Point, d: Point) -> Point {
     let denominator = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
@@ -2116,9 +2111,12 @@ pub enum LabelSpot {
     Across,
 }
 
-/// A spot for a label beside `route`, no worse than `worst`. `containers`
-/// are the boxes around the connector's ends: the label sits inside or
-/// outside each when it can.
+/// A spot for a label beside one of `route`'s segments, no worse than
+/// `worst`, trying the longest segment first and fanning out from its
+/// midpoint. The label keeps the connector clearance from every route and
+/// stays at least 4px away from other labels and nodes. `containers` are
+/// the boxes around the connector's ends: the label sits inside or outside
+/// each when it can.
 #[tracing::instrument(skip_all, fields(routes = routes.len(), blocked = blocked.len()))]
 pub fn place_label(
     width: f64,
