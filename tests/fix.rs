@@ -641,6 +641,53 @@ fn places_labels_of_connectors_inside_a_container() {
     assert_fix_snapshots!(result);
 }
 
+/// A cluster 200px wide holding `a`, `b` above each other and `c` to its right.
+fn cluster_too_narrow_for_a_label(to: &str) -> String {
+    format!(
+        r#"
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 320">
+        <g data-node="cluster">
+          <rect x="0" y="0" width="200" height="300" />
+          <g data-node="a">
+            <rect x="60" y="20" width="32" height="42" />
+            <text x="76" y="46" text-anchor="middle" font-size="14">A</text>
+          </g>
+          <g data-node="b">
+            <rect x="60" y="220" width="32" height="42" />
+            <text x="76" y="246" text-anchor="middle" font-size="14">B</text>
+          </g>
+        </g>
+        <g data-node="c">
+          <rect x="250" y="200" width="32" height="42" />
+          <text x="266" y="226" text-anchor="middle" font-size="14">C</text>
+        </g>
+        <line id="edge" data-from="a" data-to="{to}" x1="76" y1="62" x2="76" y2="220" />
+        <text data-label="long" data-label-for="edge" x="76" y="146" text-anchor="middle"
+          font-size="14">a long label on the edge</text>
+      </svg>
+    "#
+    )
+}
+
+/// Given a label wider than the room beside its connector inside the
+///   cluster, on a connector inside the cluster and on one out of it, both
+///   drawn with the label across the line
+/// When the diagram is fixed
+/// Then the label moves beside its connector, across the cluster's border
+///   where nothing else fits, rather than staying on the line or away from it
+#[test]
+fn places_a_label_across_a_container_s_border_when_neither_side_has_room() {
+    for to in ["b", "c"] {
+        let result = fix(&cluster_too_narrow_for_a_label(to));
+        let label = label_bounds(&result.report, "long");
+        let route = connector_points(&result.report, "edge");
+
+        assert!(distance_to_route(&label, &route) <= 16.0, "{to}: {label:?} {route:?}");
+        assert!(!has_issue(&result.report, "connector-label-clearance"), "{to}");
+        assert!(!has_issue(&result.report, "label-detached"), "{to}");
+    }
+}
+
 /// Given a connector that must detour around a node between its ends
 /// When the diagram is fixed
 /// Then it leaves the source side and enters the target side at right

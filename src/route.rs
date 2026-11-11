@@ -2103,8 +2103,23 @@ pub fn runs_across((from, to): (Point, Point), label: &Bounds, (c, d): (Point, P
     }
 }
 
-/// `containers` are the boxes around the connector's ends: the label may
-/// sit inside or outside each, but not across its border.
+/// The spots a label search takes, best first: each also takes those of the
+/// ones before it, and a better spot always wins over a worse one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LabelSpot {
+    /// At least a label clearance from every connector but its own, and
+    /// inside or outside each container.
+    Clear,
+    /// Inside or outside each container.
+    Within,
+    /// Across a container's border too.
+    Across,
+}
+
+/// A spot for a label beside `route`, no worse than `worst`. `containers`
+/// are the boxes around the connector's ends: the label sits inside or
+/// outside each when it can.
+#[tracing::instrument(skip_all, fields(routes = routes.len(), blocked = blocked.len()))]
 pub fn place_label(
     width: f64,
     height: f64,
@@ -2112,32 +2127,7 @@ pub fn place_label(
     routes: &[Vec<Point>],
     blocked: &[Bounds],
     containers: &[Bounds],
-) -> Option<Placement> {
-    find_label_spot(width, height, route, routes, blocked, containers, false)
-}
-
-/// A spot for a label at least a label clearance from every connector but
-/// its own, if there is one.
-pub fn place_label_clear(
-    width: f64,
-    height: f64,
-    route: &[Point],
-    routes: &[Vec<Point>],
-    blocked: &[Bounds],
-    containers: &[Bounds],
-) -> Option<Placement> {
-    find_label_spot(width, height, route, routes, blocked, containers, true)
-}
-
-#[tracing::instrument(skip_all, fields(routes = routes.len(), blocked = blocked.len()))]
-fn find_label_spot(
-    width: f64,
-    height: f64,
-    route: &[Point],
-    routes: &[Vec<Point>],
-    blocked: &[Bounds],
-    containers: &[Bounds],
-    clear_only: bool,
+    worst: LabelSpot,
 ) -> Option<Placement> {
     let gap = CLEARANCE + 1.0;
     let mut ordered: Vec<(usize, (Point, Point))> = segments(route).into_iter().enumerate().collect();
@@ -2158,13 +2148,15 @@ fn find_label_spot(
             && blocked
                 .iter()
                 .all(|other| intersection(bounds, &other.inflate(4.0)).is_none())
-            && containers.iter().all(|container| {
-                let inside = bounds.x >= container.x + 4.0
-                    && bounds.y >= container.y + 4.0
-                    && bounds.right() <= container.right() - 4.0
-                    && bounds.bottom() <= container.bottom() - 4.0;
-                inside || intersection(bounds, &container.inflate(4.0)).is_none()
-            })
+    };
+    let within = |bounds: &Bounds| {
+        containers.iter().all(|container| {
+            let inside = bounds.x >= container.x + 4.0
+                && bounds.y >= container.y + 4.0
+                && bounds.right() <= container.right() - 4.0
+                && bounds.bottom() <= container.bottom() - 4.0;
+            inside || intersection(bounds, &container.inflate(4.0)).is_none()
+        })
     };
     // Other connectors passing close make it unclear which one a label
     // belongs to: a spot clear of them is preferred when there is one, and
@@ -2270,12 +2262,17 @@ fn find_label_spot(
             })
             .map(|(_, placement)| placement)
     };
-    let clear = find(&|bounds, beside| fits(bounds) && clear_of_others(bounds, beside));
-    if clear_only {
-        clear
-    } else {
-        clear.or_else(|| find(&|bounds, _| fits(bounds)))
-    }
+    let takes = |spot: LabelSpot| {
+        move |bounds: &Bounds, beside: (Point, Point)| {
+            fits(bounds)
+                && (spot == LabelSpot::Across || within(bounds))
+                && (spot != LabelSpot::Clear || clear_of_others(bounds, beside))
+        }
+    };
+    [LabelSpot::Clear, LabelSpot::Within, LabelSpot::Across]
+        .into_iter()
+        .filter(|spot| *spot <= worst)
+        .find_map(|spot| find(&takes(spot)))
 }
 
 #[cfg(test)]
