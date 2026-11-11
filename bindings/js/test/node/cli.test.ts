@@ -2,7 +2,9 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -159,6 +161,31 @@ for (const [runtime, cli] of runtimes) {
       );
 
       assert.deepEqual(statuses, Array(16).fill(0));
+    });
+
+    /**
+     * Given a git repository whose markdown file has a diagram block naming a.svg
+     * When nicevg doc runs on it
+     * Then it writes a.svg, links it after the block and reports both files changed as JSON
+     */
+    test("draws the diagram block of a markdown file", () => {
+      const root = mkdtempSync(join(tmpdir(), "nicevg-doc-"));
+      mkdirSync(join(root, ".git"));
+      const block = `<!-- nicevg a.svg
+import { render } from "nicevg";
+import { box } from "nicevg/style/simple";
+const label: string = "A";
+render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } });
+-->
+`;
+      writeFileSync(join(root, "guide.md"), block);
+
+      const result = spawnSync(runtime, [cli, "doc", "guide.md"], { cwd: root, encoding: "utf8" });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout).changedFiles.sort(), ["a.svg", "guide.md"]);
+      assert.match(readFileSync(join(root, "a.svg"), "utf8"), /data-node="a"/);
+      assert.match(readFileSync(join(root, "guide.md"), "utf8"), /<!-- nicevg:output -->\n!\[a\]\(a\.svg\)\n<!-- \/nicevg:output -->/);
     });
   });
 }
