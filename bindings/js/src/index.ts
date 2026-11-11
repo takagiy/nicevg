@@ -27,8 +27,10 @@ import { writeFile } from "node:fs/promises";
 
 import type { SvgFragment } from "./draw.ts";
 import { call as native } from "./native.ts";
+import { NicevgError, sketchRequest } from "./sketch.ts";
 
 export { SvgFragment, Text, type TextPlace, svg, text } from "./draw.ts";
+export { NicevgError } from "./sketch.ts";
 
 export interface Point {
   x: number;
@@ -189,11 +191,6 @@ export class Svg {
   }
 }
 
-/** An input nicevg cannot read, saying what is wrong and where. */
-export class NicevgError extends Error {
-  override name = "NicevgError";
-}
-
 /**
  * Renders a diagram into SVG: repairs its layout errors (overlapping nodes,
  * routes through nodes, stray labels and more), routes the connectors given
@@ -210,37 +207,4 @@ export function render<const Node extends SketchNode>(input: Input<Node>): Svg {
     throw new NicevgError(reply.error);
   }
   return new Svg(reply.ok.svg, reply.ok.changes, reply.ok.report);
-}
-
-/** The sketch as the native library reads it: nodes drawn by their styles, edges as connectors. */
-function sketchRequest<Node extends SketchNode>({ nodes, edges, connectors, style, rootAttrs }: Sketch<Node>) {
-  // Each style is called only with nodes of its own class.
-  const styles = (style ?? {}) as Record<string, Style>;
-  if (edges && connectors) {
-    throw new NicevgError("edges and connectors are the same; pass one of them");
-  }
-  const ids = new Set(nodes.map((node) => node.id));
-  // A node's id as it is, else split at the last dot into a node and its port.
-  const end = (name: string) => {
-    const dot = name.lastIndexOf(".");
-    return ids.has(name) || dot < 0 ? { node: name } : { node: name.slice(0, dot), port: name.slice(dot + 1) };
-  };
-  return {
-    nodes: nodes.map((node, index) => {
-      if (typeof node.class !== "string") {
-        throw new NicevgError(`nodes[${index}].class: every node needs the class of the style that draws it`);
-      }
-      const draw = Object.hasOwn(styles, node.class) ? styles[node.class] : undefined;
-      if (!draw) {
-        throw new NicevgError(`nodes[${index}].class: no style named "${node.class}"`);
-      }
-      const { id, x, y, parent, allowOverlap } = node;
-      return { id, x, y, parent, allowOverlap, svg: String(draw(node)) };
-    }),
-    connectors: (edges ?? connectors)?.map(({ from, to, ...connector }) => {
-      const [start, finish] = [end(from), end(to)];
-      return { ...connector, from: start.node, fromPort: start.port, to: finish.node, toPort: finish.port };
-    }),
-    rootAttrs: rootAttrs && Object.fromEntries(Object.entries(rootAttrs).map(([name, value]) => [name, String(value)])),
-  };
 }
