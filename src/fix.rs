@@ -13,7 +13,9 @@ use crate::diagram::{
     Diagram, DiagramConnector, DiagramLabel, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, holds_end,
     is_node_shape, node_group, non_empty, number_attribute, rect_bounds, translation,
 };
-use crate::geometry::{Bounds, Point, distance_to_route, enclosing, format_number, point, route_is_clear, segments};
+use crate::geometry::{
+    Bounds, Point, distance_to_route, enclosing, format_number, intersection, point, route_is_clear, segments,
+};
 use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
     CLEARANCE, CLOSE_RUN, CROSSING_PENALTY, END_STUBS, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, LabelSpot, PortRequest,
@@ -25,7 +27,7 @@ use crate::text::{label_text_index, move_label, text_bounds};
 use crate::xml::{Document, Element, serialize};
 use crate::{AnalysisReport, SvgInputError, parse, report_of};
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, serde::Deserialize)]
 pub struct FixChange {
     pub code: String,
     pub message: String,
@@ -185,7 +187,7 @@ pub(crate) fn fix_further(best: Draft, passes: usize) -> Draft {
 fn fix_once(draft: Draft) -> Draft {
     let landmarks = connector_landmarks(&draft.report().diagram);
     expand_view_box(settle_labels(
-        reroute_connectors(separate_nodes(expand_nodes(draft))),
+        reroute_connectors(separate_nodes(grow_parents(clear_parent_texts(expand_nodes(draft))))),
         &landmarks,
     ))
 }
@@ -269,6 +271,78 @@ fn expand_nodes(draft: Draft) -> Draft {
         })
 }
 
+/// Grows each parent a child sticks out of, or comes nearer the border of
+/// than the parent's padding, on the sides it does, one child at a time: a
+/// parent grown round a child then grows its own parent in turn.
+#[tracing::instrument(skip_all)]
+fn grow_parents(draft: Draft) -> Draft {
+    fn step(draft: Draft, attempt: usize) -> Draft {
+        if attempt >= 100 {
+            return draft;
+        }
+        let report = draft.report().clone();
+        let grown = report
+            .issues
+            .iter()
+            .filter(|issue| issue.code == "node-outside-parent")
+            .find_map(|issue| {
+                let node = |index: usize| issue.elements.get(index).and_then(|id| report.diagram.node(id));
+                let (parent, child) = (node(1)?, node(0)?);
+                let (updated, message) = grow_round(&draft.document, parent, child)?;
+                Some((updated, message, [parent.id.clone(), child.id.clone()]))
+            });
+        match grown {
+            Some((updated, message, [parent, child])) => step(
+                draft.changed(updated, "grow-parent", message, &[&parent, &child]),
+                attempt + 1,
+            ),
+            None => draft,
+        }
+    }
+    step(draft, 0)
+}
+
+/// The document with `parent`'s rect grown just enough to hold `child` with
+/// the parent's padding, and what changed; none for a parent nicevg cannot
+/// grow: a custom one, or one drawn as a circle.
+fn grow_round(document: &Document, parent: &DiagramNode, child: &DiagramNode) -> Option<(Document, String)> {
+    if !parent.grows() {
+        return None;
+    }
+    let group = node_group(document, &parent.id)?;
+    // A picture's frame is the rect it marks; a node's own, its first shape.
+    let (shape, element) = document
+        .descendants(&group)
+        .into_iter()
+        .find(|(_, element)| is_node_shape(element) && (!parent.custom || element.has_attr("data-bounds")))?;
+    if element.name != "rect" {
+        return None;
+    }
+    let current = rect_bounds(document, &shape);
+    let grown = parent.grown_round(&child.bounds);
+    if grown == current {
+        return None;
+    }
+    let offset = point(
+        current.x - number_attribute(element, "x"),
+        current.y - number_attribute(element, "y"),
+    );
+    let updated = document.update(&shape, |rect| {
+        rect.with_attr("x", &format_number(grown.x - offset.x))
+            .with_attr("y", &format_number(grown.y - offset.y))
+            .with_attr("width", &format_number(grown.width))
+            .with_attr("height", &format_number(grown.height))
+    });
+    let message = format!(
+        "Grew node \"{}\" from {} to {} to hold \"{}\".",
+        parent.id,
+        current.format(),
+        grown.format(),
+        child.id
+    );
+    Some((updated, message))
+}
+
 /// Pushes the right node of each overlapping or too-close pair rightwards,
 /// one pair at a time, until the row keeps its 20px gaps.
 #[tracing::instrument(skip_all)]
@@ -298,30 +372,85 @@ fn separate_nodes(draft: Draft) -> Draft {
         if delta <= 0.0 {
             return draft;
         }
-        let Some(group) = node_group(&draft.document, &right.id) else {
-            return draft;
-        };
-        let existing = draft.document.element(&group).attr("transform").trim().to_owned();
-        let transform = format!(
-            "{existing}{}translate({} 0)",
-            if existing.is_empty() { "" } else { " " },
-            format_number(delta)
-        );
-        let updated = draft.document.update(&group, |g| g.with_attr("transform", &transform));
         let message = format!(
             "Moved node \"{}\" {}px right to preserve a 20px gap.",
             right.id,
             format_number(delta)
         );
         let id = right.id.clone();
-        let moved = draft.changed(updated, "move-node", message, &[&id]);
-        let moved = Draft {
-            moved_node_ids: [moved.moved_node_ids.clone(), vec![id]].concat(),
-            ..moved
-        };
-        step(moved, attempt + 1)
+        match moved(&draft, &id, point(delta, 0.0), message) {
+            Some(moved) => step(moved, attempt + 1),
+            None => draft,
+        }
     }
     step(draft, 0)
+}
+
+/// Moves each child lying on a text of its parent the nearer way off it,
+/// down or right, to the parent's padding from the text: the parent grows
+/// round it after, as round any child. Never up or left, which would grow
+/// the parent past its top left, where its texts start from: a style draws
+/// them again from the new corner, onto the child again.
+#[tracing::instrument(skip_all)]
+fn clear_parent_texts(draft: Draft) -> Draft {
+    fn step(draft: Draft, attempt: usize) -> Draft {
+        if attempt >= 100 {
+            return draft;
+        }
+        let report = draft.report().clone();
+        let Some((id, by)) = report
+            .issues
+            .iter()
+            .filter(|issue| issue.code == "parent-text-overlap")
+            .find_map(|issue| {
+                let node = |index: usize| issue.elements.get(index).and_then(|id| report.diagram.node(id));
+                let (child, parent) = (node(0)?, node(1)?);
+                let padding = parent.child_padding();
+                let lain_on: Vec<Bounds> = parent
+                    .label_bounds
+                    .iter()
+                    .filter(|text| intersection(text, &child.bounds).is_some())
+                    .copied()
+                    .collect();
+                let (text, at) = (enclosing(&lain_on)?, child.bounds);
+                let ways = [
+                    point(0.0, text.bottom() + padding - at.y),
+                    point(text.right() + padding - at.x, 0.0),
+                ];
+                let nearest = ways
+                    .into_iter()
+                    .min_by(|a, b| (a.x.abs() + a.y.abs()).total_cmp(&(b.x.abs() + b.y.abs())))?;
+                Some((child.id.clone(), nearest))
+            })
+        else {
+            return draft;
+        };
+        let message = format!("Moved node \"{id}\" off a text of its parent.");
+        match moved(&draft, &id, by, message) {
+            Some(moved) => step(moved, attempt + 1),
+            None => draft,
+        }
+    }
+    step(draft, 0)
+}
+
+/// The draft with node `id` translated `by`, marked moved so that its
+/// connectors follow it; none when the node has no group to translate.
+fn moved(draft: &Draft, id: &str, by: Point, message: String) -> Option<Draft> {
+    let group = node_group(&draft.document, id)?;
+    let existing = draft.document.element(&group).attr("transform").trim().to_owned();
+    let transform = format!(
+        "{existing}{}translate({} {})",
+        if existing.is_empty() { "" } else { " " },
+        format_number(by.x),
+        format_number(by.y)
+    );
+    let updated = draft.document.update(&group, |g| g.with_attr("transform", &transform));
+    let moved = draft.clone().changed(updated, "move-node", message, &[id]);
+    Some(Draft {
+        moved_node_ids: [moved.moved_node_ids.clone(), vec![id.to_owned()]].concat(),
+        ..moved
+    })
 }
 
 fn side_key(bounds: &Bounds, side: crate::route::Side) -> String {

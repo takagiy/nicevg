@@ -178,13 +178,13 @@ fn head_at(document: &Document, polygon: &[usize], end: Point, direction: Point,
         at_start,
         tip,
         direction,
-        inset: along(&tip).max(0.0),
+        // To 1/1000 px as moved_head writes heads, so a slanted head's float error does not reach the shaft.
+        inset: round(along(&tip).max(0.0) * 1000.0) / 1000.0,
     })
 }
 
 /// The route the shaft takes when its connector follows `route`: each end
-/// with a head stops short of it by the head's inset, never past the
-/// nearest bend.
+/// with a head stops short of it as `shaft_end` says.
 pub fn shaft_route(drawn: &Drawn, route: &[Point]) -> Vec<Point> {
     drawn.heads.iter().fold(route.to_vec(), |mut shaft, head| {
         let (end, inner) = if head.at_start {
@@ -192,15 +192,21 @@ pub fn shaft_route(drawn: &Drawn, route: &[Point]) -> Vec<Point> {
         } else {
             (shaft.len() - 1, shaft.len() - 2)
         };
-        let (tip, before) = (route[end], route[inner]);
-        let length = hypot(tip.x - before.x, tip.y - before.y);
-        let Some(direction) = unit(before, tip) else {
-            return shaft;
-        };
-        let back = head.inset.min(length);
-        shaft[end] = point(tip.x - direction.x * back, tip.y - direction.y * back);
+        if let Some((stop, _)) = shaft_end(route[inner], route[end], head.inset) {
+            shaft[end] = stop;
+        }
         shaft
     })
+}
+
+/// Where a shaft running from `before` to `tip` stops for a head `inset`
+/// long there, and the way it points: at most halfway back to `before`, so
+/// that a segment shorter than the head still leaves the shaft a direction.
+/// None when the segment has no length to point along.
+pub fn shaft_end(before: Point, tip: Point, inset: f64) -> Option<(Point, Point)> {
+    let direction = unit(before, tip)?;
+    let back = inset.min(hypot(tip.x - before.x, tip.y - before.y) / 2.0);
+    Some((point(tip.x - direction.x * back, tip.y - direction.y * back), direction))
 }
 
 /// The head's polygon turned and moved so its tip sits at the route's end,
@@ -229,4 +235,20 @@ pub fn moved_head(document: &Document, head: &Head, route: &[Point]) -> Option<E
         .collect::<Vec<_>>()
         .join(" ");
     Some(document.element(&head.path).clone().with_attr("points", &points))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Given a segment 6px long running right to a tip, and a head 10px long there
+    /// When the shaft's end is found
+    /// Then it stops 3px back, halfway along the segment, still pointing right
+    #[test]
+    fn stops_a_shaft_halfway_along_a_segment_shorter_than_its_head() {
+        assert_eq!(
+            shaft_end(point(0.0, 0.0), point(6.0, 0.0), 10.0),
+            Some((point(3.0, 0.0), point(1.0, 0.0)))
+        );
+    }
 }

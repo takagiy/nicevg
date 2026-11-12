@@ -12,7 +12,8 @@ import { fileURLToPath } from "node:url";
 import type { Html, Nodes } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
-import { type Script, run } from "./sandbox.ts";
+import { type Draw, type Script, run } from "./sandbox.ts";
+import { type StepReply, layOutSketch } from "./sketch.ts";
 
 export interface DocOptions {
   dryRun: boolean;
@@ -147,7 +148,36 @@ if (shown(root, path).toLowerCase().split("/").includes(".git")) {
 
 /** Lays out `request` in a child process, or gives up at `deadline`. */
 /** The native library's reply for a diagram. */
-type Reply = { ok: { svg: string; report: { issues: { code: string; message: string }[] } } } | { error: string };
+type Drawn = { svg: string; report: { issues: { code: string; message: string }[] } };
+type Reply = StepReply<Drawn>;
+
+/**
+ * The diagram a script rendered, laid out step by step in layout processes,
+ * with the script's styles drawing its parents' pictures as asked.
+ */
+async function drawDiagram(
+  request: unknown,
+  draw: Draw,
+  deadline: number,
+): Promise<{ ok: Drawn } | { error: string } | "timeout" | { stopped: string }> {
+  if (!(typeof request === "object" && request !== null && "sketch" in request)) {
+    return (await layOut(request, deadline)) as { ok: Drawn } | { error: string } | "timeout" | { stopped: string };
+  }
+  const steps = layOutSketch<Drawn>(request.sketch);
+  let step = steps.next();
+  while (!step.done) {
+    if ("draw" in step.value) {
+      step = steps.next(draw(step.value.draw));
+      continue;
+    }
+    const reply = await layOut(step.value.native, deadline);
+    if (reply === "timeout" || "stopped" in reply || "error" in reply) {
+      return reply;
+    }
+    step = steps.next(reply);
+  }
+  return { ok: step.value };
+}
 
 /**
  * Lays out `request` in a child process: its reply, `"timeout"` when stopped
@@ -278,20 +308,26 @@ export async function doc(files: string[], options: DocOptions, print: (text: st
       const deadline = Date.now() + options.timeoutPerDiagramSeconds * 1000;
       let written = 0;
       const script: Script = { file, line: block.codeLine, code: block.code, modules };
-      const outcome = await run(root, script, { deadline, memoryBytes: options.sandboxMemoryMB * 1024 * 1024 }, (text) => {
-        const before = written;
-        written += text.length;
-        if (written <= CONSOLE_BYTES) {
-          print(`${file}:${block.line}: ${text}\n`);
-        } else if (before <= CONSOLE_BYTES) {
-          print(`${file}:${block.line}: (console output cut at 1 MB)\n`);
-        }
-      });
+      const outcome = await run(
+        root,
+        script,
+        { deadline, memoryBytes: options.sandboxMemoryMB * 1024 * 1024 },
+        (text) => {
+          const before = written;
+          written += text.length;
+          if (written <= CONSOLE_BYTES) {
+            print(`${file}:${block.line}: ${text}\n`);
+          } else if (before <= CONSOLE_BYTES) {
+            print(`${file}:${block.line}: (console output cut at 1 MB)\n`);
+          }
+        },
+        (request, draw) => drawDiagram(request, draw, deadline),
+      );
       if ("failure" in outcome) {
         fail(outcome.failure, outcome.error);
         continue;
       }
-      const reply = await layOut(outcome.request, deadline);
+      const reply = outcome.result;
       if (reply === "timeout") {
         fail(`Gave up drawing the diagram after ${options.timeoutPerDiagramSeconds} s`);
         continue;

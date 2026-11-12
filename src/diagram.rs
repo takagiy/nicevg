@@ -9,6 +9,7 @@ use serde::Serialize;
 
 use crate::arrow::{drawn_connectors, names_an_end};
 use crate::geometry::{Bounds, Point, enclosing, number_list, parse_number, point, points_bounds};
+use crate::inspect::PARENT_PADDING;
 use crate::pathdata;
 use crate::route::Side;
 use crate::text::{label_bounds, label_text_index, text_bounds};
@@ -40,6 +41,14 @@ pub struct DiagramNode {
     /// The named points its picture marks for connector ends to meet.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub ports: Vec<Port>,
+    /// How far its children keep inside its border, as its `data-padding`
+    /// says, when it says.
+    #[serde(skip)]
+    pub padding: Option<f64>,
+    /// A custom parent whose picture is drawn again once laid out
+    /// (`data-redrawn`), so its frame may grow meanwhile.
+    #[serde(skip)]
+    pub redrawn: bool,
 }
 
 /// A point a custom node's picture marks `data-port` for connector ends.
@@ -54,6 +63,24 @@ pub struct Port {
 impl DiagramNode {
     pub fn is_circle(&self) -> bool {
         self.shape == Some(Shape::Circle)
+    }
+
+    /// Whether fixing may grow it round its children: a rect of its own,
+    /// or the frame of a picture drawn again later, which nicevg rewrites,
+    /// rather than a picture kept as drawn or a circle.
+    pub fn grows(&self) -> bool {
+        (!self.custom || self.redrawn) && !self.is_circle()
+    }
+
+    /// How far its children keep inside its border: its `data-padding`,
+    /// else 12px.
+    pub fn child_padding(&self) -> f64 {
+        self.padding.unwrap_or(PARENT_PADDING)
+    }
+
+    /// Its bounds grown just enough to hold `child` its padding inside them.
+    pub fn grown_round(&self, child: &Bounds) -> Bounds {
+        enclosing(&[self.bounds, child.inflate(self.child_padding())]).expect("two boxes")
     }
 }
 
@@ -319,6 +346,15 @@ struct Recognized {
     allow_overlap: bool,
     custom: bool,
     ports: Vec<Port>,
+    padding: Option<f64>,
+    redrawn: bool,
+}
+
+/// A node's `data-padding`: its group's, else its frame's.
+fn padding(group: &Element, frame: Option<&Element>) -> Option<f64> {
+    std::iter::once(group)
+        .chain(frame)
+        .find_map(|element| non_empty(element.attr("data-padding"))?.parse().ok())
 }
 
 /// Whether a node group is drawn as it is: its contents are a picture, not
@@ -385,6 +421,10 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
             if annotated && is_custom(group) {
                 let (shape, bounds) = custom_extent(document, path)?;
                 let picture = picture_elements(document, path);
+                let frame = picture
+                    .iter()
+                    .find(|(_, element)| is_node_shape(element) && element.has_attr("data-bounds"))
+                    .map(|(_, element)| *element);
                 let ports = picture
                     .iter()
                     .filter(|(_, element)| element.name == "circle" && element.has_attr("data-port"))
@@ -414,6 +454,8 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
                     allow_overlap,
                     custom: true,
                     ports,
+                    padding: padding(group, frame),
+                    redrawn: group.attr("data-redrawn") == "true",
                 });
             }
             // A group inside a custom node's picture is part of the picture.
@@ -454,6 +496,8 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
                 allow_overlap,
                 custom: false,
                 ports: Vec::new(),
+                padding: padding(group, Some(document.element(&shape_path))),
+                redrawn: false,
             })
         })
         .collect()
@@ -481,6 +525,8 @@ pub fn read(document: &Document) -> Diagram {
                 allow_overlap: node.allow_overlap,
                 custom: node.custom,
                 ports: node.ports.clone(),
+                padding: node.padding,
+                redrawn: node.redrawn,
             }
         })
         .collect();

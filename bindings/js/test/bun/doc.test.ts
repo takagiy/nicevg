@@ -581,3 +581,88 @@ const nodes = [{ id: "a", class: "box", x: 0, y: 0, label: "A" }];
     expect(doc(loose, ["--sandbox-dir", ".", "c.md"]).exitCode).toBe(0);
   });
 });
+
+describe("nicevg doc parents", () => {
+  /**
+   * Given a block drawing a parent with box, titled at its top left, with no
+   *   place or size, round one box
+   * When nicevg doc runs
+   * Then the parent is drawn as wide as the box with 12px padding either
+   *   side, and none of what laying it out marked is left in the SVG
+   */
+  test("draws a parent round its children, as the library does", () => {
+    const code = `import { render } from "nicevg";
+import { box } from "nicevg/style/simple";
+render({
+  nodes: [
+    { id: "group", class: "box", label: "Orders", labelPosition: "top-left" },
+    { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "group" },
+  ],
+  style: { box },
+});`;
+    const root = repository({ "guide.md": `<!-- nicevg group.svg\n${code}\n-->\n` });
+
+    const { exitCode, result } = doc(root, ["guide.md"]);
+
+    const svg = read(root, "group.svg");
+    expect(exitCode).toBe(0);
+    expect(result.failures).toEqual([]);
+    expect(svg).toMatch(/data-node="group"[^>]*>\s*<g transform="translate\(88 \d+\)"><rect data-bounds="true" x="0" y="0" width="104"/);
+    expect(svg).not.toMatch(/data-redrawn|data-frame|data-picture/);
+  });
+
+  /**
+   * Given a block that renders a parent and then replaces the function render
+   *   left for drawing it, one that replaces what render records, and then a
+   *   block that draws
+   * When nicevg doc runs
+   * Then the first two fail for breaking what render left, and the last is
+   *   still drawn
+   */
+  test("fails a script breaking what render left, and draws the next diagram", () => {
+    const parent = `import { render } from "nicevg";
+import { box } from "nicevg/style/simple";
+render({
+  nodes: [{ id: "g", class: "box" }, { id: "a", class: "box", x: 0, y: 0, label: "A", parent: "g" }],
+  style: { box },
+});
+(globalThis as Record<string, unknown>).__nicevgDraw = () => "not JSON";`;
+    const record = `(globalThis as Record<string, unknown>).__nicevgRender = "not JSON";`;
+    const root = repository({
+      "guide.md": `${oneBlock(parent)}\n<!-- nicevg b.svg\n${record}\n-->\n\n<!-- nicevg c.svg\n${ORDER_FLOW}-->\n`,
+    });
+
+    const { result } = doc(root, ["guide.md"]);
+
+    const message = "The diagram script broke what render left for nicevg doc";
+    expect(result.failures.map(({ message }: { message: string }) => message)).toEqual([message, message]);
+    expect(read(root, "c.svg")).toContain("<svg");
+  });
+
+  /**
+   * Given a block whose parent's style throws when drawing the parent at the
+   *   size laying it out gave it
+   * When nicevg doc runs
+   * Then the block fails as a script that threw, with the style's error
+   */
+  test("fails a script whose parent's style throws once the parent is laid out", () => {
+    const code = `import { render, svg } from "nicevg";
+import { box } from "nicevg/style/simple";
+let calls = 0;
+const frame = ({ width, height }: { width?: number; height?: number }) => {
+  calls += 1;
+  if (calls === 2) throw new Error("no frame today");
+  return svg\`<rect data-bounds="true" width="\${width}" height="\${height}" fill="none" stroke="black"/>\`;
+};
+render({
+  nodes: [{ id: "g", class: "frame" }, { id: "a", class: "box", x: 0, y: 0, label: "A", parent: "g" }],
+  style: { frame, box },
+});`;
+    const root = repository({ "guide.md": oneBlock(code) });
+
+    const { result } = doc(root, ["guide.md"]);
+
+    expect(result.failures).toMatchObject([{ message: "The diagram script threw an exception" }]);
+    expect(result.failures[0].error).toContain("no frame today");
+  });
+});

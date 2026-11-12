@@ -155,7 +155,8 @@ fn keeps_multi_line_labels_and_markup_characters_as_written() {
 
 /// Given a sketch whose connector bends where moving a node would straighten it
 /// When the sketch is arranged
-/// Then the connector ends up with fewer bends, as with the same diagram in SVG
+/// Then the connector ends up with fewer bends, the nodes and routes where they are with the same
+///   diagram in SVG
 #[test]
 fn arranges_a_sketch_like_the_svg_it_stands_for() {
     let input = sketch(json!({
@@ -171,7 +172,7 @@ fn arranges_a_sketch_like_the_svg_it_stands_for() {
     let from_svg = nicevg::arrange(&nicevg::sketch_svg(&input).expect("valid sketch")).expect("valid SVG");
 
     assert_eq!(bend_count(&route(&arranged.report, "notify", "mail")), 0);
-    assert_eq!(arranged.svg, from_svg.svg);
+    assert_eq!(arranged.report.diagram, from_svg.report.diagram);
 }
 
 /// Given a connector to a node that is not in the sketch, and a node whose parent is not
@@ -439,6 +440,283 @@ fn rejects_a_connector_naming_a_port_its_node_does_not_mark() {
             referrer: "connectors[0].toPort".to_owned(),
             node: "user".to_owned(),
             port: "email".to_owned()
+        }
+    );
+}
+
+/// The arrowheads written, in order, each as its tip and the middle of its base.
+fn heads(svg: &str) -> Vec<(nicevg::Point, nicevg::Point)> {
+    let written = Written::parse(svg);
+    (0..svg.matches("<polygon").count())
+        .map(|index| {
+            let v: Vec<f64> = attr(written.nth("polygon", index), "points")
+                .split([' ', ','])
+                .map(|value| value.parse().expect("a number"))
+                .collect();
+            (point(v[2], v[3]), point((v[0] + v[4]) / 2.0, (v[1] + v[5]) / 2.0))
+        })
+        .collect()
+}
+
+/// The way from `from` to `to`, `length` long.
+fn towards(from: nicevg::Point, to: nicevg::Point, length: f64) -> (f64, f64) {
+    let whole = (to.x - from.x).hypot(to.y - from.y);
+    ((to.x - from.x) / whole * length, (to.y - from.y) / whole * length)
+}
+
+/// Given a connector between two boxes with no arrow and no route given
+/// When the sketch is fixed
+/// Then one head sits at its `to` end, its tip on a side of `bill` and pointing along the last
+///   segment, and the line stops at the head's base, 10px before the tip
+#[test]
+fn draws_a_head_at_the_to_end_unless_told_otherwise() {
+    let input = two_boxes(json!({"from": "order", "to": "bill"}));
+
+    let result = nicevg::fix_sketch(&input).expect("valid sketch");
+
+    let points = route(&result.report, "order", "bill");
+    let (end, before) = (points[points.len() - 1], points[points.len() - 2]);
+    let [(tip, base)] = heads(&result.svg)[..] else {
+        panic!("one head in {}", result.svg);
+    };
+    assert_eq!(tip, end);
+    assert!(side_of(end, &node_bounds(&result.report, "bill")).is_some());
+    assert_eq!((tip.x - base.x, tip.y - base.y), towards(before, end, 10.0));
+    let shaft = attr(Written::parse(&result.svg).nth("path", 0), "d").to_owned();
+    assert!(shaft.ends_with(&format!("{} {}", base.x, base.y)), "{shaft}");
+    assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
+}
+
+/// Given a connector between two boxes with `arrow: "both"` and no route given
+/// When the sketch is fixed
+/// Then a head sits at each end, its tip on a side of the node there, pointing into it
+#[test]
+fn draws_a_head_at_both_ends_when_told() {
+    let input = two_boxes(json!({"from": "order", "to": "bill", "arrow": "both"}));
+
+    let result = nicevg::fix_sketch(&input).expect("valid sketch");
+
+    let points = route(&result.report, "order", "bill");
+    let [(start, start_base), (end, end_base)] = heads(&result.svg)[..] else {
+        panic!("two heads in {}", result.svg);
+    };
+    assert_eq!((start, end), (points[0], points[points.len() - 1]));
+    assert!(side_of(start, &node_bounds(&result.report, "order")).is_some());
+    assert!(side_of(end, &node_bounds(&result.report, "bill")).is_some());
+    assert_eq!(
+        (start.x - start_base.x, start.y - start_base.y),
+        towards(points[1], points[0], 10.0)
+    );
+    assert_eq!(
+        (end.x - end_base.x, end.y - end_base.y),
+        towards(points[points.len() - 2], end, 10.0)
+    );
+    assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
+}
+
+/// Given a connector from `order` to itself with no route given
+/// When the sketch is fixed
+/// Then it loops out of `order` and back, with a head at its end whose tip is on a side of
+///   `order`, pointing along the last segment
+#[test]
+fn draws_a_head_on_a_connector_to_its_own_node() {
+    let input = two_boxes(json!({"from": "order", "to": "order"}));
+
+    let result = nicevg::fix_sketch(&input).expect("valid sketch");
+
+    let points = route(&result.report, "order", "order");
+    let (end, before) = (points[points.len() - 1], points[points.len() - 2]);
+    let [(tip, base)] = heads(&result.svg)[..] else {
+        panic!("one head in {}", result.svg);
+    };
+    assert_eq!(tip, end);
+    assert!(side_of(end, &node_bounds(&result.report, "order")).is_some());
+    assert_eq!((tip.x - base.x, tip.y - base.y), towards(before, end, 10.0));
+    assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
+}
+/// Given a connector between two boxes with `arrow: "none"`
+/// When the sketch is fixed
+/// Then it is a line with no head, running to a side of `bill`
+#[test]
+fn draws_no_head_when_told() {
+    let input = two_boxes(json!({"from": "order", "to": "bill", "arrow": "none"}));
+
+    let result = nicevg::fix_sketch(&input).expect("valid sketch");
+
+    assert_eq!(heads(&result.svg), []);
+    let points = route(&result.report, "order", "bill");
+    assert!(side_of(points[points.len() - 1], &node_bounds(&result.report, "bill")).is_some());
+}
+
+/// Given a connector with `color: "#c00"`, one with `&` and `"` in its colour, and one with no colour
+/// When each sketch is fixed
+/// Then the line and the head are written in that colour, read back as given, or in black
+#[test]
+fn draws_a_connector_and_its_head_in_its_colour() {
+    let painted = |connector: serde_json::Value| {
+        let result = nicevg::fix_sketch(&two_boxes(connector)).expect("valid sketch");
+        let written = Written::parse(&result.svg);
+        (
+            attr(written.nth("path", 0), "stroke").to_owned(),
+            attr(written.nth("polygon", 0), "fill").to_owned(),
+        )
+    };
+
+    let colour = |value: &str| (value.to_owned(), value.to_owned());
+    assert_eq!(
+        painted(json!({"from": "order", "to": "bill", "color": "#c00"})),
+        colour("#c00")
+    );
+    assert_eq!(
+        painted(json!({"from": "order", "to": "bill", "color": "a&\"b"})),
+        colour("a&\"b")
+    );
+    assert_eq!(painted(json!({"from": "order", "to": "bill"})), colour("black"));
+}
+
+/// Given a connector with `strokeWidth: 2` and `strokeDasharray: "6 4"`, and one with neither
+/// When each sketch is fixed
+/// Then the first's line is written 2 wide and dashed 6 4, and the other's carries neither
+///   attribute
+#[test]
+fn draws_a_connector_at_its_stroke_width_and_dashes() {
+    let stroked = |connector: serde_json::Value| {
+        let result = nicevg::fix_sketch(&two_boxes(connector)).expect("valid sketch");
+        let written = Written::parse(&result.svg);
+        let line = written.nth("path", 0);
+        (line.get("stroke-width").cloned(), line.get("stroke-dasharray").cloned())
+    };
+
+    assert_eq!(
+        stroked(json!({"from": "order", "to": "bill", "strokeWidth": 2, "strokeDasharray": "6 4"})),
+        (Some("2".to_owned()), Some("6 4".to_owned()))
+    );
+    assert_eq!(stroked(json!({"from": "order", "to": "bill"})), (None, None));
+}
+
+/// Given a connector with its route given, the last segment 6px long, and the default head
+/// When the sketch is fixed and the fixed SVG is read again
+/// Then the route read back is the one given, its end at the head's tip, and the head is read as
+///   the connector's, leaving no stray shape
+#[test]
+fn reads_a_headed_connector_along_the_route_given_even_with_a_short_last_segment() {
+    let given = [
+        point(140.0, 48.0),
+        point(360.0, 48.0),
+        point(360.0, 154.0),
+        point(366.0, 154.0),
+    ];
+    let input = sketch(json!({
+        "nodes": [
+            {"id": "order", "x": 20, "y": 20, "width": 120, "height": 56},
+            {"id": "bill", "x": 366, "y": 130, "width": 120, "height": 56}
+        ],
+        "connectors": [{"from": "order", "to": "bill", "points": given}]
+    }));
+
+    let result = nicevg::fix_sketch(&input).expect("valid sketch");
+
+    let report = analyze(&result.svg);
+    assert_eq!(heads(&result.svg).len(), 1);
+    assert_eq!(route(&report, "order", "bill"), given);
+    assert!(report.issues.is_empty(), "{:?}", issue_codes(&report));
+}
+
+/// Two boxes for a parent `group` to hold: `a` at x 100 to 180, y 100 to
+/// 140, and `b` at x 220 to 280, y 140 to 180.
+fn two_children() -> [serde_json::Value; 2] {
+    [
+        json!({"id": "a", "x": 100, "y": 100, "width": 80, "height": 40, "parent": "group"}),
+        json!({"id": "b", "x": 220, "y": 140, "width": 60, "height": 40, "parent": "group"}),
+    ]
+}
+
+/// Given a box parent titled "Orders" with neither position nor size, round
+///   two children, the first just under where its title goes
+/// When the sketch is fixed
+/// Then the parent lies 12px out from its children as given, its title 12px
+///   in from its top left, and the first child moves down to 12px below the
+///   title, the parent's top staying where it was
+#[test]
+fn sizes_and_places_a_parent_round_its_children_and_moves_them_off_its_title() {
+    let [a, b] = two_children();
+    let input = sketch(json!({"nodes": [{"id": "group", "label": "Orders"}, a, b]}));
+
+    let result = nicevg::fix_sketch(&input).expect("valid sketch");
+
+    let group = node_bounds(&result.report, "group");
+    let title = result.report.diagram.node("group").expect("the parent").label_bounds[0];
+    assert_eq!(group, bounds(88.0, 88.0, 204.0, 104.0));
+    assert_eq!(title.x - group.x, 12.0);
+    assert_eq!(node_bounds(&result.report, "a").y, title.bottom() + 12.0);
+    assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
+}
+
+/// Given the same parent placed and sized as x 40 to 340, y 20 to 120, its
+///   children reaching below its bottom
+/// When the sketch is analyzed
+/// Then the parent keeps the left, top and right it was given, and its
+///   bottom moves down to 12px below the children
+#[test]
+fn grows_a_placed_and_sized_parent_only_where_its_children_need() {
+    let [a, b] = two_children();
+    let input = sketch(json!({"nodes": [
+        {"id": "group", "label": "Orders", "x": 40, "y": 20, "width": 300, "height": 100}, a, b
+    ]}));
+
+    let report = nicevg::analyze_sketch(&input).expect("valid sketch");
+
+    assert_eq!(node_bounds(&report, "group"), bounds(40.0, 20.0, 300.0, 172.0));
+}
+
+/// Given an untitled parent with padding 20 and no position or size, round
+///   one child at x 100 to 180, y 100 to 140
+/// When the sketch is analyzed
+/// Then the parent lies 20px out from the child on every side, and the
+///   child is not reported as outside it
+#[test]
+fn keeps_a_parent_s_padding_round_its_children() {
+    let [a, _] = two_children();
+    let input = sketch(json!({"nodes": [{"id": "group", "padding": 20}, a]}));
+
+    let report = nicevg::analyze_sketch(&input).expect("valid sketch");
+
+    assert_eq!(node_bounds(&report, "group"), bounds(80.0, 80.0, 120.0, 80.0));
+    assert!(report.issues.is_empty(), "{:?}", issue_codes(&report));
+}
+
+/// Given a node with no children and no x or y
+/// When the sketch is read
+/// Then it is an error naming the node: only a parent takes its position
+///   from its children
+#[test]
+fn rejects_a_node_without_children_or_position() {
+    let input = sketch(json!({"nodes": [{"id": "box", "width": 80, "height": 40}]}));
+
+    assert_eq!(
+        nicevg::analyze_sketch(&input).unwrap_err(),
+        SketchError::MissingPosition {
+            referrer: "nodes[0]".to_owned()
+        }
+    );
+}
+
+/// Given two nodes each naming the other as its parent
+/// When the sketch is read
+/// Then it is an error naming the first node's parent field and the parent
+///   it names, which lies inside it
+#[test]
+fn rejects_parents_that_loop() {
+    let input = sketch(json!({"nodes": [
+        {"id": "a", "x": 0, "y": 0, "width": 80, "height": 40, "parent": "b"},
+        {"id": "b", "x": 100, "y": 0, "width": 80, "height": 40, "parent": "a"}
+    ]}));
+
+    assert_eq!(
+        nicevg::analyze_sketch(&input).unwrap_err(),
+        SketchError::ParentCycle {
+            referrer: "nodes[0].parent".to_owned(),
+            node: "b".to_owned()
         }
     );
 }

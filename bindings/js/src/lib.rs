@@ -2,9 +2,12 @@
 //! Bun's FFI or koffi on Node: a diagram as JSON in, the fixed and arranged
 //! diagram as JSON out.
 //!
-//! The request is either `{"svg": "..."}` or a sketch (`{"nodes": [...],
-//! "connectors": [...]}`). The reply is `{"ok": ...}`, holding the fix
-//! result, or `{"error": "..."}`.
+//! The request is either `{"svg": "..."}`, a sketch (`{"nodes": [...],
+//! "connectors": [...]}`), or a step of a sketch whose parents styles draw
+//! (`{"sketch": {...}, "pictures": {...}, "state": ...}`, see
+//! `nicevg::arrange_sketch_in_steps`). The reply is `{"ok": ...}`, holding
+//! the fix result, `{"draw": [...], "state": ...}`, asking for pictures and
+//! holding the state to step on from, or `{"error": "..."}`.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -16,6 +19,17 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 enum Input {
     Svg(String),
     Sketch(nicevg::Sketch),
+    Step(Step),
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Step {
+    sketch: nicevg::Sketch,
+    #[serde(default)]
+    pictures: std::collections::HashMap<String, Vec<String>>,
+    #[serde(default)]
+    state: Option<nicevg::StepState>,
 }
 
 fn read(request: &[u8]) -> Result<Input, String> {
@@ -26,6 +40,11 @@ fn read(request: &[u8]) -> Result<Input, String> {
             .map(|svg| Input::Svg(svg.to_owned()))
             .ok_or_else(|| "svg: expected a string".to_owned());
     }
+    if value.get("sketch").is_some() {
+        return serde_path_to_error::deserialize(value)
+            .map(Input::Step)
+            .map_err(|error| format!("{}: {}", error.path(), error.inner()));
+    }
     serde_path_to_error::deserialize(value)
         .map(Input::Sketch)
         .map_err(|error| format!("{}: {}", error.path(), error.inner()))
@@ -35,8 +54,18 @@ fn render(request: &[u8]) -> Result<Value, String> {
     let result = match read(request)? {
         Input::Svg(svg) => nicevg::arrange(&svg).map_err(|error| error.to_string())?,
         Input::Sketch(sketch) => nicevg::arrange_sketch(&sketch).map_err(|error| error.to_string())?,
+        Input::Step(Step {
+            sketch,
+            pictures,
+            state,
+        }) => match nicevg::arrange_sketch_in_steps(&sketch, &pictures, state).map_err(|error| error.to_string())? {
+            nicevg::SketchStep::Done(result) => result,
+            nicevg::SketchStep::Draw { pictures, state } => {
+                return Ok(json!({ "draw": pictures, "state": state }));
+            }
+        },
     };
-    Ok(serde_json::to_value(result).expect("serializable result"))
+    Ok(json!({ "ok": result }))
 }
 
 /// Fixes and arranges the diagram in the JSON request of `length` bytes at
@@ -57,7 +86,7 @@ pub unsafe extern "C" fn nicevg_render(request: *const u8, length: usize, reply_
         unsafe { std::slice::from_raw_parts(request, length) }
     };
     let reply = match catch_unwind(AssertUnwindSafe(|| render(request))) {
-        Ok(Ok(value)) => json!({ "ok": value }),
+        Ok(Ok(value)) => value,
         Ok(Err(message)) => json!({ "error": message }),
         Err(_) => json!({ "error": "nicevg stopped on an internal error" }),
     };

@@ -10,6 +10,8 @@ export { NicevgError } from "./sketch.ts";
 
 /** Where `render` leaves its request and the stack it was called from, for the host to read. */
 const RECORD = "__nicevgRender";
+/** Where `render` leaves, for the host to call while it lays the sketch out, how to draw the pictures of its parents. */
+const DRAW = "__nicevgDraw";
 
 const unavailable = (what: string) => () => {
   throw new NicevgError(
@@ -34,7 +36,12 @@ export function render(input: Parameters<typeof sketchRequest>[0] | { svg: strin
   if (global[RECORD] !== undefined) {
     throw new NicevgError("render was called a second time: a diagram block draws one diagram");
   }
-  const request = "svg" in input ? { svg: String(input.svg) } : sketchRequest(input);
-  global[RECORD] = JSON.stringify({ request, stack: new Error().stack });
+  if ("svg" in input) {
+    global[RECORD] = JSON.stringify({ request: { svg: String(input.svg) }, stack: new Error().stack });
+    return NOT_DRAWN;
+  }
+  const { sketch, draw } = sketchRequest(input);
+  global[RECORD] = JSON.stringify({ request: { sketch }, stack: new Error().stack });
+  global[DRAW] = (asked: string) => JSON.stringify(draw(JSON.parse(asked)));
   return NOT_DRAWN;
 }

@@ -1532,7 +1532,12 @@ pub fn route_connector(
         &end_terminals(
             ports.end,
             target,
-            &[obstacles.as_slice(), &[source.inflate(CLEARANCE)]].concat(),
+            // The target never stands in the way of the run into it, even as the source of a loop.
+            &obstacles
+                .iter()
+                .copied()
+                .chain((source != target).then(|| source.inflate(CLEARANCE)))
+                .collect::<Vec<_>>(),
         ),
         &all_obstacles,
         &pushable,
