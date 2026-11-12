@@ -847,3 +847,56 @@ fn lines_up_facing_ports_a_little_apart_to_straighten_their_connector() {
     assert_eq!(points, [port("article"), port("user")]);
     assert_eq!(points[0].y, points[1].y);
 }
+
+/// A child 40px from the bottom of its parent, joined to a node held still
+///   inside a tight custom parent 32px lower; `below` puts a sibling under
+///   the parent.
+fn child_out_of_line(below: &str) -> String {
+    format!(
+        r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 260">
+    <g data-node="group">
+      <rect x="20" y="20" width="200" height="120" />
+      <g data-node="child"><rect x="150" y="60" width="40" height="40" /></g>
+    </g>
+    <g data-node="frame" data-custom="true">
+      <rect data-bounds="true" x="300" y="80" width="100" height="64" />
+      <g data-node="held"><rect x="312" y="92" width="60" height="40" /></g>
+    </g>
+    {below}
+    <path id="link" data-from="child" data-to="held" d="M 190 80 L 250 80 L 250 112 L 312 112" />
+  </svg>
+"#
+    )
+}
+
+/// Given a child whose connector would run straight if it moved 32px down,
+///   4px further than its parent leaves room for, to a node that cannot move
+/// When the diagram is arranged
+/// Then the child moves into line, and its parent grows to keep it 12px
+///   inside
+#[test]
+fn moves_a_child_out_past_its_parent_s_padding_and_grows_the_parent() {
+    let result = arrange(&child_out_of_line(""));
+
+    let child = node_bounds(&result.report, "child");
+    assert_eq!(bend_count(&connector_points(&result.report, "link")), 0);
+    assert!(node_bounds(&result.report, "group").bottom() >= child.bottom() + 12.0);
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+}
+
+/// Given the same child out of line, and a sibling of its parent 20px below
+///   the parent
+/// When the diagram is arranged
+/// Then the child is not moved into line: the parent would have to grow to
+///   within 20px of the sibling, nearer than nodes beside each other may be
+#[test]
+fn keeps_a_child_where_growing_its_parent_would_crowd_a_sibling() {
+    let result = arrange(&child_out_of_line(
+        r#"<g data-node="below"><rect x="20" y="160" width="200" height="60" /></g>"#,
+    ));
+
+    assert!(bend_count(&connector_points(&result.report, "link")) > 0);
+    assert_eq!(node_bounds(&result.report, "group").bottom(), 140.0);
+    assert_eq!(node_bounds(&result.report, "below").y, 160.0);
+}

@@ -35,6 +35,8 @@ fn issue(code: &str, message: String, elements: &[&str], details: Option<Value>)
 }
 
 pub const TEXT_PADDING: f64 = 12.0;
+/// How far a child keeps inside its parent's border.
+pub const PARENT_PADDING: f64 = 12.0;
 pub const VIEWPORT_PADDING: f64 = 20.0;
 pub const NODE_GAP: f64 = 20.0;
 pub const CLEARANCE: f64 = 8.0;
@@ -47,6 +49,8 @@ pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue>
     [
         viewport(view_box, diagram.drawing_bounds()),
         text_fit(&diagram.nodes),
+        children_outside_parents(&diagram.nodes),
+        children_on_parent_texts(&diagram.nodes),
         duplicate_node_ids(&diagram.nodes),
         node_overlaps(&diagram.nodes),
         node_gaps(&diagram.nodes),
@@ -480,6 +484,59 @@ fn port_ends<'a>(
 
 /// Ends naming a port their node does not declare, and ends naming one of
 /// its ports that meet none of its points.
+/// Children out of their parent, or nearer its border than its padding.
+fn children_outside_parents(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
+    nodes
+        .iter()
+        .filter_map(|child| {
+            let parent = nodes.iter().find(|node| Some(&node.id) == child.parent_id.as_ref())?;
+            let (inner, outer) = (&child.bounds, &parent.bounds);
+            let room = [
+                inner.x - outer.x,
+                inner.y - outer.y,
+                outer.right() - inner.right(),
+                outer.bottom() - inner.bottom(),
+            ];
+            let padding = parent.child_padding();
+            room.iter().any(|room| *room < padding).then(|| {
+                issue(
+                    "node-outside-parent",
+                    format!(
+                        "Node \"{}\" does not fit inside its parent \"{}\" with {}px padding.",
+                        child.id,
+                        parent.id,
+                        format_number(padding)
+                    ),
+                    &[&child.id, &parent.id],
+                    None,
+                )
+            })
+        })
+        .collect()
+}
+
+/// Children lying on a text of their parent, such as its title.
+fn children_on_parent_texts(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
+    nodes
+        .iter()
+        .filter_map(|child| {
+            let parent = nodes.iter().find(|node| Some(&node.id) == child.parent_id.as_ref())?;
+            parent
+                .label_bounds
+                .iter()
+                .any(|text| intersection(text, &child.bounds).is_some())
+                .then(|| {
+                    issue(
+                        "parent-text-overlap",
+                        format!("Node \"{}\" lies on a text of its parent \"{}\".", child.id, parent.id),
+                        &[&child.id, &parent.id],
+                        None,
+                    )
+                })
+        })
+        .collect()
+}
+
 /// Ids more than one node has, once each: a connector naming one meets only
 /// the first of them.
 fn duplicate_node_ids(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {

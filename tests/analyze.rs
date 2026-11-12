@@ -33,6 +33,8 @@ fn recognizes_an_annotated_node_with_its_box_and_label() {
             allow_overlap: false,
             custom: false,
             ports: vec![],
+            padding: None,
+            redrawn: false,
         }]
     );
 }

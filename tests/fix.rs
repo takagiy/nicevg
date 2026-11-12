@@ -2472,13 +2472,15 @@ fn routes_round_into_a_box_too_close_to_reach_straight() {
     assert!(!has_issue(&result.report, "connector-slanted"));
 }
 
-/// A VPC holding a queue, a worker beside it and, below them, a cluster;
-/// outside the VPC, a gateway lies across the cluster's top border, joined
-/// from the queue by a slanted connector.
+/// A VPC holding a queue, a worker beside it and, below them, a cluster
+/// reaching out past its right side; outside the VPC, a gateway lies across
+/// the cluster's top border, joined from the queue by a slanted connector.
+/// The VPC is custom, so fixing leaves the cluster reaching out of it rather
+/// than growing it round the cluster and pushing the gateway away.
 const GATEWAY_ACROSS_A_CLUSTER: &str = r#"
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500">
-    <g data-node="vpc">
-      <rect x="40" y="40" width="640" height="420" rx="8" />
+    <g data-node="vpc" data-custom="true">
+      <rect data-bounds="true" x="40" y="40" width="640" height="420" rx="8" />
       <g data-node="queue">
         <rect x="100" y="80" width="124" height="48" rx="6" />
         <text x="162" y="108" text-anchor="middle" font-size="13">Billing queue</text>
@@ -2518,4 +2520,139 @@ fn routes_into_a_node_across_a_container_border_through_the_container() {
     assert_eq!(points.first().map(|p| p.y), Some(queue.y + queue.height), "{points:?}");
     assert_eq!(points.last().map(|p| p.x), Some(gateway.x), "{points:?}");
     assert_eq!(bend_count(&points), 1, "{points:?}");
+}
+
+/// Given a parent rect from x 20 to 220 with a child poking 10px out of its
+///   right side, at x 190 to 230
+/// When the diagram is fixed
+/// Then the parent's right side moves out to 12px past the child, its other
+///   sides stay, and the child no longer lies outside it
+#[test]
+fn grows_a_parent_on_the_side_a_child_pokes_out_of() {
+    let svg = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+    <g data-node="group">
+      <rect x="20" y="20" width="200" height="120" />
+      <g data-node="out"><rect x="190" y="60" width="40" height="40" /></g>
+    </g>
+  </svg>
+"#;
+
+    let result = fix(svg);
+
+    assert_eq!(node_bounds(&result.report, "group"), bounds(20.0, 20.0, 222.0, 120.0));
+    assert!(
+        !has_issue(&result.report, "node-outside-parent"),
+        "{:?}",
+        result.report.issues
+    );
+}
+
+/// Given an inner parent from x 40 to 200 inside an outer one from x 20 to
+///   230, and a child of the inner one at x 180 to 230
+/// When the diagram is fixed in a single pass
+/// Then the inner parent grows to x 242 to hold the child, and the outer one
+///   to x 254 to hold the inner one
+#[test]
+fn grows_a_parent_round_the_inner_parent_it_grew() {
+    let svg = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
+    <g data-node="outer">
+      <rect x="20" y="20" width="210" height="160" />
+      <g data-node="inner">
+        <rect x="40" y="40" width="160" height="120" />
+        <g data-node="leaf"><rect x="180" y="80" width="50" height="40" /></g>
+      </g>
+    </g>
+  </svg>
+"#;
+
+    let result = fix_with_passes(svg, 1);
+
+    assert_eq!(node_bounds(&result.report, "inner").right(), 242.0);
+    assert_eq!(node_bounds(&result.report, "outer").right(), 254.0);
+    assert!(
+        !has_issue(&result.report, "node-outside-parent"),
+        "{:?}",
+        result.report.issues
+    );
+}
+
+/// Given a custom parent, its frame marked data-bounds, with a child poking
+///   10px out of its right side
+/// When the diagram is fixed
+/// Then the parent keeps its size and the child is still reported outside it
+#[test]
+fn leaves_a_custom_parent_its_size() {
+    let svg = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+    <g data-node="picture" data-custom="true">
+      <rect data-bounds="true" x="20" y="20" width="200" height="120" />
+      <g data-node="out"><rect x="190" y="60" width="40" height="40" /></g>
+    </g>
+  </svg>
+"#;
+
+    let result = fix(svg);
+
+    assert_eq!(node_bounds(&result.report, "picture"), bounds(20.0, 20.0, 200.0, 120.0));
+    assert_eq!(
+        issues_with_code(&result.report, "node-outside-parent"),
+        [["out", "picture"]]
+    );
+}
+
+/// Given a parent from x 20 to 220 with a child poking out to x 230, and a
+///   sibling of the parent 20px to its right, at x 240
+/// When the diagram is fixed
+/// Then the parent grows to x 242, and the sibling moves on to keep 20px
+///   from it, as from any other node beside it
+#[test]
+fn moves_a_sibling_on_from_a_parent_grown_into_it() {
+    let svg = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+    <g data-node="group">
+      <rect x="20" y="20" width="200" height="120" />
+      <g data-node="out"><rect x="190" y="60" width="40" height="40" /></g>
+    </g>
+    <g data-node="beside"><rect x="240" y="40" width="60" height="60" /></g>
+  </svg>
+"#;
+
+    let result = fix(svg);
+
+    assert_eq!(node_bounds(&result.report, "group").right(), 242.0);
+    assert_eq!(node_bounds(&result.report, "beside").x, 262.0);
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+}
+
+/// Given a parent titled at its top left, with a child lying on the title,
+///   whose nearest way off it, 12px clear, is down
+/// When the diagram is fixed
+/// Then the child moves straight down to 12px below the title, the parent's
+///   top stays, and nothing is left on the title
+#[test]
+fn moves_a_child_off_its_parent_s_text() {
+    let svg = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">
+    <g data-node="group">
+      <rect x="20" y="20" width="240" height="140" />
+      <text x="32" y="46" font-size="14">Group title</text>
+      <g data-node="under"><rect x="40" y="36" width="40" height="40" /></g>
+    </g>
+  </svg>
+"#;
+
+    let result = fix(svg);
+
+    let title = result.report.diagram.node("group").expect("the parent").label_bounds[0];
+    let under = node_bounds(&result.report, "under");
+    assert_eq!(under.x, 40.0);
+    assert_eq!(under.y, title.bottom() + 12.0);
+    assert_eq!(node_bounds(&result.report, "group").y, 20.0);
+    assert!(
+        !has_issue(&result.report, "parent-text-overlap"),
+        "{:?}",
+        result.report.issues
+    );
 }

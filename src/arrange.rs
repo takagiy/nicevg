@@ -88,7 +88,6 @@ const CLEARANCE: f64 = 8.0;
 /// A moved node keeps this far from other nodes, its container's edges and
 /// other nodes' labels, unless it was already closer.
 const NODE_GAP: f64 = 20.0;
-const CONTAINER_MARGIN: f64 = 12.0;
 const LABEL_CLEARANCE: f64 = 4.0;
 
 /// Fixes the diagram, then moves nodes a little where that leaves fewer
@@ -737,12 +736,16 @@ impl Context {
             y: node.bounds.y + step.dy,
             ..node.bounds
         };
-        let parent = node.parent_id.as_deref().and_then(|parent| diagram.node(parent));
-        let parent_fits = parent.is_none_or(|parent| {
-            margins(&moved, &parent.bounds)
+        let Some(grown) = grown_ancestors(diagram, node, moved) else {
+            return false;
+        };
+        // A parent grown round the move keeps as clear of its siblings as a node moved does.
+        let grown_clear = grown.iter().all(|(parent, bounds)| {
+            diagram
+                .nodes
                 .iter()
-                .zip(margins(&node.bounds, &parent.bounds))
-                .all(|(after, before)| *after >= before.min(CONTAINER_MARGIN))
+                .filter(|other| other.parent_id == parent.parent_id && other.id != parent.id)
+                .all(|other| gap(bounds, &other.bounds) >= gap(&parent.bounds, &other.bounds).min(NODE_GAP))
         });
         let ancestors = ancestor_ids(&diagram.nodes, id);
         // A connector the node lands on crosses it and is rerouted, but one
@@ -759,7 +762,7 @@ impl Context {
                 };
                 !grazes(&moved) || grazes(&node.bounds)
             });
-        parent_fits
+        grown_clear
             && clear_of_connectors
             && diagram
                 .nodes
@@ -878,6 +881,38 @@ fn route_enters(points: &[Point], bounds: &Bounds) -> bool {
     segments(points)
         .iter()
         .any(|(start, end)| segment_intersects_interior(*start, *end, bounds))
+}
+
+/// The ancestors that moving `node` to `moved` grows, each with the bounds it
+/// grows to, as fixing grows them: a parent the moved node would come nearer
+/// the border of than its padding (unless it already was), then that
+/// parent's own parent, and so on. None when one of them cannot grow.
+fn grown_ancestors<'a>(
+    diagram: &'a Diagram,
+    node: &DiagramNode,
+    moved: Bounds,
+) -> Option<Vec<(&'a DiagramNode, Bounds)>> {
+    let mut grown = Vec::new();
+    let (mut inner, mut before) = (moved, node.bounds);
+    let mut parent_id = node.parent_id.as_deref();
+    while let Some(parent) = parent_id.and_then(|id| diagram.node(id)) {
+        let padding = parent.child_padding();
+        let fits = margins(&inner, &parent.bounds)
+            .iter()
+            .zip(margins(&before, &parent.bounds))
+            .all(|(after, before)| *after >= before.min(padding));
+        if fits {
+            break;
+        }
+        if !parent.grows() {
+            return None;
+        }
+        let bounds = parent.grown_round(&inner);
+        grown.push((parent, bounds));
+        (inner, before) = (bounds, parent.bounds);
+        parent_id = parent.parent_id.as_deref();
+    }
+    Some(grown)
 }
 
 /// Distances from a node's edges to its container's: left, top, right,
@@ -1218,6 +1253,8 @@ mod tests {
             allow_overlap: false,
             custom: false,
             ports: Vec::new(),
+            padding: None,
+            redrawn: false,
         }
     }
 

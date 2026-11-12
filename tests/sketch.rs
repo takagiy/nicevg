@@ -601,3 +601,102 @@ fn reads_a_headed_connector_along_the_route_given_even_with_a_short_last_segment
     assert_eq!(route(&report, "order", "bill"), given);
     assert!(report.issues.is_empty(), "{:?}", issue_codes(&report));
 }
+
+/// Two boxes for a parent `group` to hold: `a` at x 100 to 180, y 100 to
+/// 140, and `b` at x 220 to 280, y 140 to 180.
+fn two_children() -> [serde_json::Value; 2] {
+    [
+        json!({"id": "a", "x": 100, "y": 100, "width": 80, "height": 40, "parent": "group"}),
+        json!({"id": "b", "x": 220, "y": 140, "width": 60, "height": 40, "parent": "group"}),
+    ]
+}
+
+/// Given a box parent titled "Orders" with neither position nor size, round
+///   two children, the first just under where its title goes
+/// When the sketch is fixed
+/// Then the parent lies 12px out from its children as given, its title 12px
+///   in from its top left, and the first child moves down to 12px below the
+///   title, the parent's top staying where it was
+#[test]
+fn sizes_and_places_a_parent_round_its_children_and_moves_them_off_its_title() {
+    let [a, b] = two_children();
+    let input = sketch(json!({"nodes": [{"id": "group", "label": "Orders"}, a, b]}));
+
+    let result = nicevg::fix_sketch(&input).expect("valid sketch");
+
+    let group = node_bounds(&result.report, "group");
+    let title = result.report.diagram.node("group").expect("the parent").label_bounds[0];
+    assert_eq!(group, bounds(88.0, 88.0, 204.0, 104.0));
+    assert_eq!(title.x - group.x, 12.0);
+    assert_eq!(node_bounds(&result.report, "a").y, title.bottom() + 12.0);
+    assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
+}
+
+/// Given the same parent placed and sized as x 40 to 340, y 20 to 120, its
+///   children reaching below its bottom
+/// When the sketch is analyzed
+/// Then the parent keeps the left, top and right it was given, and its
+///   bottom moves down to 12px below the children
+#[test]
+fn grows_a_placed_and_sized_parent_only_where_its_children_need() {
+    let [a, b] = two_children();
+    let input = sketch(json!({"nodes": [
+        {"id": "group", "label": "Orders", "x": 40, "y": 20, "width": 300, "height": 100}, a, b
+    ]}));
+
+    let report = nicevg::analyze_sketch(&input).expect("valid sketch");
+
+    assert_eq!(node_bounds(&report, "group"), bounds(40.0, 20.0, 300.0, 172.0));
+}
+
+/// Given an untitled parent with padding 20 and no position or size, round
+///   one child at x 100 to 180, y 100 to 140
+/// When the sketch is analyzed
+/// Then the parent lies 20px out from the child on every side, and the
+///   child is not reported as outside it
+#[test]
+fn keeps_a_parent_s_padding_round_its_children() {
+    let [a, _] = two_children();
+    let input = sketch(json!({"nodes": [{"id": "group", "padding": 20}, a]}));
+
+    let report = nicevg::analyze_sketch(&input).expect("valid sketch");
+
+    assert_eq!(node_bounds(&report, "group"), bounds(80.0, 80.0, 120.0, 80.0));
+    assert!(report.issues.is_empty(), "{:?}", issue_codes(&report));
+}
+
+/// Given a node with no children and no x or y
+/// When the sketch is read
+/// Then it is an error naming the node: only a parent takes its position
+///   from its children
+#[test]
+fn rejects_a_node_without_children_or_position() {
+    let input = sketch(json!({"nodes": [{"id": "box", "width": 80, "height": 40}]}));
+
+    assert_eq!(
+        nicevg::analyze_sketch(&input).unwrap_err(),
+        SketchError::MissingPosition {
+            referrer: "nodes[0]".to_owned()
+        }
+    );
+}
+
+/// Given two nodes each naming the other as its parent
+/// When the sketch is read
+/// Then it is an error naming the first node's parent field and the parent
+///   it names, which lies inside it
+#[test]
+fn rejects_parents_that_loop() {
+    let input = sketch(json!({"nodes": [
+        {"id": "a", "x": 0, "y": 0, "width": 80, "height": 40, "parent": "b"},
+        {"id": "b", "x": 100, "y": 0, "width": 80, "height": 40, "parent": "a"}
+    ]}));
+
+    assert_eq!(
+        nicevg::analyze_sketch(&input).unwrap_err(),
+        SketchError::ParentCycle {
+            referrer: "nodes[0].parent".to_owned(),
+            node: "b".to_owned()
+        }
+    );
+}

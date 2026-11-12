@@ -27,8 +27,8 @@ pub use geometry::{Bounds, Point};
 pub use inspect::DiagramIssue;
 pub use route::Side;
 pub use sketch::{
-    Sketch, SketchArrow, SketchConnector, SketchError, SketchNode, SketchShape, analyze_sketch, arrange_sketch,
-    fix_sketch, sketch_svg,
+    PictureRequest, Sketch, SketchArrow, SketchConnector, SketchError, SketchNode, SketchShape, SketchStep, StepState,
+    analyze_sketch, arrange_sketch, arrange_sketch_in_steps, fix_sketch, sketch_svg,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize)]

@@ -27,7 +27,7 @@ import { writeFile } from "node:fs/promises";
 
 import type { SvgFragment } from "./draw.ts";
 import { call as native } from "./native.ts";
-import { NicevgError, sketchRequest } from "./sketch.ts";
+import { NicevgError, layOutSketch, sketchRequest } from "./sketch.ts";
 
 export { SvgFragment, Text, type TextPlace, svg, text } from "./draw.ts";
 export { NicevgError } from "./sketch.ts";
@@ -72,11 +72,19 @@ export interface SketchConnector {
  * other fields, such as `label`, are for the style to use: `box` and
  * `circle` from `nicevg/style/simple` take `label`, `fontSize` and, when
  * the label alone should not size them, `width` and `height`.
+ *
+ * A node with children is a parent: rendering sizes it round them, and
+ * asks its style to draw it at that size, as `width` and `height`. Its own
+ * `x`, `y`, `width` and `height`, where given, are the least it takes;
+ * without `x` and `y` it lies where its children are. Texts it draws stay
+ * clear of its children, and its children keep the padding its frame marks
+ * `data-padding`, 12px unless marked.
  */
 export interface SketchNode {
   id: string;
-  x: number;
-  y: number;
+  /** Required unless the node has children. */
+  x?: number;
+  y?: number;
   class: string;
   /** The node this one sits inside. */
   parent?: string;
@@ -201,14 +209,20 @@ export class Svg {
  * no points, and moves nodes a little where that reads better.
  */
 export function render<const Node extends SketchNode>(input: Input<Node>): Svg {
-  const request = new TextEncoder().encode(
-    JSON.stringify(input instanceof Svg ? { svg: input.toString() } : "svg" in input ? input : sketchRequest(input)),
-  );
-  const reply = JSON.parse(native(request)) as
-    | { ok: { svg: string; changes: Change[]; report: AnalysisReport } }
-    | { error: string };
-  if ("error" in reply) {
-    throw new NicevgError(reply.error);
+  type Result = { svg: string; changes: Change[]; report: AnalysisReport };
+  const call = (request: unknown) => JSON.parse(native(new TextEncoder().encode(JSON.stringify(request))));
+  if (input instanceof Svg || "svg" in input) {
+    const reply = call(input instanceof Svg ? { svg: input.toString() } : input);
+    if ("error" in reply) {
+      throw new NicevgError(reply.error);
+    }
+    return new Svg(reply.ok.svg, reply.ok.changes, reply.ok.report);
   }
-  return new Svg(reply.ok.svg, reply.ok.changes, reply.ok.report);
+  const { sketch, draw } = sketchRequest(input);
+  const steps = layOutSketch<Result>(sketch);
+  let step = steps.next();
+  while (!step.done) {
+    step = steps.next("native" in step.value ? call(step.value.native) : draw(step.value.draw));
+  }
+  return new Svg(step.value.svg, step.value.changes, step.value.report);
 }

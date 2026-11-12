@@ -1042,3 +1042,82 @@ fn does_not_report_a_connector_crossing_a_container_its_end_lies_across() {
         Vec::<Vec<String>>::new()
     );
 }
+
+/// Given a parent with a child poking 10px out of its right side, one 4px
+///   from its left side and one 12px or more from every side
+/// When the diagram is analyzed
+/// Then the first two are reported as node-outside-parent with their parent,
+///   and the third is not
+#[test]
+fn reports_a_child_out_of_its_parent_or_nearer_its_border_than_12px() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+        <g data-node="group">
+          <rect x="20" y="20" width="200" height="120" />
+          <g data-node="near"><rect x="24" y="60" width="40" height="40" /></g>
+          <g data-node="inside"><rect x="100" y="60" width="40" height="40" /></g>
+          <g data-node="out"><rect x="190" y="60" width="40" height="40" /></g>
+        </g>
+      </svg>
+    "#;
+
+    assert_eq!(
+        issues_with_code(&analyze(svg), "node-outside-parent"),
+        [["near", "group"], ["out", "group"]]
+    );
+}
+
+/// Given a child 16px inside a parent whose group says data-padding 20, one
+///   6px inside a parent whose rect says data-padding 4, and one 6px inside a
+///   parent whose group says 20 and whose rect says 4
+/// When the diagram is analyzed
+/// Then the first and the last are reported: a parent's padding is its
+///   group's, else its frame's
+#[test]
+fn takes_a_parent_s_padding_from_its_group_else_its_frame() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 300">
+        <g data-node="wide" data-padding="20">
+          <rect x="20" y="20" width="120" height="120" />
+          <g data-node="first"><rect x="36" y="60" width="40" height="40" /></g>
+        </g>
+        <g data-node="tight">
+          <rect x="200" y="20" width="120" height="120" data-padding="4" />
+          <g data-node="second"><rect x="206" y="60" width="40" height="40" /></g>
+        </g>
+        <g data-node="both" data-padding="20">
+          <rect x="400" y="20" width="120" height="120" data-padding="4" />
+          <g data-node="third"><rect x="406" y="60" width="40" height="40" /></g>
+        </g>
+      </svg>
+    "#;
+
+    assert_eq!(
+        issues_with_code(&analyze(svg), "node-outside-parent"),
+        [["first", "wide"], ["third", "both"]]
+    );
+}
+
+/// Given a parent titled at its top left, with one child lying on the title
+///   and one clear of it
+/// When the diagram is analyzed
+/// Then the child on the title is reported as parent-text-overlap with its
+///   parent, and the other is not
+#[test]
+fn reports_a_child_lying_on_its_parent_s_text() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 200">
+        <g data-node="group">
+          <rect x="20" y="20" width="240" height="140" />
+          <text x="32" y="44" font-size="14">Group title</text>
+          <g data-node="under"><rect x="40" y="36" width="40" height="40" /></g>
+          <g data-node="clear"><rect x="160" y="90" width="40" height="40" /></g>
+        </g>
+      </svg>
+    "#;
+
+    assert_eq!(
+        issues_with_code(&analyze(svg), "parent-text-overlap"),
+        [["under", "group"]]
+    );
+}

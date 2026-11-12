@@ -12,15 +12,19 @@
  * ```
  */
 
-import { type SvgFragment, WIDE, svg } from "../draw.ts";
+import { type SvgFragment, WIDE, svg, text } from "../draw.ts";
 
 /** A node a simple style draws: the box it takes, just big enough for its label when not given, and its text. */
 export interface SimpleNode {
   width?: number;
   height?: number;
-  /** Its text, lines split at `\n`, centred. */
+  /** Its text, lines split at `\n`, centred unless `box` is told otherwise. */
   label?: string;
   fontSize?: number;
+  /** Where `box` writes its label: centred, or `padding` in from its top left, as a parent's title. */
+  labelPosition?: "center" | "top-left";
+  /** How far `box` keeps its label, and a parent its children, inside its border: 12px unless given. */
+  padding?: number;
   /** The shape's paint, as the SVG attributes of the same names: white, outlined 1px in black, unless given. */
   fill?: string;
   stroke?: string;
@@ -89,19 +93,35 @@ function reach(content: string | undefined, size: number): [number, number] {
   return [Math.max(-x, x + width), Math.max(-y, y + height)];
 }
 
-/** A box, grown to keep its label 12px inside it. */
-export function box({ label: content, fontSize = 14, ...node }: SimpleNode): SvgFragment {
-  const [dx, dy] = reach(content, fontSize);
-  const { width = 2 * (dx + PADDING), height = 2 * (dy + PADDING) } = node;
-  if (content === undefined) {
-    return svg`<rect data-bounds="true" x="0" y="0" width="${width}" height="${height}" ${paint(node)}/>`;
+/** A box, grown to keep its label `padding` (12px) inside it, marking that padding for a parent's children. */
+export function box({
+  label: content,
+  fontSize = 14,
+  labelPosition = "center",
+  padding,
+  ...node
+}: SimpleNode): SvgFragment {
+  const inset = padding ?? PADDING;
+  const frame = (x: number, y: number, width: number, height: number) =>
+    svg`<rect data-bounds="true"${padding === undefined ? "" : svg` data-padding="${padding}"`} x="${x}" y="${y}" width="${width}" height="${height}" ${paint(node)}/>`;
+  if (labelPosition === "top-left") {
+    const title = content === undefined ? undefined : text(content, fontSize);
+    // Grown to its title, as a centred label grows its box.
+    const width = Math.max(node.width ?? 0, (title?.width ?? 0) + 2 * inset);
+    const height = Math.max(node.height ?? 0, (title?.height ?? 0) + 2 * inset);
+    return svg`${frame(0, 0, width, height)}${title?.at({ left: inset, top: inset }) ?? ""}`;
   }
-  const text = label(content, width / 2, height / 2, fontSize);
-  const left = Math.min(0, text.bounds.x - PADDING);
-  const top = Math.min(0, text.bounds.y - PADDING);
-  const right = Math.max(width, text.bounds.x + text.bounds.width + PADDING);
-  const bottom = Math.max(height, text.bounds.y + text.bounds.height + PADDING);
-  return svg`<rect data-bounds="true" x="${left}" y="${top}" width="${right - left}" height="${bottom - top}" ${paint(node)}/>${text.markup}`;
+  const [dx, dy] = reach(content, fontSize);
+  const { width = 2 * (dx + inset), height = 2 * (dy + inset) } = node;
+  if (content === undefined) {
+    return frame(0, 0, width, height);
+  }
+  const centred = label(content, width / 2, height / 2, fontSize);
+  const left = Math.min(0, centred.bounds.x - inset);
+  const top = Math.min(0, centred.bounds.y - inset);
+  const right = Math.max(width, centred.bounds.x + centred.bounds.width + inset);
+  const bottom = Math.max(height, centred.bounds.y + centred.bounds.height + inset);
+  return svg`${frame(left, top, right - left, bottom - top)}${centred.markup}`;
 }
 
 /** A circle in the middle of the box it is given, grown to keep its label 12px inside it. */

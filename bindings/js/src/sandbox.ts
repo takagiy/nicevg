@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import amaro from "amaro";
 import { type QuickJSContext, type QuickJSHandle, getQuickJS, shouldInterruptAfterDeadline } from "quickjs-emscripten";
 
+import type { Asked } from "./sketch.ts";
+
 /** A diagram script: its code, the markdown line it starts on, and the module blocks it may import. */
 export interface Script {
   /** The markdown file, relative to the sandbox directory, `/`-separated. */
@@ -27,8 +29,41 @@ export interface Limits {
   memoryBytes: number;
 }
 
-/** What the script asked `render` to draw and where it called it, or why it drew nothing. */
-export type Outcome = { request: unknown; stack: string } | { failure: string; error?: string };
+/** Why a script drew nothing. */
+export type Failure = { failure: string; error?: string };
+
+/** What the host made of what the script asked `render` to draw, and where it called it, or why it drew nothing. */
+export type Outcome<Result> = { result: Result; stack: string } | Failure;
+
+/** Draws, with the styles of the sketch the script rendered, the parents' pictures asked for. */
+export type Draw = (asked: Asked[]) => string[];
+
+/** A failure of the script while the host has it draw, which `run` reports as its outcome. */
+class Stopped extends Error {
+  constructor(readonly failure: Failure) {
+    super(failure.failure);
+  }
+}
+
+/** What a script that overwrote what the guest `nicevg` leaves for the host gets. */
+const BROKEN: Failure = { failure: "The diagram script broke what render left for nicevg doc" };
+
+/** `text` the sandbox gave, read as JSON of the shape `valid` checks: the script can overwrite it, so anything else is its failure. */
+function fromSandbox<T>(text: string, valid: (value: unknown) => value is T): T {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Stopped(BROKEN);
+  }
+  if (!valid(value)) {
+    throw new Stopped(BROKEN);
+  }
+  return value;
+}
+
+const isRecord = (value: unknown): value is { request: unknown; stack: string } =>
+  typeof value === "object" && value !== null && "request" in value && "stack" in value && typeof value.stack === "string";
 
 /** The sandbox's own modules: `nicevg` as a diagram script sees it, and the files it imports. */
 // Named without their extension: the package runs from src/*.ts on Bun and from dist/*.js on Node.
@@ -36,6 +71,7 @@ const PACKAGE: Record<string, string> = { nicevg: "nicevg:guest", "nicevg/style/
 const SOURCE = dirname(fileURLToPath(import.meta.url));
 /** What the guest `nicevg` leaves for the host (see guest.ts). */
 const RECORD = "__nicevgRender";
+const DRAW = "__nicevgDraw";
 /** A module name the normalizer gives an import it refuses, carrying why: the loader reports it. */
 const REFUSED = "refused:";
 
@@ -128,7 +164,7 @@ function printed(context: QuickJSContext, handle: QuickJSHandle): { name: string
 }
 
 /** Why a script stopped with `error`. */
-function failed(error: { name: string; message: string; text: string }): { failure: string; error?: string } {
+function failed(error: { name: string; message: string; text: string }): Failure {
   if (error.name === "InternalError" && error.message === "interrupted") {
     return { failure: "The diagram script ran past the time limit" };
   }
@@ -148,8 +184,18 @@ function failed(error: { name: string; message: string; text: string }): { failu
   return { failure: "The diagram script threw an exception", error: error.text };
 }
 
-/** Runs `script` in a fresh sandbox, `print` taking what it writes to the console. */
-export async function run(root: string, script: Script, limits: Limits, print: (text: string) => void): Promise<Outcome> {
+/**
+ * Runs `script` in a fresh sandbox, `print` taking what it writes to the
+ * console, then `then` with what it asked `render` to draw, the sandbox kept
+ * until `then` is done so that it can have the script's styles draw.
+ */
+export async function run<Result>(
+  root: string,
+  script: Script,
+  limits: Limits,
+  print: (text: string) => void,
+  then: (request: unknown, draw: Draw) => Promise<Result>,
+): Promise<Outcome<Result>> {
   let code: string;
   try {
     code = at(script.line, strip(script.code, script.file, script.line));
@@ -204,8 +250,34 @@ export async function run(root: string, script: Script, limits: Limits, print: (
     if (recorded === undefined) {
       return { failure: "The diagram script did not call render" };
     }
-    const { request, stack } = JSON.parse(recorded) as { request: unknown; stack: string };
-    return { request, stack };
+    const draw: Draw = (asked) => {
+      const drawer = context.getProp(context.global, DRAW);
+      const argument = context.newString(JSON.stringify(asked));
+      const drawn = context.callFunction(drawer, context.undefined, argument);
+      drawer.dispose();
+      argument.dispose();
+      if (drawn.error) {
+        const failure = failed(printed(context, drawn.error));
+        drawn.error.dispose();
+        throw new Stopped(failure);
+      }
+      const pictures = context.typeof(drawn.value) === "string" ? context.getString(drawn.value) : "";
+      drawn.value.dispose();
+      return fromSandbox(
+        pictures,
+        (value): value is string[] =>
+          Array.isArray(value) && value.length === asked.length && value.every((picture) => typeof picture === "string"),
+      );
+    };
+    try {
+      const { request, stack } = fromSandbox(recorded, isRecord);
+      return { result: await then(request, draw), stack };
+    } catch (error) {
+      if (error instanceof Stopped) {
+        return error.failure;
+      }
+      throw error;
+    }
   } finally {
     context.dispose();
     runtime.dispose();
