@@ -510,6 +510,33 @@ fn turns_a_polygon_arrowhead_at_the_start_of_its_connector() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a box with a connector to itself, a path running 10px right from its
+///   centre, and nothing else around
+/// When the diagram is fixed
+/// Then the loop comes back into the box along a straight run of at least
+///   16px, as a connector between two nodes does: the box itself does not
+///   stand in the way of its own run
+#[test]
+fn leaves_a_loop_the_straight_run_into_its_node_other_connectors_get() {
+    let svg = r#"
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140">
+    <g data-node="retry">
+      <rect x="20" y="40" width="100" height="56" />
+      <text x="70" y="73" text-anchor="middle" font-size="14">Retry</text>
+    </g>
+    <path id="again" data-from="retry" data-to="retry" d="M 70 68 L 80 68" />
+  </svg>
+"#;
+
+    let result = fix(svg);
+
+    let points = connector_points(&result.report, "again");
+    let (end, before) = (points[points.len() - 1], points[points.len() - 2]);
+    assert!(bend_count(&points) > 0, "{points:?}");
+    assert!((end.x - before.x).hypot(end.y - before.y) >= 16.0, "{points:?}");
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+}
+
 /// Given a connector from a circle that comes straight down onto the middle
 ///   of a box's left side, its last stretch lying on that side
 /// When the diagram is fixed
