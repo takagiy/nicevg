@@ -151,6 +151,17 @@ describe("render with style", () => {
         expect(image).toMatch(/<polygon fill="#c00"/);
       });
 
+        /**
+         * Given an edge with `strokeWidth: 2` and `strokeDasharray: "6 4"`
+         * When the sketch is rendered
+         * Then its line is drawn 2 wide and dashed 6 4
+         */
+        test("draws an edge at its stroke width and dashes", () => {
+          const image = String(render({ ...dfd, edges: [{ from: "order", to: "orders", strokeWidth: 2, strokeDasharray: "6 4" }] }));
+
+          expect(image).toMatch(/<path id="connector-0"[^>]* stroke-width="2" stroke-dasharray="6 4"/);
+        });
+
   /**
    * Given root attributes with a font family and a numeric font size
    * When the sketch is rendered

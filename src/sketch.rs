@@ -119,6 +119,11 @@ pub struct SketchConnector {
     /// The paint of its line and heads, such as `#c00`: black unless given.
     #[serde(default)]
     pub color: Option<String>,
+    /// Its line's `stroke-width` and `stroke-dasharray`, as SVG reads them.
+    #[serde(default)]
+    pub stroke_width: Option<f64>,
+    #[serde(default)]
+    pub stroke_dasharray: Option<String>,
 }
 
 /// The ends of a connector drawn with an arrowhead.
@@ -675,9 +680,18 @@ fn layout_svg(sketch: &Sketch, steps: Option<(&HashMap<String, Vec<String>>, usi
                 .map_or_else(String::new, |port| format!(r#" data-{name}-port="{}""#, escape(port)))
         };
         let color = escape(connector.color.as_deref().unwrap_or("black"));
+        let width = connector
+            .stroke_width
+            .map_or_else(String::new, |width| format!(r#" stroke-width="{}""#, number(width)));
+        let dashes = connector
+            .stroke_dasharray
+            .as_deref()
+            .map_or_else(String::new, |dashes| {
+                format!(r#" stroke-dasharray="{}""#, escape(dashes))
+            });
         let _ = writeln!(
             body,
-            r#"  <path id="{id}" data-from="{}"{} data-to="{}"{} fill="none" stroke="{color}" d="{d}"/>"#,
+            r#"  <path id="{id}" data-from="{}"{} data-to="{}"{} fill="none" stroke="{color}"{width}{dashes} d="{d}"/>"#,
             escape(&connector.from),
             port("from", &connector.from_port),
             escape(&connector.to),

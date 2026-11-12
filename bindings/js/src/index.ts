@@ -63,6 +63,9 @@ export interface SketchConnector {
   arrow?: "both" | "none";
   /** The paint of its line and arrowheads, such as `"#c00"`: black unless given. */
   color?: string;
+  /** Its line's width and dashes, as the SVG attributes `stroke-width` and `stroke-dasharray`: arrowheads stay solid. */
+  strokeWidth?: number;
+  strokeDasharray?: string;
 }
 
 /**

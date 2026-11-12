@@ -574,6 +574,26 @@ fn draws_a_connector_and_its_head_in_its_colour() {
     assert_eq!(painted(json!({"from": "order", "to": "bill"})), colour("black"));
 }
 
+/// Given a connector with `strokeWidth: 2` and `strokeDasharray: "6 4"`, and one with neither
+/// When each sketch is fixed
+/// Then the first's line is written 2 wide and dashed 6 4, and the other's carries neither
+///   attribute
+#[test]
+fn draws_a_connector_at_its_stroke_width_and_dashes() {
+    let stroked = |connector: serde_json::Value| {
+        let result = nicevg::fix_sketch(&two_boxes(connector)).expect("valid sketch");
+        let written = Written::parse(&result.svg);
+        let line = written.nth("path", 0);
+        (line.get("stroke-width").cloned(), line.get("stroke-dasharray").cloned())
+    };
+
+    assert_eq!(
+        stroked(json!({"from": "order", "to": "bill", "strokeWidth": 2, "strokeDasharray": "6 4"})),
+        (Some("2".to_owned()), Some("6 4".to_owned()))
+    );
+    assert_eq!(stroked(json!({"from": "order", "to": "bill"})), (None, None));
+}
+
 /// Given a connector with its route given, the last segment 6px long, and the default head
 /// When the sketch is fixed and the fixed SVG is read again
 /// Then the route read back is the one given, its end at the head's tip, and the head is read as
