@@ -59,6 +59,10 @@ export interface SketchConnector {
   /** Its text, lines split at `\n`, placed beside it. */
   label?: string;
   fontSize?: number;
+  /** The ends with an arrowhead: the `to` end unless given, both ends, or neither. */
+  arrow?: "both" | "none";
+  /** The paint of its line and arrowheads, such as `"#c00"`: black unless given. */
+  color?: string;
 }
 
 /**

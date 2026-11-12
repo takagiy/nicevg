@@ -3,16 +3,17 @@
 //! SVG contract, and read and repaired like any other diagram.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use regex::Regex;
 use std::fmt::Write;
 
 use serde::Deserialize;
 
+use crate::arrow::shaft_end;
 use crate::diagram::custom_extent;
 use crate::geometry::{Bounds, Point, format_number, point};
-use crate::xml;
+use crate::xml::{self, Element, Node};
 use crate::{AnalysisReport, FixResult};
 
 /// A diagram as nodes and the connectors between them.
@@ -96,6 +97,22 @@ pub struct SketchConnector {
     /// The port of `to` it reaches.
     #[serde(default)]
     pub to_port: Option<String>,
+    #[serde(default)]
+    pub arrow: SketchArrow,
+    /// The paint of its line and heads, such as `#c00`: black unless given.
+    #[serde(default)]
+    pub color: Option<String>,
+}
+
+/// The ends of a connector drawn with an arrowhead.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum SketchArrow {
+    /// The `to` end.
+    #[default]
+    End,
+    Both,
+    None,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -162,11 +179,72 @@ pub fn analyze_sketch(sketch: &Sketch) -> Result<AnalysisReport, SketchError> {
 }
 
 pub fn fix_sketch(sketch: &Sketch) -> Result<FixResult, SketchError> {
-    Ok(crate::fix(&sketch_svg(sketch)?).expect("a sketch's SVG parses"))
+    Ok(with_heads(
+        crate::fix(&sketch_svg(sketch)?).expect("a sketch's SVG parses"),
+        sketch,
+    ))
 }
 
 pub fn arrange_sketch(sketch: &Sketch) -> Result<FixResult, SketchError> {
-    Ok(crate::arrange(&sketch_svg(sketch)?).expect("a sketch's SVG parses"))
+    Ok(with_heads(
+        crate::arrange(&sketch_svg(sketch)?).expect("a sketch's SVG parses"),
+        sketch,
+    ))
+}
+
+/// The fixed diagram with each connector's heads drawn at the ends of the
+/// route fixing gave it, its line and heads in a group. Drawn after fixing,
+/// the heads take their direction from a route that has one even for a
+/// connector from a node to itself, whose route in the sketch's SVG is a point.
+fn with_heads(mut result: FixResult, sketch: &Sketch) -> FixResult {
+    let mut document = xml::parse(&result.svg).expect("the fixed SVG parses");
+    for (index, connector) in sketch.connectors.iter().enumerate() {
+        let id = connector_id(index);
+        let route = &result
+            .report
+            .diagram
+            .connectors
+            .iter()
+            .find(|drawn| drawn.id == id)
+            .expect("every connector read back")
+            .points;
+        let (shaft, heads) = shaft_and_heads(route, connector.arrow);
+        if heads.is_empty() {
+            continue;
+        }
+        let (path, line) = document
+            .elements()
+            .into_iter()
+            .find(|(_, element)| element.attr("id") == id)
+            .map(|(path, element)| (path, element.clone()))
+            .expect("the connector's line");
+        let color = line.attr("stroke").to_owned();
+        let heads = heads.iter().map(|points| {
+            Element::new("polygon")
+                .with_attr("fill", &color)
+                .with_attr("points", points)
+        });
+        let mut group = Element::new("g");
+        group.children = Arc::new(
+            std::iter::once(line.with_attr("d", &path_data(&shaft)))
+                .chain(heads)
+                .map(Node::Element)
+                .collect(),
+        );
+        document = document.replace(&path, group);
+    }
+    result.svg = xml::serialize(&document);
+    result
+}
+
+/// An SVG path's `d` running through `points`.
+fn path_data(points: &[Point]) -> String {
+    points
+        .iter()
+        .enumerate()
+        .map(|(index, p)| format!("{} {} {}", if index == 0 { "M" } else { "L" }, number(p.x), number(p.y)))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The SVG a sketch stands for: a `data-node` group for each node, with
@@ -253,19 +331,15 @@ pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
     }
     for (index, (connector, route)) in sketch.connectors.iter().zip(&routes).enumerate() {
         let id = connector_id(index);
-        let d = route
-            .iter()
-            .enumerate()
-            .map(|(index, p)| format!("{} {} {}", if index == 0 { "M" } else { "L" }, number(p.x), number(p.y)))
-            .collect::<Vec<_>>()
-            .join(" ");
+        let d = path_data(route);
         let port = |name: &str, port: &Option<String>| {
             port.as_deref()
                 .map_or_else(String::new, |port| format!(r#" data-{name}-port="{}""#, escape(port)))
         };
+        let color = escape(connector.color.as_deref().unwrap_or("black"));
         let _ = writeln!(
             body,
-            r#"  <path id="{id}" data-from="{}"{} data-to="{}"{} fill="none" stroke="black" d="{d}"/>"#,
+            r#"  <path id="{id}" data-from="{}"{} data-to="{}"{} fill="none" stroke="{color}" d="{d}"/>"#,
             escape(&connector.from),
             port("from", &connector.from_port),
             escape(&connector.to),
@@ -313,6 +387,41 @@ pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
     ))
 }
 
+const HEAD_LENGTH: f64 = 10.0;
+const HEAD_HALF_WIDTH: f64 = 5.0;
+
+/// A connector's line along `route`, stopped short of each end with a head
+/// as `shaft_end` says, and the `points` of the heads: a corner of the base,
+/// the tip at the route's end, the other corner.
+fn shaft_and_heads(route: &[Point], arrow: SketchArrow) -> (Vec<Point>, Vec<String>) {
+    let last = route.len() - 1;
+    let ends: &[(usize, usize)] = match arrow {
+        SketchArrow::End => &[(last, last - 1)],
+        SketchArrow::Both => &[(0, 1), (last, last - 1)],
+        SketchArrow::None => &[],
+    };
+    let mut shaft = route.to_vec();
+    let heads = ends
+        .iter()
+        .filter_map(|&(end, inner)| {
+            let tip = route[end];
+            let (stop, Point { x: dx, y: dy }) = shaft_end(route[inner], tip, HEAD_LENGTH)?;
+            shaft[end] = stop;
+            let base = point(tip.x - dx * HEAD_LENGTH, tip.y - dy * HEAD_LENGTH);
+            let (nx, ny) = (-dy * HEAD_HALF_WIDTH, dx * HEAD_HALF_WIDTH);
+            Some(format!(
+                "{},{} {},{} {},{}",
+                number(base.x + nx),
+                number(base.y + ny),
+                number(tip.x),
+                number(tip.y),
+                number(base.x - nx),
+                number(base.y - ny)
+            ))
+        })
+        .collect();
+    (shaft, heads)
+}
 /// The id of the connector at `index` in a sketch, as the diagram read back
 /// names it, and the label describing it.
 fn connector_id(index: usize) -> String {

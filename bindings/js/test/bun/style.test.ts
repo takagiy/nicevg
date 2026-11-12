@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { NicevgError, type Style, render, svg, text } from "nicevg";
+import { NicevgError, type SketchConnector, type Style, render, svg, text } from "nicevg";
 import { box } from "nicevg/style/simple";
 
 /** A data store open on its right: its id, a dividing line, then its name. */
@@ -126,6 +126,30 @@ describe("render with style", () => {
     expect(() => render({ ...dfd, style: {} as never })).toThrow('nodes[0].class: no style named "box"');
     expect(() => render({ ...dfd, connectors: dfd.edges })).toThrow(NicevgError);
   });
+
+    /**
+     * Given two edges between the same nodes, one with `arrow: "none"` and one with no arrow given
+     * When the sketch is rendered
+     * Then only the edge with no arrow given is drawn with a head
+     */
+    test("draws an edge's head unless it says arrow none", () => {
+      const heads = (edge: SketchConnector) => String(render({ ...dfd, edges: [edge] })).match(/<polygon/g)?.length ?? 0;
+
+      expect(heads({ from: "order", to: "orders" })).toBe(1);
+      expect(heads({ from: "order", to: "orders", arrow: "none" })).toBe(0);
+    });
+
+      /**
+       * Given an edge with `color: "#c00"`
+       * When the sketch is rendered
+       * Then its line and its head are drawn in that colour
+       */
+      test("draws an edge and its head in its colour", () => {
+        const image = String(render({ ...dfd, edges: [{ from: "order", to: "orders", color: "#c00" }] }));
+
+        expect(image).toMatch(/<path id="connector-0"[^>]* stroke="#c00"/);
+        expect(image).toMatch(/<polygon fill="#c00"/);
+      });
 
   /**
    * Given root attributes with a font family and a numeric font size
