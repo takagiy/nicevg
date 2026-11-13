@@ -19,11 +19,11 @@ type Node = ErNode | {
 
 const sketch = {
   nodes: [
-    { id: "v41", class: "area", x: 25, y: 30, width: 510, height: 340, title: "Blender 4.1 — bundled legacy add-on" },
-    { id: "legacy", class: "table", x: 45, y: 85, title: "my_addon.py / bl_info", columns: [["name", "str"], ["blender", "tuple"], ["category", "str"]], parent: "v41" },
-    { id: "v42", class: "area", x: 600, y: 35, width: 560, height: 350, title: "Blender 4.2 — repository extension" },
-    { id: "manifest", class: "table", x: 625, y: 85, title: "blender_manifest.toml", columns: [["id", "package id"], ["version", "semver"], ["type", "add-on"], ["blender_version_min", "4.2.0"]], parent: "v42" },
-    { id: "repo", class: "table", x: 880, y: 100, title: "Extension repository entry", columns: [["id", "extension id"], ["archive_url", "package download"], ["version", "release"]], parent: "v42" },
+    { id: "v41", children: ["legacy"], class: "area", x: 25, y: 30, width: 510, height: 340, title: "Blender 4.1 — bundled legacy add-on" },
+    { id: "legacy", class: "table", x: 45, y: 85, title: "my_addon.py / bl_info", columns: [["name", "str"], ["blender", "tuple"], ["category", "str"]] },
+    { id: "v42", children: ["manifest", "repo"], class: "area", x: 600, y: 35, width: 560, height: 350, title: "Blender 4.2 — repository extension" },
+    { id: "manifest", class: "table", x: 625, y: 85, title: "blender_manifest.toml", columns: [["id", "package id"], ["version", "semver"], ["type", "add-on"], ["blender_version_min", "4.2.0"]] },
+    { id: "repo", class: "table", x: 880, y: 100, title: "Extension repository entry", columns: [["id", "extension id"], ["archive_url", "package download"], ["version", "release"]] },
     { id: "module", class: "box", x: 685, y: 265, label: "Installed package module\nbl_ext.<repository_module>.my_addon\nroot: __init__.py" },
     { id: "register", class: "box", x: 305, y: 260, label: "my_addon.register()\ncalled when add-on is enabled" },
     { id: "operator", class: "table", x: 255, y: 460, title: "ObjectMoveX(bpy.types.Operator)", columns: [["bl_idname", "object.move_x"], ["bl_label", "Move X by One"], ["bl_options", "REGISTER, UNDO"], ["execute(context)", "move selected scene objects"]] },

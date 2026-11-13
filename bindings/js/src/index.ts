@@ -89,8 +89,8 @@ export interface SketchNode {
   x?: number;
   y?: number;
   class: string;
-  /** The node this one sits inside. */
-  parent?: string;
+  /** The ids of the nodes this one holds. */
+  children?: readonly string[];
   /** Whether it may overlap other nodes on purpose. */
   allowOverlap?: boolean;
   [field: string]: unknown;

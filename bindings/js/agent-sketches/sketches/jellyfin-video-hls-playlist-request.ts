@@ -10,7 +10,7 @@ type Node = {
   class: "box";
   x: number;
   y: number;
-  parent?: string;
+  children?: readonly string[];
   width?: number;
   height?: number;
   label: string;
@@ -19,23 +19,23 @@ type Node = {
 
 const nodes: Node[] = [
   { id: "client", class: "box", x: 20, y: 210, width: 160, height: 68, label: "Jellyfin client\n(player)" },
-  { id: "server", class: "box", x: 230, y: 60, width: 1180, height: 600, label: "Jellyfin server process", fill: "#f8fafc" },
-  { id: "endpoint", parent: "server", class: "box", x: 270, y: 160, width: 175, height: 76, label: "ASP.NET Core\nrouting + authorization" },
-  { id: "controller", parent: "server", class: "box", x: 500, y: 130, width: 205, height: 82, label: "DynamicHlsController\nvideo playlist action" },
-  { id: "dto", parent: "server", class: "box", x: 500, y: 270, width: 205, height: 76, label: "StreamingRequestDto\nroute + query values" },
-  { id: "helpers", parent: "server", class: "box", x: 760, y: 250, width: 205, height: 90, label: "StreamingHelpers\n.GetStreamingState" },
-  { id: "library", parent: "server", class: "box", x: 1010, y: 140, width: 170, height: 66, label: "ILibraryManager\nGetItemById" },
-  { id: "sources", parent: "server", class: "box", x: 1010, y: 250, width: 180, height: 76, label: "IMediaSourceManager\nselect media source" },
-  { id: "encoder", parent: "server", class: "box", x: 1010, y: 390, width: 180, height: 76, label: "IMediaEncoder\ncodec capability checks" },
-  { id: "state", parent: "server", class: "box", x: 760, y: 410, width: 205, height: 72, label: "StreamState\nsource + output paths" },
-  { id: "manager", parent: "server", class: "box", x: 500, y: 430, width: 205, height: 76, label: "ITranscodeManager\nlock + StartFfMpeg" },
+  { id: "server", children: ["endpoint", "controller", "dto", "helpers", "library", "sources", "encoder", "state", "manager", "wait", "playlist", "response"], class: "box", x: 230, y: 60, width: 1180, height: 600, label: "Jellyfin server process", fill: "#f8fafc" },
+  { id: "endpoint", class: "box", x: 270, y: 160, width: 175, height: 76, label: "ASP.NET Core\nrouting + authorization" },
+  { id: "controller", class: "box", x: 500, y: 130, width: 205, height: 82, label: "DynamicHlsController\nvideo playlist action" },
+  { id: "dto", class: "box", x: 500, y: 270, width: 205, height: 76, label: "StreamingRequestDto\nroute + query values" },
+  { id: "helpers", class: "box", x: 760, y: 250, width: 205, height: 90, label: "StreamingHelpers\n.GetStreamingState" },
+  { id: "library", class: "box", x: 1010, y: 140, width: 170, height: 66, label: "ILibraryManager\nGetItemById" },
+  { id: "sources", class: "box", x: 1010, y: 250, width: 180, height: 76, label: "IMediaSourceManager\nselect media source" },
+  { id: "encoder", class: "box", x: 1010, y: 390, width: 180, height: 76, label: "IMediaEncoder\ncodec capability checks" },
+  { id: "state", class: "box", x: 760, y: 410, width: 205, height: 72, label: "StreamState\nsource + output paths" },
+  { id: "manager", class: "box", x: 500, y: 430, width: 205, height: 76, label: "ITranscodeManager\nlock + StartFfMpeg" },
   { id: "ffmpeg", class: "box", x: 500, y: 570, width: 205, height: 72, label: "Jellyfin FFmpeg\nHLS mux / transcode" },
-  { id: "storage", class: "box", x: 750, y: 710, width: 560, height: 250, label: "Media and transcode storage", fill: "#fff7ed" },
-  { id: "media", parent: "storage", class: "box", x: 790, y: 800, width: 205, height: 70, label: "Library source\nvideo file" },
-  { id: "output", parent: "storage", class: "box", x: 1050, y: 800, width: 210, height: 84, label: "Transcode directory\n.m3u8 + HLS segments" },
-  { id: "wait", parent: "server", class: "box", x: 270, y: 330, width: 190, height: 76, label: "HlsHelpers\nWaitForMinimumSegmentCount" },
-  { id: "playlist", parent: "server", class: "box", x: 270, y: 490, width: 190, height: 76, label: "HlsHelpers\nGetLivePlaylistText" },
-  { id: "response", parent: "server", class: "box", x: 270, y: 520, width: 190, height: 76, label: "HTTP Content response\nplaylist.m3u8" },
+  { id: "storage", children: ["media", "output"], class: "box", x: 750, y: 710, width: 560, height: 250, label: "Media and transcode storage", fill: "#fff7ed" },
+  { id: "media", class: "box", x: 790, y: 800, width: 205, height: 70, label: "Library source\nvideo file" },
+  { id: "output", class: "box", x: 1050, y: 800, width: 210, height: 84, label: "Transcode directory\n.m3u8 + HLS segments" },
+  { id: "wait", class: "box", x: 270, y: 330, width: 190, height: 76, label: "HlsHelpers\nWaitForMinimumSegmentCount" },
+  { id: "playlist", class: "box", x: 270, y: 490, width: 190, height: 76, label: "HlsHelpers\nGetLivePlaylistText" },
+  { id: "response", class: "box", x: 270, y: 520, width: 190, height: 76, label: "HTTP Content response\nplaylist.m3u8" },
 ];
 
 const sketch = {

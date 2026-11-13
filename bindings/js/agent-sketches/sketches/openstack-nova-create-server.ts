@@ -10,8 +10,12 @@ import { svg, text } from "nicevg";
 type Kind = "person" | "step" | "service" | "system" | "store" | "boundary";
 type Node = SketchNode & { class: Kind; label: string; width?: number; height?: number; fill?: string; title?: string };
 
-const node = (id: string, cls: Kind, x: number, y: number, label: string, width = 176, height = 64, parent?: string): Node =>
-  ({ id, class: cls, x, y, label, width, height, ...(parent ? { parent } : {}) });
+/** Each node's parent, as `node` is told it, for the parents to list as their children. */
+const parents = new Map<string, string>();
+const node = (id: string, cls: Kind, x: number, y: number, label: string, width = 176, height = 64, parent?: string): Node => {
+  if (parent) parents.set(id, parent);
+  return { id, class: cls, x, y, label, width, height };
+};
 
 const nodes: Node[] = [
   node("control", "boundary", 20, 20, "OpenStack control plane", 2750, 900),
@@ -57,6 +61,10 @@ const nodes: Node[] = [
   node("reply", "step", 780, 650, "Compute API response\nserver id + links", 176, 72),
   node("httpreply", "person", 400, 650, "Client receives\nHTTP 202 + server", 170, 76),
 ];
+for (const parent of nodes) {
+  const children = nodes.filter((child) => parents.get(child.id) === parent.id).map((child) => child.id);
+  if (children.length > 0) parent.children = children;
+}
 
 const rect = (n: Node, color: string, rounded = 8, dashed = "") => svg`<rect data-bounds="true" width="${n.width ?? 176}" height="${n.height ?? 64}" rx="${rounded}" fill="${n.fill ?? color}" stroke="#475569" stroke-width="1.4" stroke-dasharray="${dashed}"/>${text(n.label, 12).at({ cx: (n.width ?? 176) / 2, cy: (n.height ?? 64) / 2 })}`;
 const person = (n: Node) => svg`<rect data-bounds="true" width="${n.width}" height="${n.height}" rx="30" fill="#fff7ed" stroke="#9a3412" stroke-width="1.5"/>${text(n.label, 12).at({ cx: (n.width ?? 176) / 2, cy: (n.height ?? 64) / 2 })}`;

@@ -52,7 +52,7 @@ console.log(svg.changes); // 何を直し、何を動かしたか
 |---|---|
 | `nodes[].id`、`x`、`y` | ノードの id と、左上の位置（style が描く絵の原点） |
 | `nodes[].class` | 描き方を `style` から選ぶ名前。すべてのノードに要る。ほかの項目は、そのまま style に渡る |
-| `nodes[].parent` | このノードを入れる親ノードの id |
+| `nodes[].children` | このノードの中に入れる子ノードの id の配列 |
 | `nodes[].allowOverlap` | 意図した重なりなら `true` |
 | `edges[].from`、`to` | 両端のノードの id。`edges` は前の名前の `connectors` でも渡せる（両方は渡せない） |
 | `edges[].points` | 経路の折れ点。省くと、修正と配置調整が両端のノードの辺から辺へ経路を引く |

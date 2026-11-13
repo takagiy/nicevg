@@ -15,7 +15,7 @@ type Node = {
   label: string;
   width?: number;
   height?: number;
-  parent?: string;
+  children?: readonly string[];
 };
 
 const sketch = {

@@ -13,27 +13,27 @@ type Node = {
   y: number;
   label: string;
   fill?: string;
-  parent?: string;
+  children?: readonly string[];
   width?: number;
   height?: number;
   stroke?: string;
 };
 
 const nodes: Node[] = [
-  { id: "collector", class: "box", x: 260, y: 20, width: 1080, height: 520, label: "OpenTelemetry Collector process", fill: "#f8fafc", stroke: "#94a3b8" },
+  { id: "collector", children: ["service", "otlp", "zipkin", "memory", "batch", "fanout", "otlp_exporter", "zipkin_exporter", "health"], class: "box", x: 260, y: 20, width: 1080, height: 520, label: "OpenTelemetry Collector process", fill: "#f8fafc", stroke: "#94a3b8" },
   { id: "config", class: "box", x: 20, y: 20, label: "Collector configuration\nreceivers / processors / exporters\nservice.pipelines + service.extensions", fill: "#e0e7ff" },
-  { id: "service", class: "box", x: 290, y: 105, label: "service startup\nconstruct configured component instances", fill: "#dbeafe", parent: "collector" },
+  { id: "service", class: "box", x: 290, y: 105, label: "service startup\nconstruct configured component instances", fill: "#dbeafe" },
   { id: "app", class: "box", x: 20, y: 260, label: "Instrumented applications\nOTLP telemetry", fill: "#fae8ff" },
-  { id: "otlp", class: "box", x: 290, y: 250, label: "OTLP receiver\ngRPC / HTTP", fill: "#dcfce7", parent: "collector" },
-  { id: "zipkin", class: "box", x: 290, y: 390, label: "Zipkin receiver\ntrace ingestion", fill: "#dcfce7", parent: "collector" },
-  { id: "memory", class: "box", x: 560, y: 250, label: "memory_limiter processor\nrefuse data under memory pressure", fill: "#fef3c7", parent: "collector" },
-  { id: "batch", class: "box", x: 560, y: 390, label: "batch processor\nbuffer and group telemetry", fill: "#fef3c7", parent: "collector" },
-  { id: "fanout", class: "box", x: 830, y: 315, label: "fanoutconsumer\ncopy each item to each exporter", fill: "#ffedd5", parent: "collector" },
-  { id: "otlp_exporter", class: "box", x: 1090, y: 220, label: "OTLP exporter\nserialize and send telemetry", fill: "#fee2e2", parent: "collector" },
-  { id: "zipkin_exporter", class: "box", x: 1090, y: 400, label: "Zipkin exporter\nconvert and send traces", fill: "#fee2e2", parent: "collector" },
+  { id: "otlp", class: "box", x: 290, y: 250, label: "OTLP receiver\ngRPC / HTTP", fill: "#dcfce7" },
+  { id: "zipkin", class: "box", x: 290, y: 390, label: "Zipkin receiver\ntrace ingestion", fill: "#dcfce7" },
+  { id: "memory", class: "box", x: 560, y: 250, label: "memory_limiter processor\nrefuse data under memory pressure", fill: "#fef3c7" },
+  { id: "batch", class: "box", x: 560, y: 390, label: "batch processor\nbuffer and group telemetry", fill: "#fef3c7" },
+  { id: "fanout", class: "box", x: 830, y: 315, label: "fanoutconsumer\ncopy each item to each exporter", fill: "#ffedd5" },
+  { id: "otlp_exporter", class: "box", x: 1090, y: 220, label: "OTLP exporter\nserialize and send telemetry", fill: "#fee2e2" },
+  { id: "zipkin_exporter", class: "box", x: 1090, y: 400, label: "Zipkin exporter\nconvert and send traces", fill: "#fee2e2" },
   { id: "backend", class: "box", x: 1370, y: 220, label: "OTLP observability backend", fill: "#f1f5f9" },
   { id: "zipkin_backend", class: "box", x: 1370, y: 400, label: "Zipkin backend", fill: "#f1f5f9" },
-  { id: "health", class: "box", x: 560, y: 70, label: "health_check extension\nHTTP health endpoint", fill: "#cffafe", parent: "collector" },
+  { id: "health", class: "box", x: 560, y: 70, label: "health_check extension\nHTTP health endpoint", fill: "#cffafe" },
 ];
 
 const sketch = {

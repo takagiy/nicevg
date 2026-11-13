@@ -12,7 +12,7 @@ type Node = {
   x: number;
   y: number;
   label: string;
-  parent?: string;
+  children?: readonly string[];
   width?: number;
   height?: number;
   fill?: string;
@@ -21,11 +21,11 @@ type Node = {
 const sketch = {
   nodes: [
     { id: "product-record", class: "record", x: 220, y: 100, label: "Product\nPK code (barcode) · id · schema_version\nproduct_name · generic_name · quantity\nbrands · countries_tags · product_type\ncreated_t · last_modified_t" },
-    { id: "classification", class: "boundary", x: 20, y: 20, width: 700, height: 530, label: "Product fields and normalized taxonomy tags", fill: "#f0f9ff" },
-    { id: "category-tags", class: "record", x: 40, y: 140, parent: "classification", label: "categories_tags[]\nnormalized category tag strings\n(e.g. en:breakfast-cereals)" },
-    { id: "category-taxonomy", class: "record", x: 40, y: 350, parent: "classification", label: "Category taxonomy entry\nPK tag id · localized names\nparents · children" },
-    { id: "ingredient-tags", class: "record", x: 480, y: 140, parent: "classification", label: "ingredients_tags[]\nnormalized ingredient tag strings\n(e.g. en:sugar)" },
-    { id: "ingredient-taxonomy", class: "record", x: 480, y: 350, parent: "classification", label: "Ingredient taxonomy entry\nPK tag id · localized names\nparents · children" },
+    { id: "classification", children: ["category-tags", "category-taxonomy", "ingredient-tags", "ingredient-taxonomy"], class: "boundary", x: 20, y: 20, width: 700, height: 530, label: "Product fields and normalized taxonomy tags", fill: "#f0f9ff" },
+    { id: "category-tags", class: "record", x: 40, y: 140, label: "categories_tags[]\nnormalized category tag strings\n(e.g. en:breakfast-cereals)" },
+    { id: "category-taxonomy", class: "record", x: 40, y: 350, label: "Category taxonomy entry\nPK tag id · localized names\nparents · children" },
+    { id: "ingredient-tags", class: "record", x: 480, y: 140, label: "ingredients_tags[]\nnormalized ingredient tag strings\n(e.g. en:sugar)" },
+    { id: "ingredient-taxonomy", class: "record", x: 480, y: 350, label: "Ingredient taxonomy entry\nPK tag id · localized names\nparents · children" },
   ] satisfies Node[],
   edges: [
     { from: "product-record", to: "category-tags", label: "categories_tags array" },

@@ -8,7 +8,7 @@ import { svg, text } from "nicevg";
 // Follows labeled log lines from a Promtail client through replication, WAL and chunk storage,
 // then follows a LogQL query back through ingesters and object storage to Grafana.
 
-type Node = { id: string; class: "box" | "store" | "process" | "outside"; x: number; y: number; label: string; fill?: string; parent?: string; width?: number; height?: number };
+type Node = { id: string; class: "box" | "store" | "process" | "outside"; x: number; y: number; label: string; fill?: string; children?: readonly string[]; width?: number; height?: number };
 
 const box = ({ label, fill = "#eff6ff", width = 174, height = 64 }: Node) => {
   const t = text(label, 12);

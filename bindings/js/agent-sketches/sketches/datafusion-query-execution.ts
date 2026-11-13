@@ -11,7 +11,7 @@
 import type { Sketch } from "nicevg";
 import { box } from "nicevg/style/simple";
 
-type Node = { id: string; class: "box"; x: number; y: number; label: string; parent?: string; width?: number; height?: number; fill?: string };
+type Node = { id: string; class: "box"; x: number; y: number; label: string; children?: readonly string[]; width?: number; height?: number; fill?: string };
 
 const nodes: Node[] = [
   { id: "query", class: "box", x: 25, y: 180, label: "SQL statement\nSELECT / EXPLAIN", width: 190, height: 65, fill: "#fef3c7" },

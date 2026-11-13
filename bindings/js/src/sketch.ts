@@ -33,7 +33,8 @@ export function sketchRequest<Node extends SketchNode>({ nodes, edges, connector
     throw new NicevgError("edges and connectors are the same; pass one of them");
   }
   const ids = new Set(nodes.map((node) => node.id));
-  const parents = new Set(nodes.flatMap((node) => (node.parent === undefined ? [] : [node.parent])));
+  const parentOf = parentsOf(nodes);
+  const parents = new Set(parentOf.values());
   // A node's id as it is, else split at the last dot into a node and its port.
   const end = (name: string) => {
     const dot = name.lastIndexOf(".");
@@ -59,7 +60,8 @@ export function sketchRequest<Node extends SketchNode>({ nodes, edges, connector
   };
   const sketch = {
     nodes: nodes.map((node, index) => {
-      const { id, x, y, parent, allowOverlap } = node;
+      const { id, x, y, allowOverlap } = node;
+      const parent = parentOf.get(id);
       if (parents.has(id)) {
         styleOf(node, index);
         return { id, x, y, parent, allowOverlap, redrawn: true };
@@ -82,6 +84,51 @@ export function sketchRequest<Node extends SketchNode>({ nodes, edges, connector
       return pictured(node, index, { ...node, ...size });
     });
   return { sketch, draw };
+}
+
+/**
+ * Each child's parent, from the `children` each node lists: each naming a
+ * node of the sketch, none in two lists, and none holding its own parent.
+ */
+function parentsOf(nodes: readonly SketchNode[]): Map<string, string> {
+const ids = new Set<string>();
+// As the native library says it, before children naming the id could tell a wrong story.
+nodes.forEach(({ id }, index) => {
+  if (ids.has(id)) {
+    throw new NicevgError(`nodes[${index}].id is "${id}", the id of an earlier node too`);
+  }
+  ids.add(id);
+});
+  const parentOf = new Map<string, string>();
+  nodes.forEach((node, index) => {
+    if (node.parent !== undefined) {
+      throw new NicevgError(
+        `nodes[${index}].parent: list a node in its parent's children instead: children: ["${node.id}"] on "${node.parent}"`,
+      );
+    }
+    (node.children ?? []).forEach((child, at) => {
+      const earlier = parentOf.get(child);
+      if (!ids.has(child)) {
+        throw new NicevgError(`nodes[${index}].children[${at}]: no node "${child}"`);
+      }
+      if (earlier !== undefined) {
+        throw new NicevgError(`nodes[${index}].children[${at}]: "${child}" is a child of "${earlier}" already`);
+      }
+      parentOf.set(child, node.id);
+    });
+  });
+  nodes.forEach((node, index) => {
+    (node.children ?? []).forEach((child, at) => {
+      // Followed up from the node, its parents reach the child only round a loop.
+      for (let above = parentOf.get(node.id), steps = 0; above !== undefined && steps < nodes.length; steps += 1) {
+        if (above === child) {
+          throw new NicevgError(`nodes[${index}].children[${at}]: "${child}" holds "${node.id}": parents cannot loop`);
+        }
+        above = parentOf.get(above);
+      }
+    });
+  });
+  return parentOf;
 }
 
 /**

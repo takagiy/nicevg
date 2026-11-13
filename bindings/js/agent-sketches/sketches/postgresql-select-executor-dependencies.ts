@@ -14,7 +14,7 @@ type Node = {
   x: number;
   y: number;
   label: string;
-  parent?: string;
+  children?: readonly string[];
   width?: number;
   height?: number;
   fill?: string;
@@ -29,13 +29,13 @@ const nodes: Node[] = [
   { id: "estate", class: "box", x: 670, y: 120, label: "EState\nshared execution state" },
   { id: "queryctx", class: "box", x: 900, y: 120, label: "per-query memory context" },
   { id: "init", class: "box", x: 450, y: 175, label: "ExecInitNode\nrecursive initialization" },
-  { id: "plan", class: "boundary", x: 220, y: 250, width: 850, height: 400, label: "PlanState tree (representative SELECT)" },
-  { id: "limit", class: "box", x: 560, y: 290, label: "LimitState\nExecLimit" , parent: "plan" },
-  { id: "sort", class: "box", x: 560, y: 375, label: "SortState\nExecSort", parent: "plan" },
-  { id: "join", class: "box", x: 560, y: 465, label: "HashJoinState\nExecHashJoin", parent: "plan" },
-  { id: "seqorders", class: "box", x: 290, y: 555, label: "SeqScanState\norders", parent: "plan" },
-  { id: "hash", class: "box", x: 810, y: 555, label: "HashState\nExecHash", parent: "plan" },
-  { id: "seqcustomers", class: "box", x: 810, y: 600, label: "SeqScanState\ncustomers", parent: "plan" },
+  { id: "plan", children: ["limit", "sort", "join", "seqorders", "hash", "seqcustomers"], class: "boundary", x: 220, y: 250, width: 850, height: 400, label: "PlanState tree (representative SELECT)" },
+  { id: "limit", class: "box", x: 560, y: 290, label: "LimitState\nExecLimit"  },
+  { id: "sort", class: "box", x: 560, y: 375, label: "SortState\nExecSort" },
+  { id: "join", class: "box", x: 560, y: 465, label: "HashJoinState\nExecHashJoin" },
+  { id: "seqorders", class: "box", x: 290, y: 555, label: "SeqScanState\norders" },
+  { id: "hash", class: "box", x: 810, y: 555, label: "HashState\nExecHash" },
+  { id: "seqcustomers", class: "box", x: 810, y: 600, label: "SeqScanState\ncustomers" },
   { id: "run", class: "box", x: 450, y: 700, label: "ExecutorRun" },
   { id: "execute", class: "box", x: 450, y: 770, label: "ExecutePlan" },
   { id: "procnode", class: "box", x: 450, y: 840, label: "ExecProcNode\nrequest next tuple" },

@@ -13,7 +13,7 @@ type Node = {
   y: number;
   label: string;
   fill?: string;
-  parent?: string;
+  children?: readonly string[];
   width?: number;
   height?: number;
 };

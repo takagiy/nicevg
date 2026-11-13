@@ -5,21 +5,21 @@
 import type { Sketch } from "nicevg";
 import { box } from "nicevg/style/simple";
 
-type Node = { id: string; class: "box"; x: number; y: number; parent?: string; label: string; width?: number; height?: number; fill?: string };
+type Node = { id: string; class: "box"; x: number; y: number; children?: readonly string[]; label: string; width?: number; height?: number; fill?: string };
 
 const sketch = {
   nodes: [
     { id: "dns", class: "box", x: 40, y: 170, label: "DNS\nBASE_URL host", fill: "#e0f2fe" },
     { id: "visitor", class: "box", x: 40, y: 340, label: "Site visitor\nbrowser", fill: "#fef3c7" },
     { id: "website", class: "box", x: 250, y: 340, label: "Tracked website\nplausible.js", fill: "#fef3c7" },
-    { id: "host", class: "box", x: 260, y: 80, label: "Docker host\nDocker Compose", width: 800, height: 500, fill: "#f1f5f9" },
-    { id: "env", class: "box", parent: "host", x: 300, y: 120, label: ".env\nBASE_URL, SECRET_KEY_BASE", fill: "#ede9fe" },
-    { id: "plausible", class: "box", parent: "host", x: 590, y: 150, label: "plausible\nHTTP :8000 / configured ports", fill: "#dcfce7" },
-    { id: "pg", class: "box", parent: "host", x: 340, y: 340, label: "plausible_db\nPostgreSQL 16", fill: "#dbeafe" },
-    { id: "pgdata", class: "box", parent: "host", x: 340, y: 460, label: "db-data volume\n/var/lib/postgresql/data", fill: "#eff6ff" },
-    { id: "ch", class: "box", parent: "host", x: 720, y: 340, label: "plausible_events_db\nClickHouse :8123", fill: "#ffedd5" },
-    { id: "eventdata", class: "box", parent: "host", x: 700, y: 460, label: "event-data volume\n/var/lib/clickhouse", fill: "#fff7ed" },
-    { id: "eventlogs", class: "box", parent: "host", x: 900, y: 460, label: "event-logs volume\nClickHouse logs", fill: "#fff7ed" },
+    { id: "host", children: ["env", "plausible", "pg", "pgdata", "ch", "eventdata", "eventlogs"], class: "box", x: 260, y: 80, label: "Docker host\nDocker Compose", width: 800, height: 500, fill: "#f1f5f9" },
+    { id: "env", class: "box", x: 300, y: 120, label: ".env\nBASE_URL, SECRET_KEY_BASE", fill: "#ede9fe" },
+    { id: "plausible", class: "box", x: 590, y: 150, label: "plausible\nHTTP :8000 / configured ports", fill: "#dcfce7" },
+    { id: "pg", class: "box", x: 340, y: 340, label: "plausible_db\nPostgreSQL 16", fill: "#dbeafe" },
+    { id: "pgdata", class: "box", x: 340, y: 460, label: "db-data volume\n/var/lib/postgresql/data", fill: "#eff6ff" },
+    { id: "ch", class: "box", x: 720, y: 340, label: "plausible_events_db\nClickHouse :8123", fill: "#ffedd5" },
+    { id: "eventdata", class: "box", x: 700, y: 460, label: "event-data volume\n/var/lib/clickhouse", fill: "#fff7ed" },
+    { id: "eventlogs", class: "box", x: 900, y: 460, label: "event-logs volume\nClickHouse logs", fill: "#fff7ed" },
     { id: "smtp", class: "box", x: 1100, y: 360, label: "SMTP provider\nconfigured externally", fill: "#fce7f3" },
   ],
   edges: [

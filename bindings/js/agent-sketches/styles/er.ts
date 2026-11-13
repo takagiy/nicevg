@@ -77,7 +77,7 @@ export function table({ id, title, columns, head = "#e2e8f0", fontSize = 12 }: E
     ])}`;
 }
 
-/** An area: a tinted frame with its title in the top left, for tables to sit in by `parent`. */
+/** An area: a tinted frame with its title in the top left, for tables it lists in `children` to sit in. */
 export function area({ title, width, height, fill = "#f8fafc" }: ErArea) {
   return svg`
     <rect data-bounds="true" width="${width}" height="${height}" fill="${fill}" stroke="#94a3b8"/>

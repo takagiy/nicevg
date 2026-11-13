@@ -11,25 +11,25 @@
 import type { Sketch } from "nicevg";
 import { box } from "nicevg/style/simple";
 
-type Node = { id: string; class: "box"; x: number; y: number; label: string; parent?: string; width?: number; height?: number; fill?: string };
+type Node = { id: string; class: "box"; x: number; y: number; label: string; children?: readonly string[]; width?: number; height?: number; fill?: string };
 
 const nodes: Node[] = [
-  { id: "master", class: "box", x: 360, y: 20, width: 560, height: 210, label: "Master server", fill: "#f1f5f9" },
-  { id: "query", class: "box", x: 20, y: 260, width: 360, height: 410, label: "Query server", fill: "#eff6ff" },
-  { id: "data", class: "box", x: 430, y: 290, width: 490, height: 510, label: "Data server", fill: "#f0fdf4" },
+  { id: "master", children: ["coordinator", "overlord"], class: "box", x: 360, y: 20, width: 560, height: 210, label: "Master server", fill: "#f1f5f9" },
+  { id: "query", children: ["router", "broker"], class: "box", x: 20, y: 260, width: 360, height: 410, label: "Query server", fill: "#eff6ff" },
+  { id: "data", children: ["supervisor", "task1", "task2", "mm", "peon", "realtime", "historical"], class: "box", x: 430, y: 290, width: 490, height: 510, label: "Data server", fill: "#f0fdf4" },
   { id: "kafka", class: "box", x: 20, y: 60, label: "Apache Kafka\n topic partitions + offsets", fill: "#fef3c7" },
   { id: "client", class: "box", x: 20, y: 735, label: "SQL / native query client" },
-  { id: "router", class: "box", x: 65, y: 325, label: "Router\nAPI gateway + web console", parent: "query", fill: "#dbeafe" },
-  { id: "broker", class: "box", x: 65, y: 475, label: "Broker\nsegment pruning + query fan-out", parent: "query", fill: "#bfdbfe" },
-  { id: "coordinator", class: "box", x: 405, y: 75, label: "Coordinator\nsegment assignment + balancing", parent: "master", fill: "#e0e7ff" },
-  { id: "overlord", class: "box", x: 690, y: 75, label: "Overlord\ntask scheduling + segment publishing", parent: "master", fill: "#e0e7ff" },
-  { id: "supervisor", class: "box", x: 675, y: 345, label: "Kafka Supervisor\npartitions · offsets · replicas", parent: "data", fill: "#dcfce7" },
-  { id: "task1", class: "box", x: 490, y: 470, label: "Kafka indexing task\nread / build segment", parent: "data", fill: "#bbf7d0" },
-  { id: "task2", class: "box", x: 700, y: 470, label: "Kafka indexing task\nreplica / next task set", parent: "data", fill: "#bbf7d0" },
-  { id: "mm", class: "box", x: 485, y: 390, label: "Middle Manager\nworker capacity + Peon lifecycle", parent: "data" },
-  { id: "peon", class: "box", x: 500, y: 565, label: "Peon JVM\none task per process", parent: "data" },
-  { id: "realtime", class: "box", x: 710, y: 580, label: "Realtime segment\nqueryable before publish", parent: "data", fill: "#fef9c3" },
-  { id: "historical", class: "box", x: 490, y: 680, label: "Historical\nserves loaded immutable segments", parent: "data", fill: "#bbf7d0" },
+  { id: "router", class: "box", x: 65, y: 325, label: "Router\nAPI gateway + web console", fill: "#dbeafe" },
+  { id: "broker", class: "box", x: 65, y: 475, label: "Broker\nsegment pruning + query fan-out", fill: "#bfdbfe" },
+  { id: "coordinator", class: "box", x: 405, y: 75, label: "Coordinator\nsegment assignment + balancing", fill: "#e0e7ff" },
+  { id: "overlord", class: "box", x: 690, y: 75, label: "Overlord\ntask scheduling + segment publishing", fill: "#e0e7ff" },
+  { id: "supervisor", class: "box", x: 675, y: 345, label: "Kafka Supervisor\npartitions · offsets · replicas", fill: "#dcfce7" },
+  { id: "task1", class: "box", x: 490, y: 470, label: "Kafka indexing task\nread / build segment", fill: "#bbf7d0" },
+  { id: "task2", class: "box", x: 700, y: 470, label: "Kafka indexing task\nreplica / next task set", fill: "#bbf7d0" },
+  { id: "mm", class: "box", x: 485, y: 390, label: "Middle Manager\nworker capacity + Peon lifecycle" },
+  { id: "peon", class: "box", x: 500, y: 565, label: "Peon JVM\none task per process" },
+  { id: "realtime", class: "box", x: 710, y: 580, label: "Realtime segment\nqueryable before publish", fill: "#fef9c3" },
+  { id: "historical", class: "box", x: 490, y: 680, label: "Historical\nserves loaded immutable segments", fill: "#bbf7d0" },
   { id: "taskapi", class: "box", x: 470, y: 260, label: "Overlord task API" },
   { id: "deep", class: "box", x: 1030, y: 400, label: "Deep storage\nsegment files (S3 / HDFS / shared FS)", fill: "#fce7f3" },
   { id: "metadata", class: "box", x: 1030, y: 540, label: "Metadata store (PostgreSQL / MySQL)\nsegment + task + supervisor metadata", fill: "#fce7f3" },

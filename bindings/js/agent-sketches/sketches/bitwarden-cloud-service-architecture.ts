@@ -1,7 +1,7 @@
 import type { Sketch } from "nicevg";
 import { box } from "nicevg/style/simple";
 
-type Node = { id: string; class: "box"; x: number; y: number; label: string; parent?: string; width?: number; height?: number; fill?: string };
+type Node = { id: string; class: "box"; x: number; y: number; label: string; children?: readonly string[]; width?: number; height?: number; fill?: string };
 
 // Bitwarden server: https://github.com/bitwarden/server
 // Service and event paths: https://contributing.bitwarden.com/architecture/deep-dives/event-logs/
@@ -10,25 +10,25 @@ type Node = { id: string; class: "box"; x: number; y: number; label: string; par
 // This is the cloud-hosted Bitwarden service set, including the separate web client, identity,
 // notifications and event processing paths, plus their database and Azure-backed queues/storage.
 const nodes: Node[] = [
-  { id: "browser", class: "box", x: 25, y: 90, label: "Browser extension", parent: "bitwarden", fill: "#dbeafe" },
-  { id: "mobile", class: "box", x: 35, y: 200, label: "Mobile apps", parent: "bitwarden", fill: "#dbeafe" },
-  { id: "cli", class: "box", x: 25, y: 320, label: "CLI", parent: "bitwarden", fill: "#dbeafe" },
-  { id: "web", class: "box", x: 190, y: 55, label: "Web Vault", parent: "bitwarden" },
-  { id: "api", class: "box", x: 350, y: 140, label: "API", parent: "bitwarden" },
-  { id: "identity", class: "box", x: 335, y: 255, label: "Identity\n/connect/token", parent: "bitwarden" },
-  { id: "notifications", class: "box", x: 555, y: 90, label: "Notifications API", parent: "bitwarden" },
-  { id: "events", class: "box", x: 550, y: 235, label: "Events service\n/collect", parent: "bitwarden" },
-  { id: "processor", class: "box", x: 755, y: 330, label: "EventsProcessor", parent: "bitwarden" },
-  { id: "admin", class: "box", x: 190, y: 390, label: "Admin", parent: "bitwarden" },
-  { id: "billing", class: "box", x: 360, y: 410, label: "Billing", parent: "bitwarden" },
-  { id: "sso", class: "box", x: 555, y: 410, label: "SSO", parent: "bitwarden" },
-  { id: "scim", class: "box", x: 740, y: 430, label: "SCIM", parent: "bitwarden" },
-  { id: "sql", class: "box", x: 765, y: 90, label: "SQL Server\nBitwarden records", parent: "bitwarden", fill: "#f3e8ff" },
-  { id: "event-queue", class: "box", x: 755, y: 200, label: "Azure Queue\nevent logs", parent: "bitwarden", fill: "#f3e8ff" },
-  { id: "event-table", class: "box", x: 970, y: 310, label: "Azure Table Storage\nevent records", parent: "bitwarden", fill: "#f3e8ff" },
-  { id: "push-queue", class: "box", x: 970, y: 85, label: "Azure Queue\npush notifications", parent: "bitwarden", fill: "#f3e8ff" },
-  { id: "push-hub", class: "box", x: 1170, y: 185, label: "Azure Notification Hub\nmobile push", parent: "bitwarden", fill: "#f3e8ff" },
-  { id: "bitwarden", class: "box", x: 5, y: 15, label: "Bitwarden cloud service", width: 1385, height: 510, fill: "#fffbeb" },
+  { id: "browser", class: "box", x: 25, y: 90, label: "Browser extension", fill: "#dbeafe" },
+  { id: "mobile", class: "box", x: 35, y: 200, label: "Mobile apps", fill: "#dbeafe" },
+  { id: "cli", class: "box", x: 25, y: 320, label: "CLI", fill: "#dbeafe" },
+  { id: "web", class: "box", x: 190, y: 55, label: "Web Vault" },
+  { id: "api", class: "box", x: 350, y: 140, label: "API" },
+  { id: "identity", class: "box", x: 335, y: 255, label: "Identity\n/connect/token" },
+  { id: "notifications", class: "box", x: 555, y: 90, label: "Notifications API" },
+  { id: "events", class: "box", x: 550, y: 235, label: "Events service\n/collect" },
+  { id: "processor", class: "box", x: 755, y: 330, label: "EventsProcessor" },
+  { id: "admin", class: "box", x: 190, y: 390, label: "Admin" },
+  { id: "billing", class: "box", x: 360, y: 410, label: "Billing" },
+  { id: "sso", class: "box", x: 555, y: 410, label: "SSO" },
+  { id: "scim", class: "box", x: 740, y: 430, label: "SCIM" },
+  { id: "sql", class: "box", x: 765, y: 90, label: "SQL Server\nBitwarden records", fill: "#f3e8ff" },
+  { id: "event-queue", class: "box", x: 755, y: 200, label: "Azure Queue\nevent logs", fill: "#f3e8ff" },
+  { id: "event-table", class: "box", x: 970, y: 310, label: "Azure Table Storage\nevent records", fill: "#f3e8ff" },
+  { id: "push-queue", class: "box", x: 970, y: 85, label: "Azure Queue\npush notifications", fill: "#f3e8ff" },
+  { id: "push-hub", class: "box", x: 1170, y: 185, label: "Azure Notification Hub\nmobile push", fill: "#f3e8ff" },
+  { id: "bitwarden", children: ["browser", "mobile", "cli", "web", "api", "identity", "notifications", "events", "processor", "admin", "billing", "sso", "scim", "sql", "event-queue", "event-table", "push-queue", "push-hub"], class: "box", x: 5, y: 15, label: "Bitwarden cloud service", width: 1385, height: 510, fill: "#fffbeb" },
 ];
 
 const edges = [

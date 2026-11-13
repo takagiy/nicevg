@@ -31,18 +31,18 @@ const record = (node: Node) => card(node, "#fefce8");
 
 const sketch = {
   nodes: [
-    { id: "cluster", class: "boundary", x: 270, y: 35, label: "Kubernetes cluster\nZero to JupyterHub Helm release", width: 920, height: 670 },
+    { id: "cluster", children: ["proxy_public", "proxy", "hub", "auth", "spawner", "kube_api", "hub_db", "user_pod", "user_pvc"], class: "boundary", x: 270, y: 35, label: "Kubernetes cluster\nZero to JupyterHub Helm release", width: 920, height: 670 },
     { id: "browser", class: "actor", x: 20, y: 180, label: "User browser\nHub cookie", width: 160, height: 68 },
     { id: "idp", class: "actor", x: 20, y: 430, label: "External OAuth\nidentity provider", width: 160, height: 68 },
-    { id: "proxy_public", class: "service", parent: "cluster", x: 320, y: 90, label: "proxy-public Service\npublic address · HTTP(S)", width: 220, height: 68 },
-    { id: "proxy", class: "process", parent: "cluster", x: 650, y: 90, label: "proxy pod\nConfigurableHTTPProxy\npublic ingress · /hub and /user routes", width: 250, height: 90 },
-    { id: "hub", class: "process", parent: "cluster", x: 650, y: 270, label: "hub pod\nJupyterHub · admin/API\ninternal HTTP", width: 250, height: 78 },
-    { id: "auth", class: "process", parent: "cluster", x: 320, y: 260, label: "Authenticator\nOAuth login callback\nallowed user → username", width: 220, height: 78 },
-    { id: "spawner", class: "process", parent: "cluster", x: 320, y: 440, label: "KubeSpawner\nHub-side spawner", width: 220, height: 68 },
-    { id: "kube_api", class: "service", parent: "cluster", x: 650, y: 440, label: "Kubernetes API\ncreate / watch user Pod", width: 250, height: 68 },
-    { id: "hub_db", class: "record", parent: "cluster", x: 320, y: 570, label: "hub-db PVC (default)\nSQLite: users · servers · tokens\nHub state survives restart", width: 220, height: 82 },
-    { id: "user_pod", class: "process", parent: "cluster", x: 930, y: 440, label: "singleuser Pod\nJupyter Server :8888\none per active user", width: 220, height: 78 },
-    { id: "user_pvc", class: "record", parent: "cluster", x: 930, y: 570, label: "user home PVC\n/home/jovyan · user files\nmounted into singleuser Pod", width: 220, height: 78 },
+    { id: "proxy_public", class: "service", x: 320, y: 90, label: "proxy-public Service\npublic address · HTTP(S)", width: 220, height: 68 },
+    { id: "proxy", class: "process", x: 650, y: 90, label: "proxy pod\nConfigurableHTTPProxy\npublic ingress · /hub and /user routes", width: 250, height: 90 },
+    { id: "hub", class: "process", x: 650, y: 270, label: "hub pod\nJupyterHub · admin/API\ninternal HTTP", width: 250, height: 78 },
+    { id: "auth", class: "process", x: 320, y: 260, label: "Authenticator\nOAuth login callback\nallowed user → username", width: 220, height: 78 },
+    { id: "spawner", class: "process", x: 320, y: 440, label: "KubeSpawner\nHub-side spawner", width: 220, height: 68 },
+    { id: "kube_api", class: "service", x: 650, y: 440, label: "Kubernetes API\ncreate / watch user Pod", width: 250, height: 68 },
+    { id: "hub_db", class: "record", x: 320, y: 570, label: "hub-db PVC (default)\nSQLite: users · servers · tokens\nHub state survives restart", width: 220, height: 82 },
+    { id: "user_pod", class: "process", x: 930, y: 440, label: "singleuser Pod\nJupyter Server :8888\none per active user", width: 220, height: 78 },
+    { id: "user_pvc", class: "record", x: 930, y: 570, label: "user home PVC\n/home/jovyan · user files\nmounted into singleuser Pod", width: 220, height: 78 },
   ] satisfies Node[],
   edges: [
     { from: "browser", to: "proxy_public", label: "HTTPS" },

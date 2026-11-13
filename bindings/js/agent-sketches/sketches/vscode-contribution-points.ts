@@ -15,7 +15,7 @@ type Node = {
   x: number;
   y: number;
   label: string;
-  parent?: string;
+  children?: readonly string[];
   width?: number;
   height?: number;
   fill?: string;

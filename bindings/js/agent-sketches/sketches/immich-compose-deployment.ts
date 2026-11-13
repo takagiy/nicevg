@@ -9,7 +9,7 @@ type Node = {
   class: "box";
   x: number;
   y: number;
-  parent?: string;
+  children?: readonly string[];
   label: string;
   width?: number;
   height?: number;
@@ -18,14 +18,14 @@ type Node = {
 
 const sketch = {
   nodes: [
-    { id: "host", class: "box", x: 240, y: 30, label: "Docker Compose host\ndocker-compose.yml + .env", width: 520, height: 470, fill: "#f1f5f9" },
+    { id: "host", children: ["server", "ml", "redis", "db", "upload", "modelcache"], class: "box", x: 240, y: 30, label: "Docker Compose host\ndocker-compose.yml + .env", width: 520, height: 470, fill: "#f1f5f9" },
     { id: "client", class: "box", x: 20, y: 190, label: "Web / mobile client", width: 150, height: 58, fill: "#fff7ed" },
-    { id: "server", class: "box", x: 290, y: 100, parent: "host", label: "immich-server\nREST API :2283", width: 190, height: 76, fill: "#dbeafe" },
-    { id: "ml", class: "box", x: 530, y: 100, parent: "host", label: "immich-machine-learning\nFastAPI inference", width: 190, height: 76, fill: "#ede9fe" },
-    { id: "redis", class: "box", x: 290, y: 250, parent: "host", label: "redis (Valkey)\nBullMQ job queues", width: 190, height: 70, fill: "#fce7f3" },
-    { id: "db", class: "box", x: 530, y: 250, parent: "host", label: "database (Postgres)\nmetadata + config", width: 190, height: 70, fill: "#dcfce7" },
-    { id: "upload", class: "box", x: 290, y: 390, parent: "host", label: "${UPLOAD_LOCATION}\n→ /data", width: 190, height: 58, fill: "#fef3c7" },
-    { id: "modelcache", class: "box", x: 530, y: 390, parent: "host", label: "model-cache volume\n→ /cache", width: 190, height: 58, fill: "#fef3c7" },
+    { id: "server", class: "box", x: 290, y: 100, label: "immich-server\nREST API :2283", width: 190, height: 76, fill: "#dbeafe" },
+    { id: "ml", class: "box", x: 530, y: 100, label: "immich-machine-learning\nFastAPI inference", width: 190, height: 76, fill: "#ede9fe" },
+    { id: "redis", class: "box", x: 290, y: 250, label: "redis (Valkey)\nBullMQ job queues", width: 190, height: 70, fill: "#fce7f3" },
+    { id: "db", class: "box", x: 530, y: 250, label: "database (Postgres)\nmetadata + config", width: 190, height: 70, fill: "#dcfce7" },
+    { id: "upload", class: "box", x: 290, y: 390, label: "${UPLOAD_LOCATION}\n→ /data", width: 190, height: 58, fill: "#fef3c7" },
+    { id: "modelcache", class: "box", x: 530, y: 390, label: "model-cache volume\n→ /cache", width: 190, height: 58, fill: "#fef3c7" },
   ] satisfies Node[],
   edges: [
     { from: "client", to: "server", label: "HTTP :2283 published" },

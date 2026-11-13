@@ -13,7 +13,7 @@ type Node = {
   class: "box";
   x: number;
   y: number;
-  parent?: string;
+  children?: readonly string[];
   label: string;
 };
 

@@ -14,8 +14,8 @@ import { svg, text } from "nicevg";
 import type { Sketch } from "nicevg";
 
 type Column = [name: string, type: string, key?: "PK" | "FK"];
-type Table = { id: string; class: "table"; x: number; y: number; parent: string; columns: Column[] };
-type Area = { id: string; class: "area"; x: number; y: number; title: string; width: number; height: number; fill: string };
+type Table = { id: string; class: "table"; x: number; y: number; children?: readonly string[]; columns: Column[] };
+type Area = { id: string; children?: readonly string[]; class: "area"; x: number; y: number; title: string; width: number; height: number; fill: string };
 const FONT = 10, HEAD = 23, ROW = 17, PAD = 6, KEY = 22;
 const table = ({ id, columns }: Table) => {
   const title = text(id, 12), names = columns.map(([n]) => text(n, FONT)), types = columns.map(([, t]) => text(t, FONT));
@@ -25,35 +25,35 @@ const table = ({ id, columns }: Table) => {
 };
 const area = ({ title, width, height, fill }: Area) => svg`<rect data-bounds="true" width="${width}" height="${height}" fill="${fill}" stroke="#94a3b8"/>${text(title,13).at({left:10,top:7})}`;
 const tables: Omit<Table,"class">[] = [
- {id:"users",parent:"community",x:35,y:55,columns:[["id","int","PK"],["username","varchar"],["name","varchar"],["trust_level","int"]]},
- {id:"categories",parent:"community",x:35,y:200,columns:[["id","int","PK"],["name","varchar"],["parent_category_id","int","FK"],["topic_count","int"]]},
- {id:"category_users",parent:"community",x:300,y:210,columns:[["id","int","PK"],["category_id","int","FK"],["user_id","int","FK"],["notification_level","int"]]},
- {id:"topics",parent:"discussion",x:640,y:55,columns:[["id","int","PK"],["user_id","int","FK"],["category_id","int","FK"],["title","varchar"],["archetype","varchar"],["posts_count","int"],["last_posted_at","datetime"]]},
- {id:"posts",parent:"discussion",x:950,y:55,columns:[["id","int","PK"],["topic_id","int","FK"],["user_id","int","FK"],["reply_to_post_number","int"],["post_number","int"],["raw","text"],["cooked","text"],["deleted_at","datetime"]]},
- {id:"post_revisions",parent:"discussion",x:950,y:260,columns:[["id","int","PK"],["post_id","int","FK"],["user_id","int","FK"],["number","int"],["modifications","jsonb"],["hidden","boolean"]]},
- {id:"post_actions",parent:"engagement",x:1300,y:55,columns:[["id","int","PK"],["post_id","int","FK"],["user_id","int","FK"],["post_action_type_id","int"],["deleted_at","datetime"]]},
- {id:"post_action_types",parent:"engagement",x:1570,y:60,columns:[["id","int","PK"],["name_key","varchar"],["is_like","boolean"]]},
- {id:"bookmarks",parent:"engagement",x:1300,y:205,columns:[["id","int","PK"],["user_id","int","FK"],["bookmarkable_id","int"],["bookmarkable_type","varchar"],["name","varchar"]]},
- {id:"topic_users",parent:"engagement",x:1570,y:220,columns:[["id","int","PK"],["topic_id","int","FK"],["user_id","int","FK"],["last_read_post_number","int"],["notification_level","int"],["bookmarked","boolean"]]},
- {id:"post_timings",parent:"engagement",x:1300,y:395,columns:[["id","int","PK"],["topic_id","int","FK"],["user_id","int","FK"],["post_number","int"],["msecs","int"]]},
- {id:"topic_links",parent:"references",x:950,y:470,columns:[["id","int","PK"],["post_id","int","FK"],["topic_id","int","FK"],["link_post_id","int","FK"],["link_topic_id","int","FK"],["url","varchar"],["reflection","boolean"]]},
- {id:"uploads",parent:"references",x:1300,y:610,columns:[["id","int","PK"],["user_id","int","FK"],["original_filename","varchar"],["filesize","bigint"],["url","varchar"]]},
- {id:"upload_references",parent:"references",x:1570,y:610,columns:[["id","bigint","PK"],["upload_id","bigint","FK"],["target_type","varchar"],["target_id","bigint"]]},
- {id:"tags",parent:"community",x:35,y:415,columns:[["id","int","PK"],["name","varchar"],["slug","varchar"]]},
- {id:"topic_tags",parent:"community",x:300,y:415,columns:[["id","int","PK"],["topic_id","int","FK"],["tag_id","int","FK"]]},
- {id:"post_stats",parent:"discussion",x:640,y:300,columns:[["id","int","PK"],["post_id","int","FK"],["reply_count","int"],["like_count","int"],["incoming_link_count","int"]]},
- {id:"post_replies",parent:"discussion",x:640,y:475,columns:[["id","int","PK"],["post_id","int","FK"],["reply_id","int","FK"]]},
- {id:"topic_allowed_users",parent:"community",x:35,y:585,columns:[["id","int","PK"],["topic_id","int","FK"],["user_id","int","FK"]]},
- {id:"topic_allowed_groups",parent:"community",x:300,y:585,columns:[["id","int","PK"],["topic_id","int","FK"],["group_id","int","FK"]]},
- {id:"groups",parent:"community",x:35,y:740,columns:[["id","int","PK"],["name","varchar"],["visibility_level","int"]]},
- {id:"group_users",parent:"community",x:300,y:740,columns:[["id","int","PK"],["group_id","int","FK"],["user_id","int","FK"]]},
- {id:"post_custom_fields",parent:"discussion",x:640,y:650,columns:[["id","int","PK"],["post_id","int","FK"],["name","varchar"],["value","text"]]},
+ {id:"users",x:35,y:55,columns:[["id","int","PK"],["username","varchar"],["name","varchar"],["trust_level","int"]]},
+ {id:"categories",x:35,y:200,columns:[["id","int","PK"],["name","varchar"],["parent_category_id","int","FK"],["topic_count","int"]]},
+ {id:"category_users",x:300,y:210,columns:[["id","int","PK"],["category_id","int","FK"],["user_id","int","FK"],["notification_level","int"]]},
+ {id:"topics",x:640,y:55,columns:[["id","int","PK"],["user_id","int","FK"],["category_id","int","FK"],["title","varchar"],["archetype","varchar"],["posts_count","int"],["last_posted_at","datetime"]]},
+ {id:"posts",x:950,y:55,columns:[["id","int","PK"],["topic_id","int","FK"],["user_id","int","FK"],["reply_to_post_number","int"],["post_number","int"],["raw","text"],["cooked","text"],["deleted_at","datetime"]]},
+ {id:"post_revisions",x:950,y:260,columns:[["id","int","PK"],["post_id","int","FK"],["user_id","int","FK"],["number","int"],["modifications","jsonb"],["hidden","boolean"]]},
+ {id:"post_actions",x:1300,y:55,columns:[["id","int","PK"],["post_id","int","FK"],["user_id","int","FK"],["post_action_type_id","int"],["deleted_at","datetime"]]},
+ {id:"post_action_types",x:1570,y:60,columns:[["id","int","PK"],["name_key","varchar"],["is_like","boolean"]]},
+ {id:"bookmarks",x:1300,y:205,columns:[["id","int","PK"],["user_id","int","FK"],["bookmarkable_id","int"],["bookmarkable_type","varchar"],["name","varchar"]]},
+ {id:"topic_users",x:1570,y:220,columns:[["id","int","PK"],["topic_id","int","FK"],["user_id","int","FK"],["last_read_post_number","int"],["notification_level","int"],["bookmarked","boolean"]]},
+ {id:"post_timings",x:1300,y:395,columns:[["id","int","PK"],["topic_id","int","FK"],["user_id","int","FK"],["post_number","int"],["msecs","int"]]},
+ {id:"topic_links",x:950,y:470,columns:[["id","int","PK"],["post_id","int","FK"],["topic_id","int","FK"],["link_post_id","int","FK"],["link_topic_id","int","FK"],["url","varchar"],["reflection","boolean"]]},
+ {id:"uploads",x:1300,y:610,columns:[["id","int","PK"],["user_id","int","FK"],["original_filename","varchar"],["filesize","bigint"],["url","varchar"]]},
+ {id:"upload_references",x:1570,y:610,columns:[["id","bigint","PK"],["upload_id","bigint","FK"],["target_type","varchar"],["target_id","bigint"]]},
+ {id:"tags",x:35,y:415,columns:[["id","int","PK"],["name","varchar"],["slug","varchar"]]},
+ {id:"topic_tags",x:300,y:415,columns:[["id","int","PK"],["topic_id","int","FK"],["tag_id","int","FK"]]},
+ {id:"post_stats",x:640,y:300,columns:[["id","int","PK"],["post_id","int","FK"],["reply_count","int"],["like_count","int"],["incoming_link_count","int"]]},
+ {id:"post_replies",x:640,y:475,columns:[["id","int","PK"],["post_id","int","FK"],["reply_id","int","FK"]]},
+ {id:"topic_allowed_users",x:35,y:585,columns:[["id","int","PK"],["topic_id","int","FK"],["user_id","int","FK"]]},
+ {id:"topic_allowed_groups",x:300,y:585,columns:[["id","int","PK"],["topic_id","int","FK"],["group_id","int","FK"]]},
+ {id:"groups",x:35,y:740,columns:[["id","int","PK"],["name","varchar"],["visibility_level","int"]]},
+ {id:"group_users",x:300,y:740,columns:[["id","int","PK"],["group_id","int","FK"],["user_id","int","FK"]]},
+ {id:"post_custom_fields",x:640,y:650,columns:[["id","int","PK"],["post_id","int","FK"],["name","varchar"],["value","text"]]},
 ];
 const areas: Area[] = [
- {id:"community",class:"area",x:15,y:25,width:555,height:900,title:"People, categories, tags and access",fill:"#f0f9ff"},
- {id:"discussion",class:"area",x:615,y:25,width:560,height:790,title:"Topics and post content",fill:"#f0fdf4"},
- {id:"engagement",class:"area",x:1275,y:25,width:560,height:535,title:"Reactions and per-user topic state",fill:"#fdf4ff"},
- {id:"references",class:"area",x:1275,y:585,width:560,height:290,title:"Attachments and external/internal links",fill:"#fff7ed"},
+ {id:"community", children: ["users", "categories", "category_users", "tags", "topic_tags", "topic_allowed_users", "topic_allowed_groups", "groups", "group_users"],class:"area",x:15,y:25,width:555,height:900,title:"People, categories, tags and access",fill:"#f0f9ff"},
+ {id:"discussion", children: ["topics", "posts", "post_revisions", "post_stats", "post_replies", "post_custom_fields"],class:"area",x:615,y:25,width:560,height:790,title:"Topics and post content",fill:"#f0fdf4"},
+ {id:"engagement", children: ["post_actions", "post_action_types", "bookmarks", "topic_users", "post_timings"],class:"area",x:1275,y:25,width:560,height:535,title:"Reactions and per-user topic state",fill:"#fdf4ff"},
+ {id:"references", children: ["topic_links", "uploads", "upload_references"],class:"area",x:1275,y:585,width:560,height:290,title:"Attachments and external/internal links",fill:"#fff7ed"},
 ];
 const nodes: (Table|Area)[] = [...areas,...tables.map(t=>({...t,class:"table" as const}))];
 const pairs = [

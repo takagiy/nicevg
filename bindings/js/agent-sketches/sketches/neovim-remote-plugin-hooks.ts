@@ -12,7 +12,7 @@ type Node = {
   x: number;
   y: number;
   label: string;
-  parent?: string;
+  children?: readonly string[];
 };
 
 const sketch = {

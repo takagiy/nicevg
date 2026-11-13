@@ -12,7 +12,7 @@ type Node = {
   x: number;
   y: number;
   label: string;
-  parent?: string;
+  children?: readonly string[];
   width?: number;
   height?: number;
   fill?: string;
@@ -20,18 +20,18 @@ type Node = {
 
 const sketch = {
   nodes: [
-    { id: "features", class: "group", x: 20, y: 20, width: 680, height: 630, label: "Feature records and linked data", fill: "#eff6ff" },
-    { id: "reference", class: "group", x: 720, y: 20, width: 500, height: 630, label: "Code and geometry reference files", fill: "#fefce8" },
-    { id: "geoname", class: "table", x: 60, y: 90, parent: "features", label: "geoname\nPK geonameid\nname · asciiname · latitude · longitude\nfeature class · feature code · country code\nadmin1–4 codes · population · elevation\ntimezone · modification date" },
-    { id: "alternate-names", class: "table", x: 60, y: 310, parent: "features", label: "alternateNamesV2\nPK alternateNameId · geonameId FK\nisoLanguage · alternateName\nisPreferred · isShort · isColloquial · isHistoric\nfrom · to" },
-    { id: "hierarchy", class: "table", x: 390, y: 100, parent: "features", label: "hierarchy\nparentId · childId · type\nADM = admin hierarchy\nother links entered by users" },
-    { id: "user-tags", class: "table", x: 390, y: 300, parent: "features", label: "userTags\ngeonameId · tag" },
-    { id: "admin1", class: "table", x: 760, y: 100, parent: "reference", label: "admin1CodesASCII\ncode · name · asciiname\ngeonameId" },
-    { id: "admin2", class: "table", x: 1000, y: 100, parent: "reference", label: "admin2Codes\ncode · name · asciiname\ngeonameId" },
-    { id: "country", class: "table", x: 760, y: 260, parent: "reference", label: "countryInfo\nISO codes · country names\nlanguages · capital" },
-    { id: "feature-codes", class: "table", x: 1000, y: 260, parent: "reference", label: "featureCodes\nfeature class/code\nname · description" },
-    { id: "time-zones", class: "table", x: 760, y: 420, parent: "reference", label: "timeZones\ncountryCode · timezoneId\nGMT offset · DST offset" },
-    { id: "boundaries", class: "table", x: 1000, y: 420, parent: "reference", label: "shapes_simplified_low\ngeonameId · geoJson\nsimplified country boundaries" },
+    { id: "features", children: ["geoname", "alternate-names", "hierarchy", "user-tags"], class: "group", x: 20, y: 20, width: 680, height: 630, label: "Feature records and linked data", fill: "#eff6ff" },
+    { id: "reference", children: ["admin1", "admin2", "country", "feature-codes", "time-zones", "boundaries"], class: "group", x: 720, y: 20, width: 500, height: 630, label: "Code and geometry reference files", fill: "#fefce8" },
+    { id: "geoname", class: "table", x: 60, y: 90, label: "geoname\nPK geonameid\nname · asciiname · latitude · longitude\nfeature class · feature code · country code\nadmin1–4 codes · population · elevation\ntimezone · modification date" },
+    { id: "alternate-names", class: "table", x: 60, y: 310, label: "alternateNamesV2\nPK alternateNameId · geonameId FK\nisoLanguage · alternateName\nisPreferred · isShort · isColloquial · isHistoric\nfrom · to" },
+    { id: "hierarchy", class: "table", x: 390, y: 100, label: "hierarchy\nparentId · childId · type\nADM = admin hierarchy\nother links entered by users" },
+    { id: "user-tags", class: "table", x: 390, y: 300, label: "userTags\ngeonameId · tag" },
+    { id: "admin1", class: "table", x: 760, y: 100, label: "admin1CodesASCII\ncode · name · asciiname\ngeonameId" },
+    { id: "admin2", class: "table", x: 1000, y: 100, label: "admin2Codes\ncode · name · asciiname\ngeonameId" },
+    { id: "country", class: "table", x: 760, y: 260, label: "countryInfo\nISO codes · country names\nlanguages · capital" },
+    { id: "feature-codes", class: "table", x: 1000, y: 260, label: "featureCodes\nfeature class/code\nname · description" },
+    { id: "time-zones", class: "table", x: 760, y: 420, label: "timeZones\ncountryCode · timezoneId\nGMT offset · DST offset" },
+    { id: "boundaries", class: "table", x: 1000, y: 420, label: "shapes_simplified_low\ngeonameId · geoJson\nsimplified country boundaries" },
   ] satisfies Node[],
   edges: [
     { from: "alternate-names", to: "geoname", label: "geonameId" },

@@ -13,7 +13,7 @@ type Node = {
   class: "box";
   x: number;
   y: number;
-  parent?: string;
+  children?: readonly string[];
   label: string;
   fill?: string;
   width?: number;
@@ -21,22 +21,22 @@ type Node = {
 
 const sketch = {
   nodes: [
-    { id: "browser", class: "box", x: 20, y: 20, width: 250, label: "JupyterLab browser", fill: "#eff6ff" },
-    { id: "cell", class: "box", x: 45, y: 70, parent: "browser", label: "Code cell\nuser clicks Run" },
-    { id: "kernel-client", class: "box", x: 45, y: 175, parent: "browser", label: "@jupyterlab/services\nKernel.requestExecute" },
-    { id: "output-area", class: "box", x: 45, y: 295, parent: "browser", label: "Cell output area\nrender stream / result / error" },
+    { id: "browser", children: ["cell", "kernel-client", "output-area"], class: "box", x: 20, y: 20, width: 250, label: "JupyterLab browser", fill: "#eff6ff" },
+    { id: "cell", class: "box", x: 45, y: 70, label: "Code cell\nuser clicks Run" },
+    { id: "kernel-client", class: "box", x: 45, y: 175, label: "@jupyterlab/services\nKernel.requestExecute" },
+    { id: "output-area", class: "box", x: 45, y: 295, label: "Cell output area\nrender stream / result / error" },
 
-    { id: "server", class: "box", x: 330, y: 20, width: 320, label: "Jupyter Server", fill: "#f0fdf4" },
-    { id: "websocket", class: "box", x: 365, y: 85, parent: "server", label: "Kernel WebSocket\nshell + iopub multiplexed" },
-    { id: "kernel-manager", class: "box", x: 365, y: 205, parent: "server", label: "MappingKernelManager\ntracks kernel id" },
+    { id: "server", children: ["websocket", "kernel-manager"], class: "box", x: 330, y: 20, width: 320, label: "Jupyter Server", fill: "#f0fdf4" },
+    { id: "websocket", class: "box", x: 365, y: 85, label: "Kernel WebSocket\nshell + iopub multiplexed" },
+    { id: "kernel-manager", class: "box", x: 365, y: 205, label: "MappingKernelManager\ntracks kernel id" },
 
-    { id: "kernel", class: "box", x: 710, y: 20, width: 350, label: "IPython kernel process", fill: "#fff7ed" },
-    { id: "shell", class: "box", x: 745, y: 85, parent: "kernel", label: "Shell ROUTER socket\nexecute_request" },
-    { id: "execute-handler", class: "box", x: 745, y: 195, parent: "kernel", label: "KernelBase.do_execute\nstatus busy; execute_input" },
-    { id: "run-cell", class: "box", x: 745, y: 315, parent: "kernel", label: "IPython run_cell\ntransform, compile, execute" },
-    { id: "namespace", class: "box", x: 745, y: 425, parent: "kernel", label: "Interactive user namespace" },
-    { id: "iopub", class: "box", x: 880, y: 425, parent: "kernel", label: "IOPub PUB socket\nstream / result / error; idle" },
-    { id: "reply", class: "box", x: 745, y: 535, parent: "kernel", label: "Shell execute_reply\nstatus + execution_count" },
+    { id: "kernel", children: ["shell", "execute-handler", "run-cell", "namespace", "iopub", "reply"], class: "box", x: 710, y: 20, width: 350, label: "IPython kernel process", fill: "#fff7ed" },
+    { id: "shell", class: "box", x: 745, y: 85, label: "Shell ROUTER socket\nexecute_request" },
+    { id: "execute-handler", class: "box", x: 745, y: 195, label: "KernelBase.do_execute\nstatus busy; execute_input" },
+    { id: "run-cell", class: "box", x: 745, y: 315, label: "IPython run_cell\ntransform, compile, execute" },
+    { id: "namespace", class: "box", x: 745, y: 425, label: "Interactive user namespace" },
+    { id: "iopub", class: "box", x: 880, y: 425, label: "IOPub PUB socket\nstream / result / error; idle" },
+    { id: "reply", class: "box", x: 745, y: 535, label: "Shell execute_reply\nstatus + execution_count" },
   ] satisfies Node[],
   edges: [
     { from: "cell", to: "kernel-client", label: "cell code" },

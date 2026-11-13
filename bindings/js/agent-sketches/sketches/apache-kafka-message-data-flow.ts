@@ -11,7 +11,7 @@ type Node = {
   class: "box";
   x: number;
   y: number;
-  parent?: string;
+  children?: readonly string[];
   label: string;
   fill?: string;
   width?: number;
@@ -27,26 +27,26 @@ const sketch = {
     { id: "sender", class: "box", x: 840, y: 180, label: "Sender I/O thread\nProduceRequest per broker" },
     { id: "bootstrap", class: "box", x: 420, y: 20, label: "Bootstrap broker\nMetadataRequest" },
     { id: "metadata", class: "box", x: 630, y: 20, label: "Metadata cache\ntopic → partition leaders" },
-    { id: "cluster", class: "box", x: 1080, y: 20, width: 730, label: "Kafka brokers — partitioned, replicated append logs", fill: "#f0fdf4" },
-    { id: "broker-a", class: "box", x: 1110, y: 85, parent: "cluster", label: "Broker 1\nleader: clicks-0" },
-    { id: "log-a", class: "box", x: 1110, y: 175, parent: "cluster", label: "clicks-0 log\nappend records at offsets" },
-    { id: "broker-b", class: "box", x: 1370, y: 85, parent: "cluster", label: "Broker 2\nfollower: clicks-0" },
-    { id: "replica-b", class: "box", x: 1370, y: 175, parent: "cluster", label: "clicks-0 replica log\nreplica fetch from leader" },
-    { id: "broker-c", class: "box", x: 1630, y: 85, parent: "cluster", label: "Broker 3\nleader: clicks-1" },
-    { id: "log-c", class: "box", x: 1630, y: 175, parent: "cluster", label: "clicks-1 log\nappend records at offsets" },
-    { id: "ack", class: "box", x: 1110, y: 285, parent: "cluster", label: "ProduceResponse\nbase offset + error per partition" },
-    { id: "group", class: "box", x: 1080, y: 400, width: 730, label: "Consumer group: click-enricher", fill: "#fff7ed" },
-    { id: "coordinator", class: "box", x: 1110, y: 465, parent: "group", label: "Group coordinator\nFindCoordinator / JoinGroup" },
-    { id: "assignment", class: "box", x: 1370, y: 465, parent: "group", label: "Partition assignment\nclicks-0 → Consumer A\nclicks-1 → Consumer B" },
-    { id: "consumer-a", class: "box", x: 1110, y: 590, parent: "group", label: "Consumer A\nFetchRequest(offset 42)" },
-    { id: "consumer-b", class: "box", x: 1370, y: 590, parent: "group", label: "Consumer B\nFetchRequest(offset 18)" },
-    { id: "application", class: "box", x: 1370, y: 700, parent: "group", label: "Record deserializer + handler\nenrich event; write output" },
+    { id: "cluster", children: ["broker-a", "log-a", "broker-b", "replica-b", "broker-c", "log-c", "ack", "offsets", "retention"], class: "box", x: 1080, y: 20, width: 730, label: "Kafka brokers — partitioned, replicated append logs", fill: "#f0fdf4" },
+    { id: "broker-a", class: "box", x: 1110, y: 85, label: "Broker 1\nleader: clicks-0" },
+    { id: "log-a", class: "box", x: 1110, y: 175, label: "clicks-0 log\nappend records at offsets" },
+    { id: "broker-b", class: "box", x: 1370, y: 85, label: "Broker 2\nfollower: clicks-0" },
+    { id: "replica-b", class: "box", x: 1370, y: 175, label: "clicks-0 replica log\nreplica fetch from leader" },
+    { id: "broker-c", class: "box", x: 1630, y: 85, label: "Broker 3\nleader: clicks-1" },
+    { id: "log-c", class: "box", x: 1630, y: 175, label: "clicks-1 log\nappend records at offsets" },
+    { id: "ack", class: "box", x: 1110, y: 285, label: "ProduceResponse\nbase offset + error per partition" },
+    { id: "group", children: ["coordinator", "assignment", "consumer-a", "consumer-b", "application", "commit"], class: "box", x: 1080, y: 400, width: 730, label: "Consumer group: click-enricher", fill: "#fff7ed" },
+    { id: "coordinator", class: "box", x: 1110, y: 465, label: "Group coordinator\nFindCoordinator / JoinGroup" },
+    { id: "assignment", class: "box", x: 1370, y: 465, label: "Partition assignment\nclicks-0 → Consumer A\nclicks-1 → Consumer B" },
+    { id: "consumer-a", class: "box", x: 1110, y: 590, label: "Consumer A\nFetchRequest(offset 42)" },
+    { id: "consumer-b", class: "box", x: 1370, y: 590, label: "Consumer B\nFetchRequest(offset 18)" },
+    { id: "application", class: "box", x: 1370, y: 700, label: "Record deserializer + handler\nenrich event; write output" },
     { id: "sink", class: "box", x: 1630, y: 700, label: "Output system\nwarehouse / downstream service", fill: "#fdf2f8" },
-    { id: "commit", class: "box", x: 1630, y: 590, parent: "group", label: "OffsetCommitRequest\nnext offset per partition" },
-    { id: "offsets", class: "box", x: 1370, y: 285, parent: "cluster", label: "__consumer_offsets\ncompacted offsets topic" },
+    { id: "commit", class: "box", x: 1630, y: 590, label: "OffsetCommitRequest\nnext offset per partition" },
+    { id: "offsets", class: "box", x: 1370, y: 285, label: "__consumer_offsets\ncompacted offsets topic" },
     { id: "retry", class: "box", x: 840, y: 330, label: "Refresh metadata\nretry retriable error" },
     { id: "callback", class: "box", x: 630, y: 330, label: "Producer callback / Future\nRecordMetadata or exception", fill: "#eff6ff" },
-    { id: "retention", class: "box", x: 1630, y: 285, parent: "cluster", label: "Retention policy\nkeeps log independent of reads" },
+    { id: "retention", class: "box", x: 1630, y: 285, label: "Retention policy\nkeeps log independent of reads" },
     { id: "output-result", class: "box", x: 1810, y: 700, label: "Produced result\nconsumer side effect" },
   ] satisfies Node[],
   edges: [

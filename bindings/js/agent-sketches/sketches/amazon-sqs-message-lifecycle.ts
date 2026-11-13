@@ -9,7 +9,7 @@ import { svg, text } from "nicevg";
 
 type Node = {
   id: string; class: "frame" | "service" | "state" | "terminal"; x: number; y: number;
-  label: string; parent?: string; width?: number; height?: number;
+  label: string; children?: readonly string[]; width?: number; height?: number;
 };
 
 const service = ({ label }: Node) => {
@@ -29,28 +29,28 @@ const frame = ({ label, width = 500, height = 260 }: Node) => svg`
   ${text(label, 13).at({ left: 12, top: 8 })}`;
 
 const nodes: Node[] = [
-  { id: "consumer", class: "frame", x: 370, y: 80, label: "Consumer process", width: 360, height: 210 },
-  { id: "main", class: "frame", x: 60, y: 60, label: "Source queue", width: 470, height: 380 },
-  { id: "dlq", class: "frame", x: 720, y: 410, label: "Dead-letter queue", width: 260, height: 150 },
+  { id: "consumer", children: ["receive", "handle", "work", "extend", "success", "delete"], class: "frame", x: 370, y: 80, label: "Consumer process", width: 360, height: 210 },
+  { id: "main", children: ["send", "stored", "delay", "visible", "inflight", "gone", "timeout", "count", "redrive", "retention", "expired"], class: "frame", x: 60, y: 60, label: "Source queue", width: 470, height: 380 },
+  { id: "dlq", children: ["dlqmsg"], class: "frame", x: 720, y: 410, label: "Dead-letter queue", width: 260, height: 150 },
   { id: "producer", class: "service", x: 30, y: 185, label: "Producer" },
-  { id: "send", class: "service", x: 175, y: 160, label: "SendMessage", parent: "main" },
-  { id: "stored", class: "state", x: 340, y: 130, label: "Stored message", parent: "main" },
-  { id: "delay", class: "state", x: 120, y: 270, label: "Delivery delay", parent: "main" },
-  { id: "visible", class: "state", x: 290, y: 255, label: "Visible", parent: "main" },
-  { id: "receive", class: "service", x: 430, y: 145, label: "ReceiveMessage", parent: "consumer" },
-  { id: "handle", class: "state", x: 565, y: 120, label: "ReceiptHandle", parent: "consumer" },
-  { id: "inflight", class: "state", x: 400, y: 325, label: "In flight", parent: "main" },
-  { id: "work", class: "service", x: 535, y: 240, label: "Process message", parent: "consumer" },
-  { id: "extend", class: "service", x: 640, y: 165, label: "ChangeMessageVisibility", parent: "consumer" },
-  { id: "success", class: "state", x: 775, y: 190, label: "Processing succeeds", parent: "consumer" },
-  { id: "delete", class: "service", x: 680, y: 300, label: "DeleteMessage", parent: "consumer" },
-  { id: "gone", class: "terminal", x: 830, y: 295, label: "Deleted", parent: "main" },
-  { id: "timeout", class: "state", x: 245, y: 370, label: "Visibility timeout", parent: "main" },
-  { id: "count", class: "state", x: 80, y: 475, label: "ReceiveCount", parent: "main" },
-  { id: "redrive", class: "service", x: 370, y: 485, label: "RedrivePolicy", parent: "main" },
-  { id: "dlqmsg", class: "state", x: 600, y: 470, label: "Moved after maxReceiveCount", parent: "dlq" },
-  { id: "retention", class: "service", x: 140, y: 405, label: "MessageRetentionPeriod", parent: "main" },
-  { id: "expired", class: "terminal", x: 360, y: 435, label: "Expired", parent: "main" },
+  { id: "send", class: "service", x: 175, y: 160, label: "SendMessage" },
+  { id: "stored", class: "state", x: 340, y: 130, label: "Stored message" },
+  { id: "delay", class: "state", x: 120, y: 270, label: "Delivery delay" },
+  { id: "visible", class: "state", x: 290, y: 255, label: "Visible" },
+  { id: "receive", class: "service", x: 430, y: 145, label: "ReceiveMessage" },
+  { id: "handle", class: "state", x: 565, y: 120, label: "ReceiptHandle" },
+  { id: "inflight", class: "state", x: 400, y: 325, label: "In flight" },
+  { id: "work", class: "service", x: 535, y: 240, label: "Process message" },
+  { id: "extend", class: "service", x: 640, y: 165, label: "ChangeMessageVisibility" },
+  { id: "success", class: "state", x: 775, y: 190, label: "Processing succeeds" },
+  { id: "delete", class: "service", x: 680, y: 300, label: "DeleteMessage" },
+  { id: "gone", class: "terminal", x: 830, y: 295, label: "Deleted" },
+  { id: "timeout", class: "state", x: 245, y: 370, label: "Visibility timeout" },
+  { id: "count", class: "state", x: 80, y: 475, label: "ReceiveCount" },
+  { id: "redrive", class: "service", x: 370, y: 485, label: "RedrivePolicy" },
+  { id: "dlqmsg", class: "state", x: 600, y: 470, label: "Moved after maxReceiveCount" },
+  { id: "retention", class: "service", x: 140, y: 405, label: "MessageRetentionPeriod" },
+  { id: "expired", class: "terminal", x: 360, y: 435, label: "Expired" },
 ];
 
 const edges = [
