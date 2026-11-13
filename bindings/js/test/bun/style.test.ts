@@ -240,13 +240,13 @@ describe("children", () => {
 
   /**
    * Given children naming a node the sketch lacks, a node in two parents'
-   *   children, parents holding each other, and a node written with parent
+   *   children, parents holding each other, and two nodes sharing an id
    * When each sketch is rendered
    * Then each throws a NicevgError naming where it is wrong
    */
-  test("rejects children that name no node, a node twice, or a loop, and parent", () => {
+  test("rejects children that name no node, a node twice, or a loop", () => {
     // Typed as any sketch: the ones refused here are what the types would also refuse.
-    const sketch = (nodes: { id: string; children?: string[]; parent?: string }[]) =>
+    const sketch = (nodes: { id: string; children?: string[] }[]) =>
       render({ nodes: nodes.map((node) => ({ class: "box", x: 0, y: 0, ...node })), style: { box } } as Sketch);
 
     expect(() => sketch([{ id: "g", children: ["ghost"] }])).toThrow('nodes[0].children[0]: no node "ghost"');
@@ -259,8 +259,29 @@ describe("children", () => {
     expect(() => sketch([{ id: "g", children: ["g"] }, { id: "g" }])).toThrow(
       'nodes[1].id is "g", the id of an earlier node too',
     );
-    expect(() => sketch([{ id: "g" }, { id: "a", parent: "g" }])).toThrow(
-      'nodes[1].parent: list a node in its parent\'s children instead: children: ["a"] on "g"',
-    );
+    });
+
+    /**
+     * Given a node with a field named parent, naming another node, for its style
+     * When the sketch is rendered
+     * Then the style gets the field as it is, and the node is no child of the
+     *   one it names
+     */
+    test("passes a field named parent to the style, as any other", () => {
+      const seen: unknown[] = [];
+      const tagged: Style<{ id: string; class: "tagged"; x: number; y: number; parent: string }> = ({ parent }) => {
+        seen.push(parent);
+        return svg`<rect width="40" height="40"/>`;
+      };
+      const image = render({
+        nodes: [
+          { id: "g", class: "box", x: 0, y: 0, width: 300, height: 200 },
+          { id: "a", class: "tagged", x: 400, y: 0, parent: "g" },
+        ],
+        style: { box, tagged },
+      });
+
+      expect(seen).toEqual(["g"]);
+      expect(image.report.diagram.nodes.find((node) => node.id === "a")!.parentId).toBeUndefined();
+    });
   });
-});

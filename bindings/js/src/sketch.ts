@@ -101,11 +101,6 @@ nodes.forEach(({ id }, index) => {
 });
   const parentOf = new Map<string, string>();
   nodes.forEach((node, index) => {
-    if (node.parent !== undefined) {
-      throw new NicevgError(
-        `nodes[${index}].parent: list a node in its parent's children instead: children: ["${node.id}"] on "${node.parent}"`,
-      );
-    }
     (node.children ?? []).forEach((child, at) => {
       const earlier = parentOf.get(child);
       if (!ids.has(child)) {

@@ -274,7 +274,7 @@ Bun からは `bun:ffi`、Node からは koffi で呼ぶ（`bindings/js/test/bun
 - [x] `children` に、ないノードの id を書くと、その場所（`nodes[i].children[j]`）を示す例外になる
 - [x] 1 つのノードを 2 つの親の `children` に書くと、2 つ目の場所を示す例外になる
 - [x] `children` で親子が循環すると、循環を作る場所を示す例外になる
-- [x] `parent` を書いたノードは、親の `children` に書くよう示す例外になる
+- [x] `parent` はほかのフィールドと同じくスタイルに渡り、親子関係にはならない
 - [x] 同じ id のノードがあれば、`children` を調べるより先に、2 つ目の id を示す例外になる
 
 ## ポート
