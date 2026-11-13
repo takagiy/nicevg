@@ -54,8 +54,8 @@ const records = [
 ] as const;
 
 const nodes: ErNode[] = [
-  ...groups.map((g) => ({ ...g, class: "area" as const })),
-  ...records.map(([id, parent, x, y, columns]) => ({ id, parent, x, y, class: "table" as const, columns: columns.map(([name, type, key]) => [name, type, key] as Column) })),
+  ...groups.map((g) => ({ ...g, class: "area" as const, children: records.filter(([, parent]) => parent === g.id).map(([id]) => id) })),
+  ...records.map(([id, , x, y, columns]) => ({ id, x, y, class: "table" as const, columns: columns.map(([name, type, key]) => [name, type, key] as Column) })),
 ];
 
 const edges = [

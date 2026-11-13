@@ -87,7 +87,7 @@ Fixes the diagram, nudges its nodes into a cleaner layout and returns an `Svg`. 
 |---|---|
 | `id`, `x`, `y` | Its id and its top left corner. |
 | `class` | The `style` that draws it; every node has one. Other fields you add are passed to that style. |
-| `parent` | The id of the node it sits inside. |
+| `children` | The ids of the nodes it holds. |
 | `allowOverlap` | `true` if it overlaps other nodes on purpose. |
 
 | Edge field | |

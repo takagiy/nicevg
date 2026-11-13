@@ -14,7 +14,7 @@ type Node = {
   class: "box";
   x: number;
   y: number;
-  parent?: string;
+  children?: readonly string[];
   label: string;
   width?: number;
   height?: number;
@@ -22,28 +22,28 @@ type Node = {
 };
 
 const nodes = [
-  { id: "zone-a", class: "box", x: 30, y: 70, label: "Availability zone A", width: 350, height: 400, fill: "#eff6ff" },
-  { id: "zone-b", class: "box", x: 410, y: 70, label: "Availability zone B", width: 350, height: 400, fill: "#f0fdf4" },
-  { id: "zone-c", class: "box", x: 790, y: 70, label: "Availability zone C", width: 350, height: 400, fill: "#fff7ed" },
+  { id: "zone-a", children: ["manager-a-host", "data-a-host", "shards-a"], class: "box", x: 30, y: 70, label: "Availability zone A", width: 350, height: 400, fill: "#eff6ff" },
+  { id: "zone-b", children: ["manager-b-host", "data-b-host", "shards-b"], class: "box", x: 410, y: 70, label: "Availability zone B", width: 350, height: 400, fill: "#f0fdf4" },
+  { id: "zone-c", children: ["manager-c-host", "data-c-host", "shards-c"], class: "box", x: 790, y: 70, label: "Availability zone C", width: 350, height: 400, fill: "#fff7ed" },
   { id: "client", class: "box", x: 30, y: 10, label: "Applications / API clients", width: 190 },
   { id: "dashboards", class: "box", x: 270, y: 10, label: "OpenSearch Dashboards", width: 190 },
   { id: "prepper", class: "box", x: 520, y: 10, label: "OpenSearch Data Prepper", width: 210 },
   { id: "external", class: "box", x: 790, y: 10, label: "External sources", width: 170 },
-  { id: "manager-a-host", class: "box", x: 55, y: 130, parent: "zone-a", label: "OpenSearch node\ncluster_manager eligible", width: 260, height: 64 },
-  { id: "manager-b-host", class: "box", x: 455, y: 130, parent: "zone-b", label: "OpenSearch node\ncluster_manager eligible", width: 260, height: 64 },
-  { id: "manager-c-host", class: "box", x: 835, y: 130, parent: "zone-c", label: "OpenSearch node\ncluster_manager eligible", width: 260, height: 64 },
+  { id: "manager-a-host", class: "box", x: 55, y: 130, label: "OpenSearch node\ncluster_manager eligible", width: 260, height: 64 },
+  { id: "manager-b-host", class: "box", x: 455, y: 130, label: "OpenSearch node\ncluster_manager eligible", width: 260, height: 64 },
+  { id: "manager-c-host", class: "box", x: 835, y: 130, label: "OpenSearch node\ncluster_manager eligible", width: 260, height: 64 },
   { id: "manager-election", class: "box", x: 450, y: 220, label: "Voting quorum elects\none active cluster manager", width: 260, height: 64, fill: "#fef3c7" },
   { id: "cluster-state", class: "box", x: 450, y: 320, label: "Authoritative cluster state\nnode membership · index metadata\nshard allocation", width: 260, height: 82 },
-  { id: "data-a-host", class: "box", x: 55, y: 275, parent: "zone-a", label: "opensearch-d1\nroles: data, ingest", width: 260, height: 62 },
-  { id: "data-b-host", class: "box", x: 455, y: 275, parent: "zone-b", label: "opensearch-d2\nroles: data, ingest", width: 260, height: 62 },
-  { id: "data-c-host", class: "box", x: 835, y: 275, parent: "zone-c", label: "OpenSearch data node\nroles: data, ingest", width: 260, height: 62 },
-  { id: "shards-a", class: "box", x: 55, y: 370, parent: "zone-a", label: "Local index shards\nprimary / replica copies", width: 260, height: 62, fill: "#dbeafe" },
-  { id: "shards-b", class: "box", x: 455, y: 370, parent: "zone-b", label: "Local index shards\nprimary / replica copies", width: 260, height: 62, fill: "#dcfce7" },
-  { id: "shards-c", class: "box", x: 835, y: 370, parent: "zone-c", label: "Local index shards\nprimary / replica copies", width: 260, height: 62, fill: "#ffedd5" },
-  { id: "coordinator-host", class: "box", x: 1180, y: 125, parent: "cluster", label: "opensearch-c1\nnode.roles: []\ncoordinating only", width: 260, height: 72 },
-  { id: "cluster", class: "box", x: 1160, y: 75, label: "OpenSearch cluster", width: 300, height: 360, fill: "#f8fafc" },
-  { id: "http", class: "box", x: 1210, y: 250, parent: "cluster", label: "HTTP request interface\nclient REST API", width: 210, height: 58 },
-  { id: "transport", class: "box", x: 1210, y: 345, parent: "cluster", label: "Transport layer\ndiscovery · state · shard requests", width: 210, height: 66 },
+  { id: "data-a-host", class: "box", x: 55, y: 275, label: "opensearch-d1\nroles: data, ingest", width: 260, height: 62 },
+  { id: "data-b-host", class: "box", x: 455, y: 275, label: "opensearch-d2\nroles: data, ingest", width: 260, height: 62 },
+  { id: "data-c-host", class: "box", x: 835, y: 275, label: "OpenSearch data node\nroles: data, ingest", width: 260, height: 62 },
+  { id: "shards-a", class: "box", x: 55, y: 370, label: "Local index shards\nprimary / replica copies", width: 260, height: 62, fill: "#dbeafe" },
+  { id: "shards-b", class: "box", x: 455, y: 370, label: "Local index shards\nprimary / replica copies", width: 260, height: 62, fill: "#dcfce7" },
+  { id: "shards-c", class: "box", x: 835, y: 370, label: "Local index shards\nprimary / replica copies", width: 260, height: 62, fill: "#ffedd5" },
+  { id: "coordinator-host", class: "box", x: 1180, y: 125, label: "opensearch-c1\nnode.roles: []\ncoordinating only", width: 260, height: 72 },
+  { id: "cluster", children: ["coordinator-host", "http", "transport"], class: "box", x: 1160, y: 75, label: "OpenSearch cluster", width: 300, height: 360, fill: "#f8fafc" },
+  { id: "http", class: "box", x: 1210, y: 250, label: "HTTP request interface\nclient REST API", width: 210, height: 58 },
+  { id: "transport", class: "box", x: 1210, y: 345, label: "Transport layer\ndiscovery · state · shard requests", width: 210, height: 66 },
   { id: "seed-hosts", class: "box", x: 1480, y: 100, label: "discovery.seed_hosts\nmanager-eligible addresses", width: 230, height: 62 },
   { id: "initial-voters", class: "box", x: 1480, y: 205, label: "cluster.initial_cluster_manager_nodes\nbootstrap voter names", width: 250, height: 64 },
   { id: "config", class: "box", x: 1480, y: 315, label: "opensearch.yml on each node\ncluster.name · node.roles\nnetwork.bind_host", width: 250, height: 76 },

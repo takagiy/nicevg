@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { NicevgError, type SketchConnector, type Style, render, svg, text } from "nicevg";
+import { NicevgError, type Sketch, type SketchConnector, type Style, render, svg, text } from "nicevg";
 import { box } from "nicevg/style/simple";
 
 /** A data store open on its right: its id, a dividing line, then its name. */
@@ -215,5 +215,52 @@ describe("render with style", () => {
         style: { actor: ({ label }) => svg`${text(label).at({ left: 0, top: 0 })}` },
       });
     };
+  });
+});
+
+describe("children", () => {
+  /**
+   * Given a box listing another in its children
+   * When the sketch is rendered
+   * Then the other is drawn as its child, inside it
+   */
+  test("draws the nodes a node lists in its children inside it", () => {
+    const image = render({
+      nodes: [
+        { id: "group", class: "box", children: ["a"] },
+        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
+      ],
+      style: { box },
+    });
+
+    const node = (id: string) => image.report.diagram.nodes.find((node) => node.id === id)!;
+    expect(node("a").parentId).toBe("group");
+    expect(image.report.issues).toEqual([]);
+  });
+
+  /**
+   * Given children naming a node the sketch lacks, a node in two parents'
+   *   children, parents holding each other, and a node written with parent
+   * When each sketch is rendered
+   * Then each throws a NicevgError naming where it is wrong
+   */
+  test("rejects children that name no node, a node twice, or a loop, and parent", () => {
+    // Typed as any sketch: the ones refused here are what the types would also refuse.
+    const sketch = (nodes: { id: string; children?: string[]; parent?: string }[]) =>
+      render({ nodes: nodes.map((node) => ({ class: "box", x: 0, y: 0, ...node })), style: { box } } as Sketch);
+
+    expect(() => sketch([{ id: "g", children: ["ghost"] }])).toThrow('nodes[0].children[0]: no node "ghost"');
+    expect(() => sketch([{ id: "g", children: ["a"] }, { id: "h", children: ["a"] }, { id: "a" }])).toThrow(
+      'nodes[1].children[0]: "a" is a child of "g" already',
+    );
+    expect(() => sketch([{ id: "g", children: ["h"] }, { id: "h", children: ["g"] }])).toThrow(
+      'nodes[0].children[0]: "h" holds "g": parents cannot loop',
+    );
+    expect(() => sketch([{ id: "g", children: ["g"] }, { id: "g" }])).toThrow(
+      'nodes[1].id is "g", the id of an earlier node too',
+    );
+    expect(() => sketch([{ id: "g" }, { id: "a", parent: "g" }])).toThrow(
+      'nodes[1].parent: list a node in its parent\'s children instead: children: ["a"] on "g"',
+    );
   });
 });

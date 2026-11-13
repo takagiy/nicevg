@@ -7,17 +7,17 @@ import { area, table, type ErNode } from "../styles/er.ts";
 
 export default {
   nodes: [
-    { id: "release-workflow", class: "area", x: 28, y: 24, title: "rustup · contributor to release / validation", width: 760, height: 620 },
-    { id: "contributor-pr", class: "table", x: 48, y: 82, parent: "release-workflow", title: "Contributor PR", columns: [["base", "main | release/X.Y"], ["commit", "change"], ["label", "backport?"], ["status", "review"]] },
-    { id: "main", class: "table", x: 286, y: 68, parent: "release-workflow", title: "main", columns: [["tip", "commit SHA", "PK"], ["version", "Cargo.toml"], ["CI", "ci.yaml"]] },
-    { id: "cargo", class: "table", x: 500, y: 82, parent: "release-workflow", title: "Cargo.toml + Cargo.lock", columns: [["version", "X.Y.0"], ["dependencies", "locked"], ["build", "cargo build"]] },
-    { id: "changelog", class: "table", x: 92, y: 248, parent: "release-workflow", title: "CHANGELOG.md", columns: [["entry", "release notes"], ["version", "$VER_NUM"]] },
-    { id: "release-branch", class: "table", x: 328, y: 256, parent: "release-workflow", title: "release/X.Y", columns: [["tip", "backported commit", "PK"], ["PR label", "backport"], ["CI", "manual ci.yaml"]] },
-    { id: "stable", class: "table", x: 554, y: 270, parent: "release-workflow", title: "stable", columns: [["tip", "expected commit", "PK"], ["version", "$VER_NUM"], ["CI", "all green"]] },
-    { id: "installer", class: "table", x: 36, y: 440, parent: "release-workflow", title: "rustup-init.sh + help snapshot", columns: [["version", "$VER_NUM"], ["commit shasum", "branch tip"], ["snapshot", "--help"], ["check", "cargo test"]] },
-    { id: "ci-run", class: "table", x: 290, y: 434, parent: "release-workflow", title: "CI / release qualification", columns: [["workflow", "ci.yaml"], ["ref", "main | release/X.Y | stable"], ["result", "green"], ["checks", "installer + toolchains"]] },
-    { id: "release-team", class: "table", x: 532, y: 452, parent: "release-workflow", title: "Release team · ci/sync-dist.py", columns: [["mode", "beta | official"], ["branch", "main | release/X.Y"], ["manual test", "approve / abort"]] },
-    { id: "published", class: "table", x: 586, y: 570, parent: "release-workflow", title: "static.rust-lang.org/rustup", columns: [["dist", "platform rustup-init"], ["channel", "dev-static beta | static official"], ["tag", "$VER_NUM · official"]] },
+    { id: "release-workflow", children: ["contributor-pr", "main", "cargo", "changelog", "release-branch", "stable", "installer", "ci-run", "release-team", "published"], class: "area", x: 28, y: 24, title: "rustup · contributor to release / validation", width: 760, height: 620 },
+    { id: "contributor-pr", class: "table", x: 48, y: 82, title: "Contributor PR", columns: [["base", "main | release/X.Y"], ["commit", "change"], ["label", "backport?"], ["status", "review"]] },
+    { id: "main", class: "table", x: 286, y: 68, title: "main", columns: [["tip", "commit SHA", "PK"], ["version", "Cargo.toml"], ["CI", "ci.yaml"]] },
+    { id: "cargo", class: "table", x: 500, y: 82, title: "Cargo.toml + Cargo.lock", columns: [["version", "X.Y.0"], ["dependencies", "locked"], ["build", "cargo build"]] },
+    { id: "changelog", class: "table", x: 92, y: 248, title: "CHANGELOG.md", columns: [["entry", "release notes"], ["version", "$VER_NUM"]] },
+    { id: "release-branch", class: "table", x: 328, y: 256, title: "release/X.Y", columns: [["tip", "backported commit", "PK"], ["PR label", "backport"], ["CI", "manual ci.yaml"]] },
+    { id: "stable", class: "table", x: 554, y: 270, title: "stable", columns: [["tip", "expected commit", "PK"], ["version", "$VER_NUM"], ["CI", "all green"]] },
+    { id: "installer", class: "table", x: 36, y: 440, title: "rustup-init.sh + help snapshot", columns: [["version", "$VER_NUM"], ["commit shasum", "branch tip"], ["snapshot", "--help"], ["check", "cargo test"]] },
+    { id: "ci-run", class: "table", x: 290, y: 434, title: "CI / release qualification", columns: [["workflow", "ci.yaml"], ["ref", "main | release/X.Y | stable"], ["result", "green"], ["checks", "installer + toolchains"]] },
+    { id: "release-team", class: "table", x: 532, y: 452, title: "Release team · ci/sync-dist.py", columns: [["mode", "beta | official"], ["branch", "main | release/X.Y"], ["manual test", "approve / abort"]] },
+    { id: "published", class: "table", x: 586, y: 570, title: "static.rust-lang.org/rustup", columns: [["dist", "platform rustup-init"], ["channel", "dev-static beta | static official"], ["tag", "$VER_NUM · official"]] },
   ],
   edges: [
     { from: "contributor-pr", to: "main", label: "reviewed merge · main" },

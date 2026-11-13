@@ -8,7 +8,7 @@
 import type { Sketch } from "nicevg";
 import { box } from "nicevg/style/simple";
 
-type Node = { id: string; class: "box"; x: number; y: number; label: string; parent?: string };
+type Node = { id: string; class: "box"; x: number; y: number; label: string; children?: readonly string[] };
 
 const sketch = {
   nodes: [

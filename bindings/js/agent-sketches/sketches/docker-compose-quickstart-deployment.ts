@@ -4,7 +4,7 @@
 import { box } from "nicevg/style/simple";
 import type { Sketch } from "nicevg";
 
-type Node = { id: string; class: "box"; x: number; y: number; label: string; parent?: string; width?: number; height?: number };
+type Node = { id: string; class: "box"; x: number; y: number; label: string; children?: readonly string[]; width?: number; height?: number };
 
 const sketch = {
   nodes: [

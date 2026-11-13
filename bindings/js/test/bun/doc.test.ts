@@ -487,9 +487,9 @@ const group = ({ width, height }: { width: number; height: number }) =>
   svg\`<rect data-bounds="true" width="\${width}" height="\${height}" fill="none" stroke="gray"/>\`;
 render({
   nodes: [
-    { id: "g", class: "group", x: 0, y: 0, width: 200, height: 300 },
-    { id: "a", class: "box", label: "A", x: 60, y: 20, parent: "g" },
-    { id: "b", class: "box", label: "B", x: 60, y: 220, parent: "g" },
+    { id: "g", children: ["a", "b"], class: "group", x: 0, y: 0, width: 200, height: 300 },
+    { id: "a", class: "box", label: "A", x: 60, y: 20 },
+    { id: "b", class: "box", label: "B", x: 60, y: 220 },
   ],
   edges: [{ from: "a", to: "b", label: "a long label on the edge" }],
   style: { box, group },
@@ -595,8 +595,8 @@ describe("nicevg doc parents", () => {
 import { box } from "nicevg/style/simple";
 render({
   nodes: [
-    { id: "group", class: "box", label: "Orders", labelPosition: "top-left" },
-    { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "group" },
+    { id: "group", children: ["a"], class: "box", label: "Orders", labelPosition: "top-left" },
+    { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
   ],
   style: { box },
 });`;
@@ -623,7 +623,7 @@ render({
     const parent = `import { render } from "nicevg";
 import { box } from "nicevg/style/simple";
 render({
-  nodes: [{ id: "g", class: "box" }, { id: "a", class: "box", x: 0, y: 0, label: "A", parent: "g" }],
+  nodes: [{ id: "g", children: ["a"], class: "box" }, { id: "a", class: "box", x: 0, y: 0, label: "A" }],
   style: { box },
 });
 (globalThis as Record<string, unknown>).__nicevgDraw = () => "not JSON";`;
@@ -655,7 +655,7 @@ const frame = ({ width, height }: { width?: number; height?: number }) => {
   return svg\`<rect data-bounds="true" width="\${width}" height="\${height}" fill="none" stroke="black"/>\`;
 };
 render({
-  nodes: [{ id: "g", class: "frame" }, { id: "a", class: "box", x: 0, y: 0, label: "A", parent: "g" }],
+  nodes: [{ id: "g", children: ["a"], class: "frame" }, { id: "a", class: "box", x: 0, y: 0, label: "A" }],
   style: { frame, box },
 });`;
     const root = repository({ "guide.md": oneBlock(code) });

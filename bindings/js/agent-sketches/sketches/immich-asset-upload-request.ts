@@ -17,7 +17,7 @@ type Node = {
   class: "box" | "circle";
   x: number;
   y: number;
-  parent?: string;
+  children?: readonly string[];
   label: string;
   width?: number;
   height?: number;

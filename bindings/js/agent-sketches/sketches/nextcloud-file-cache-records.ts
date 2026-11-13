@@ -10,7 +10,7 @@
 import { box } from "nicevg/style/simple";
 import type { Sketch } from "nicevg";
 
-type Node = { id: string; class: "box"; x: number; y: number; parent?: string; label: string; fill?: string };
+type Node = { id: string; class: "box"; x: number; y: number; children?: readonly string[]; label: string; fill?: string };
 const nodes: Node[] = [
   { id: "user", class: "box", x: 30, y: 40, label: "User\noc_users: uid (PK)" },
   { id: "group", class: "box", x: 30, y: 190, label: "Group\noc_groups: gid (PK)" },

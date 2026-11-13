@@ -14,7 +14,7 @@ type Node = {
   class: "box";
   x: number;
   y: number;
-  parent?: string;
+  children?: readonly string[];
   label: string;
   fill?: string;
   width?: number;
@@ -23,14 +23,14 @@ type Node = {
 const sketch = {
   nodes: [
     { id: "client", class: "box", x: 20, y: 130, label: "libpq client\nQuery message: INSERT", fill: "#eff6ff" },
-    { id: "server", class: "box", x: 210, y: 20, width: 720, label: "PostgreSQL instance (postmaster + server processes)", fill: "#f1f5f9" },
-    { id: "postmaster", class: "box", x: 235, y: 80, parent: "server", label: "postmaster\naccepts connection; starts backend" },
-    { id: "backend", class: "box", x: 235, y: 160, parent: "server", label: "client backend\nper-session process" },
-    { id: "protocol", class: "box", x: 430, y: 160, parent: "server", label: "exec_simple_query\nParse / Bind / Execute path" },
-    { id: "parser", class: "box", x: 430, y: 245, parent: "server", label: "raw parser + analyzer\nRawStmt → Query" },
-    { id: "planner", class: "box", x: 630, y: 245, parent: "server", label: "planner / optimizer\nQuery → PlannedStmt" },
-    { id: "portal", class: "box", x: 630, y: 160, parent: "server", label: "Portal / PortalRun\nexecute planned statement" },
-    { id: "executor", class: "box", x: 815, y: 160, parent: "server", label: "ExecutorRun\nModifyTable → ExecInsert" },
+    { id: "server", children: ["postmaster", "backend", "protocol", "parser", "planner", "portal", "executor"], class: "box", x: 210, y: 20, width: 720, label: "PostgreSQL instance (postmaster + server processes)", fill: "#f1f5f9" },
+    { id: "postmaster", class: "box", x: 235, y: 80, label: "postmaster\naccepts connection; starts backend" },
+    { id: "backend", class: "box", x: 235, y: 160, label: "client backend\nper-session process" },
+    { id: "protocol", class: "box", x: 430, y: 160, label: "exec_simple_query\nParse / Bind / Execute path" },
+    { id: "parser", class: "box", x: 430, y: 245, label: "raw parser + analyzer\nRawStmt → Query" },
+    { id: "planner", class: "box", x: 630, y: 245, label: "planner / optimizer\nQuery → PlannedStmt" },
+    { id: "portal", class: "box", x: 630, y: 160, label: "Portal / PortalRun\nexecute planned statement" },
+    { id: "executor", class: "box", x: 815, y: 160, label: "ExecutorRun\nModifyTable → ExecInsert" },
     { id: "heap", class: "box", x: 1030, y: 160, label: "heap_insert()\nchoose target block + tuple offset", fill: "#dcfce7" },
     { id: "relcache", class: "box", x: 1030, y: 275, label: "Relation / SMgrRelation\nrelfilenode + fork metadata" },
     { id: "bufmgr", class: "box", x: 1260, y: 160, label: "ReadBuffer / LockBuffer\nshared buffer manager", fill: "#dcfce7" },

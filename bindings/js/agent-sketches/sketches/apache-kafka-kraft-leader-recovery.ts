@@ -7,7 +7,7 @@
 import type { Sketch } from "nicevg";
 import { svg, text } from "nicevg";
 
-type N = { id: string; class: "proc" | "fn" | "state" | "msg" | "store"; x: number; y: number; label: string; parent?: string };
+type N = { id: string; class: "proc" | "fn" | "state" | "msg" | "store"; x: number; y: number; label: string; children?: readonly string[] };
 const proc = ({ label }: N) => { const t = text(label, 13); const w = t.width + 28, h = t.height + 18; return svg`<rect data-bounds="true" width="${w}" height="${h}" rx="7" fill="#e0f2fe" stroke="#0369a1"/>${t.at({ cx: w / 2, cy: h / 2 })}`; };
 const fn = ({ label }: N) => { const t = text(label, 12); const w = t.width + 24, h = t.height + 16; return svg`<rect data-bounds="true" width="${w}" height="${h}" rx="2" fill="#fff" stroke="#475569"/>${t.at({ cx: w / 2, cy: h / 2 })}`; };
 const state = ({ label }: N) => { const t = text(label, 12); const w = t.width + 24, h = t.height + 18; return svg`<rect data-bounds="true" width="${w}" height="${h}" rx="${h / 2}" fill="#fef3c7" stroke="#b45309"/>${t.at({ cx: w / 2, cy: h / 2 })}`; };

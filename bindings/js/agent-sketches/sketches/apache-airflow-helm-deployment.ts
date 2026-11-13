@@ -1,7 +1,7 @@
 import type { Sketch } from "nicevg";
 import { box } from "nicevg/style/simple";
 
-type Node = { id: string; class: "box"; x: number; y: number; label: string; parent?: string; width?: number; height?: number; fill?: string };
+type Node = { id: string; class: "box"; x: number; y: number; label: string; children?: readonly string[]; width?: number; height?: number; fill?: string };
 
 // Sources: https://airflow.apache.org/docs/helm-chart/stable/index.html
 // https://airflow.apache.org/docs/apache-airflow/stable/concepts/overview.html
@@ -12,32 +12,32 @@ const nodes: Node[] = [
   { id: "operator", class: "box", x: 20, y: 125, label: "Deployment operator" },
   { id: "helm", class: "box", x: 190, y: 125, label: "Helm 3\napache-airflow/airflow" },
   { id: "cluster", class: "box", x: 390, y: 25, label: "Kubernetes cluster", width: 1130, height: 800, fill: "#eff6ff" },
-  { id: "namespace", class: "box", x: 420, y: 70, label: "airflow namespace", width: 1060, height: 720, fill: "#f8fafc" },
-  { id: "ingress", class: "box", x: 450, y: 120, label: "Ingress / load balancer", parent: "namespace", fill: "#dbeafe" },
-  { id: "api-service", class: "box", x: 660, y: 120, label: "api-server Service :8080", parent: "namespace" },
-  { id: "api-server", class: "box", x: 660, y: 195, label: "API server Pod\nREST API + UI + Execution API", parent: "namespace", fill: "#dcfce7" },
-  { id: "scheduler", class: "box", x: 920, y: 120, label: "Scheduler Pod\nCeleryExecutor", parent: "namespace", fill: "#dcfce7" },
-  { id: "dag-processor", class: "box", x: 920, y: 260, label: "DAG processor Pod", parent: "namespace", fill: "#dcfce7" },
-  { id: "triggerer", class: "box", x: 920, y: 385, label: "Triggerer Pod\ndeferred tasks", parent: "namespace", fill: "#dcfce7" },
-  { id: "celery-deployment", class: "box", x: 1180, y: 90, label: "Celery worker Deployment", width: 255, height: 300, parent: "namespace", fill: "#ecfccb" },
-  { id: "worker-a", class: "box", x: 1200, y: 165, label: "Celery worker Pod A", parent: "celery-deployment" },
-  { id: "worker-b", class: "box", x: 1200, y: 255, label: "Celery worker Pod B", parent: "celery-deployment" },
-  { id: "worker-task", class: "box", x: 1180, y: 425, label: "Task subprocess\nper task instance", parent: "namespace", fill: "#fef3c7" },
-  { id: "redis-service", class: "box", x: 660, y: 390, label: "redis Service :6379", parent: "namespace" },
-  { id: "redis", class: "box", x: 660, y: 455, label: "Redis Pod\nCelery broker", parent: "namespace", fill: "#fee2e2" },
-  { id: "pgbouncer-service", class: "box", x: 660, y: 555, label: "pgbouncer Service :6543", parent: "namespace" },
-  { id: "pgbouncer", class: "box", x: 660, y: 615, label: "PgBouncer Pod\nconnection pool", parent: "namespace", fill: "#f3e8ff" },
-  { id: "postgres", class: "box", x: 920, y: 555, label: "PostgreSQL Pod\nAirflow metadata DB", parent: "namespace", fill: "#f3e8ff" },
-  { id: "metadata", class: "box", x: 1180, y: 555, label: "Metadata records\nDAGs · runs · tasks · variables", parent: "namespace", fill: "#fef9c3" },
-  { id: "migrate-job", class: "box", x: 450, y: 650, label: "migrate-database Job", parent: "namespace" },
-  { id: "create-user-job", class: "box", x: 450, y: 715, label: "create-user Job", parent: "namespace" },
+  { id: "namespace", children: ["ingress", "api-service", "api-server", "scheduler", "dag-processor", "triggerer", "celery-deployment", "worker-task", "redis-service", "redis", "pgbouncer-service", "pgbouncer", "postgres", "metadata", "migrate-job", "create-user-job", "flower", "statsd", "secrets"], class: "box", x: 420, y: 70, label: "airflow namespace", width: 1060, height: 720, fill: "#f8fafc" },
+  { id: "ingress", class: "box", x: 450, y: 120, label: "Ingress / load balancer", fill: "#dbeafe" },
+  { id: "api-service", class: "box", x: 660, y: 120, label: "api-server Service :8080" },
+  { id: "api-server", class: "box", x: 660, y: 195, label: "API server Pod\nREST API + UI + Execution API", fill: "#dcfce7" },
+  { id: "scheduler", class: "box", x: 920, y: 120, label: "Scheduler Pod\nCeleryExecutor", fill: "#dcfce7" },
+  { id: "dag-processor", class: "box", x: 920, y: 260, label: "DAG processor Pod", fill: "#dcfce7" },
+  { id: "triggerer", class: "box", x: 920, y: 385, label: "Triggerer Pod\ndeferred tasks", fill: "#dcfce7" },
+  { id: "celery-deployment", children: ["worker-a", "worker-b"], class: "box", x: 1180, y: 90, label: "Celery worker Deployment", width: 255, height: 300, fill: "#ecfccb" },
+  { id: "worker-a", class: "box", x: 1200, y: 165, label: "Celery worker Pod A" },
+  { id: "worker-b", class: "box", x: 1200, y: 255, label: "Celery worker Pod B" },
+  { id: "worker-task", class: "box", x: 1180, y: 425, label: "Task subprocess\nper task instance", fill: "#fef3c7" },
+  { id: "redis-service", class: "box", x: 660, y: 390, label: "redis Service :6379" },
+  { id: "redis", class: "box", x: 660, y: 455, label: "Redis Pod\nCelery broker", fill: "#fee2e2" },
+  { id: "pgbouncer-service", class: "box", x: 660, y: 555, label: "pgbouncer Service :6543" },
+  { id: "pgbouncer", class: "box", x: 660, y: 615, label: "PgBouncer Pod\nconnection pool", fill: "#f3e8ff" },
+  { id: "postgres", class: "box", x: 920, y: 555, label: "PostgreSQL Pod\nAirflow metadata DB", fill: "#f3e8ff" },
+  { id: "metadata", class: "box", x: 1180, y: 555, label: "Metadata records\nDAGs · runs · tasks · variables", fill: "#fef9c3" },
+  { id: "migrate-job", class: "box", x: 450, y: 650, label: "migrate-database Job" },
+  { id: "create-user-job", class: "box", x: 450, y: 715, label: "create-user Job" },
   { id: "dag-repo", class: "box", x: 20, y: 335, label: "DAG bundle source\n(local folder / Git bundle)" },
   { id: "browser", class: "box", x: 20, y: 225, label: "Operations user / browser" },
   { id: "external-system", class: "box", x: 20, y: 495, label: "Task external systems\nprovider APIs / data stores" },
-  { id: "flower", class: "box", x: 450, y: 300, label: "Flower Pod + Service\nCelery monitoring :5555", parent: "namespace" },
-  { id: "statsd", class: "box", x: 450, y: 430, label: "StatsD exporter Pod\nAirflow metrics :9102", parent: "namespace" },
+  { id: "flower", class: "box", x: 450, y: 300, label: "Flower Pod + Service\nCelery monitoring :5555" },
+  { id: "statsd", class: "box", x: 450, y: 430, label: "StatsD exporter Pod\nAirflow metrics :9102" },
   { id: "prometheus", class: "box", x: 20, y: 635, label: "Prometheus" },
-  { id: "secrets", class: "box", x: 920, y: 690, label: "Kubernetes Secrets\nDB / broker URLs · Fernet · JWT", parent: "namespace" },
+  { id: "secrets", class: "box", x: 920, y: 690, label: "Kubernetes Secrets\nDB / broker URLs · Fernet · JWT" },
 ];
 
 const edges = [

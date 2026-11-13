@@ -32,8 +32,8 @@ describe("parents a style draws", () => {
     const calls: { width?: number; height?: number }[] = [];
     const image = render({
       nodes: [
-        { id: "group", class: "frame" },
-        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "group" },
+        { id: "group", children: ["a"], class: "frame" },
+        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
       ],
       style: { frame: framed(calls), box },
     });
@@ -58,8 +58,8 @@ describe("parents a style draws", () => {
     const calls: { width?: number; height?: number }[] = [];
     const image = render({
       nodes: [
-        { id: "group", class: "frame", width: 300, height: 200 },
-        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "group" },
+        { id: "group", children: ["a"], class: "frame", width: 300, height: 200 },
+        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
       ],
       style: { frame: framed(calls), box },
     });
@@ -83,9 +83,9 @@ describe("parents a style draws", () => {
     };
     const image = render({
       nodes: [
-        { id: "outer", class: "frame" },
-        { id: "inner", class: "frame", parent: "outer" },
-        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "inner" },
+        { id: "outer", children: ["inner"], class: "frame" },
+        { id: "inner", children: ["a"], class: "frame" },
+        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
       ],
       style: { frame, box },
     });
@@ -108,8 +108,8 @@ describe("parents a style draws", () => {
       svg`<rect data-bounds="true" width="${width}" height="${height}" fill="none" stroke="black"/>${text("Orders").at({ left: 12, top: 12 })}`;
     const image = render({
       nodes: [
-        { id: "group", class: "titled" },
-        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "group" },
+        { id: "group", children: ["a"], class: "titled" },
+        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
       ],
       style: { titled, box },
     });
@@ -135,8 +135,8 @@ describe("parents a style draws", () => {
     };
     const image = render({
       nodes: [
-        { id: "group", class: "wide" },
-        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "group" },
+        { id: "group", children: ["a"], class: "wide" },
+        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
       ],
       style: { wide, box },
     });
@@ -158,8 +158,8 @@ describe("parents a style draws", () => {
       svg`<rect data-bounds="true" width="${width}" height="${height}" fill="none" stroke="black"/><circle data-port="in" cx="0" cy="20" r="0"/>`;
     const image = render({
       nodes: [
-        { id: "group", class: "ported" },
-        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "group" },
+        { id: "group", children: ["a"], class: "ported" },
+        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
         { id: "source", class: "box", x: -100, y: 88, width: 80, height: 40 },
       ],
       edges: [{ from: "source", to: "group.in" }],
@@ -181,8 +181,8 @@ describe("parents a style draws", () => {
     };
     const image = render({
       nodes: [
-        { id: "group", class: "titled" },
-        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "group" },
+        { id: "group", children: ["a"], class: "titled" },
+        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
       ],
       style: { titled: style, box },
     });
@@ -247,8 +247,8 @@ describe("parents a style draws", () => {
     };
     const sketch = (frame: ReturnType<typeof throwingOn>) => ({
       nodes: [
-        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "group" },
-        { id: "group", class: "frame" },
+        { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
+        { id: "group", children: ["a"], class: "frame" },
       ],
       style: { frame, box },
     });
@@ -270,8 +270,8 @@ describe("parents a style draws", () => {
     for (const [padding, expected] of [[20, 20], [undefined, 12]] as const) {
       const image = render({
         nodes: [
-          { id: "group", class: "box", label: "Orders", labelPosition: "top-left", padding },
-          { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40, parent: "group" },
+          { id: "group", children: ["a"], class: "box", label: "Orders", labelPosition: "top-left", padding },
+          { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
         ],
         style: { box },
       });
@@ -295,8 +295,8 @@ describe("parents a style draws", () => {
   test("leaves a parent its frame for a text its style writes in the middle", () => {
     const image = render({
       nodes: [
-        { id: "host", class: "box", label: "Host", x: 0, y: 0, width: 300, height: 200 },
-        { id: "a", class: "box", x: 20, y: 140, width: 80, height: 40, parent: "host" },
+        { id: "host", children: ["a"], class: "box", label: "Host", x: 0, y: 0, width: 300, height: 200 },
+        { id: "a", class: "box", x: 20, y: 140, width: 80, height: 40 },
       ],
       style: { box },
     });
@@ -314,8 +314,8 @@ describe("parents a style draws", () => {
   test("widens a box titled at its top left to its title", () => {
     const image = render({
       nodes: [
-        { id: "group", class: "box", label: "A title much wider than the box", labelPosition: "top-left" },
-        { id: "a", class: "box", x: 100, y: 100, width: 40, height: 40, parent: "group" },
+        { id: "group", children: ["a"], class: "box", label: "A title much wider than the box", labelPosition: "top-left" },
+        { id: "a", class: "box", x: 100, y: 100, width: 40, height: 40 },
       ],
       style: { box },
     });

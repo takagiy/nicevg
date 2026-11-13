@@ -1,7 +1,7 @@
 import type { Sketch } from "nicevg";
 import { box } from "nicevg/style/simple";
 
-type Node = { id: string; class: "box"; x: number; y: number; label: string; parent?: string; width?: number; height?: number; fill?: string };
+type Node = { id: string; class: "box"; x: number; y: number; label: string; children?: readonly string[]; width?: number; height?: number; fill?: string };
 
 // Sources:
 // https://docs.github.com/en/actions/how-tos/manage-runners/use-actions-runner-controller/deploy-runner-scale-sets
@@ -14,36 +14,36 @@ type Node = { id: string; class: "box"; x: number; y: number; label: string; par
 const nodes: Node[] = [
   { id: "developer", class: "box", x: 20, y: 70, label: "Workflow author\n.github/workflows/*.yml", fill: "#f1f5f9" },
   { id: "workflow", class: "box", x: 20, y: 180, label: "Workflow job\nruns-on: arc-linux", fill: "#fef3c7" },
-  { id: "github", class: "box", x: 20, y: 330, label: "GitHub repository / org\nActions scheduler", parent: "github-cloud", fill: "#f1f5f9" },
-  { id: "actions-service", class: "box", x: 260, y: 330, label: "Actions Service\nscale-set registration · job queue", parent: "github-cloud", fill: "#fee2e2" },
-  { id: "github-cloud", class: "box", x: 0, y: 285, label: "GitHub hosted services", width: 500, height: 240, fill: "#fff1f2" },
-  { id: "cluster", class: "box", x: 550, y: 20, label: "Kubernetes cluster", width: 1110, height: 960, fill: "#eff6ff" },
-  { id: "api", class: "box", x: 590, y: 70, label: "Kubernetes API server", parent: "cluster", fill: "#dbeafe" },
-  { id: "operator-ns", class: "box", x: 620, y: 150, label: "arc-systems namespace", width: 470, height: 340, parent: "cluster", fill: "#f8fafc" },
-  { id: "controller-deploy", class: "box", x: 650, y: 200, label: "gha-runner-scale-set-controller\nDeployment", parent: "operator-ns", fill: "#dcfce7" },
-  { id: "controller-manager", class: "box", x: 650, y: 300, label: "controller-manager container", parent: "controller-deploy" },
-  { id: "autoscaling-controller", class: "box", x: 880, y: 200, label: "AutoScalingRunnerSet\ncontroller", parent: "operator-ns" },
-  { id: "runner-controller", class: "box", x: 880, y: 300, label: "EphemeralRunner\ncontroller", parent: "operator-ns" },
-  { id: "listener-controller", class: "box", x: 880, y: 400, label: "AutoScalingListener\ncontroller", parent: "operator-ns" },
-  { id: "secret", class: "box", x: 650, y: 410, label: "Kubernetes Secret\nGitHub App or PAT credentials", parent: "operator-ns", fill: "#fef3c7" },
-  { id: "runner-ns", class: "box", x: 1130, y: 150, label: "arc-runners namespace", width: 490, height: 700, parent: "cluster", fill: "#f0fdf4" },
-  { id: "autoscaling-resource", class: "box", x: 1160, y: 200, label: "AutoScalingRunnerSet\narc-linux · minRunners · maxRunners", parent: "runner-ns", fill: "#fef3c7" },
-  { id: "listener-resource", class: "box", x: 1160, y: 300, label: "RunnerScaleSetListener\ncustom resource", parent: "runner-ns" },
-  { id: "listener-pod", class: "box", x: 1390, y: 300, label: "Listener Pod\nlistener container", parent: "runner-ns", fill: "#dbeafe" },
-  { id: "listener-sa", class: "box", x: 1160, y: 400, label: "Listener ServiceAccount\n+ Role / RoleBinding", parent: "runner-ns" },
-  { id: "ers", class: "box", x: 1160, y: 500, label: "EphemeralRunnerSet\ndesired replica count", parent: "runner-ns", fill: "#fef3c7" },
-  { id: "er-controller", class: "box", x: 1390, y: 500, label: "EphemeralRunner\ncontroller reconciliation", parent: "runner-ns" },
-  { id: "jit", class: "box", x: 1160, y: 600, label: "JIT configuration token\nper runner registration", parent: "runner-ns" },
-  { id: "runner-pod", class: "box", x: 1390, y: 610, label: "Ephemeral runner Pod\nrunner container · one job", parent: "runner-ns", fill: "#dcfce7" },
-  { id: "runner", class: "box", x: 1390, y: 700, label: "GitHub Actions Runner\nconnects outbound to Actions", parent: "runner-pod" },
-  { id: "container-job", class: "box", x: 1160, y: 740, label: "Container job / service / action Pod\noptional Kubernetes container mode", parent: "runner-ns", fill: "#e0f2fe" },
-  { id: "job-storage", class: "box", x: 1160, y: 820, label: "Optional RWX volume or\nlifecycle-hook file transfer", parent: "runner-ns" },
-  { id: "node-pool", class: "box", x: 850, y: 710, label: "Kubernetes worker nodes\nScheduler places runner pods", parent: "cluster", fill: "#f1f5f9" },
+  { id: "github", class: "box", x: 20, y: 330, label: "GitHub repository / org\nActions scheduler", fill: "#f1f5f9" },
+  { id: "actions-service", class: "box", x: 260, y: 330, label: "Actions Service\nscale-set registration · job queue", fill: "#fee2e2" },
+  { id: "github-cloud", children: ["github", "actions-service"], class: "box", x: 0, y: 285, label: "GitHub hosted services", width: 500, height: 240, fill: "#fff1f2" },
+  { id: "cluster", children: ["api", "operator-ns", "runner-ns", "node-pool", "metrics", "failed"], class: "box", x: 550, y: 20, label: "Kubernetes cluster", width: 1110, height: 960, fill: "#eff6ff" },
+  { id: "api", class: "box", x: 590, y: 70, label: "Kubernetes API server", fill: "#dbeafe" },
+  { id: "operator-ns", children: ["controller-deploy", "autoscaling-controller", "runner-controller", "listener-controller", "secret"], class: "box", x: 620, y: 150, label: "arc-systems namespace", width: 470, height: 340, fill: "#f8fafc" },
+  { id: "controller-deploy", children: ["controller-manager"], class: "box", x: 650, y: 200, label: "gha-runner-scale-set-controller\nDeployment", fill: "#dcfce7" },
+  { id: "controller-manager", class: "box", x: 650, y: 300, label: "controller-manager container" },
+  { id: "autoscaling-controller", class: "box", x: 880, y: 200, label: "AutoScalingRunnerSet\ncontroller" },
+  { id: "runner-controller", class: "box", x: 880, y: 300, label: "EphemeralRunner\ncontroller" },
+  { id: "listener-controller", class: "box", x: 880, y: 400, label: "AutoScalingListener\ncontroller" },
+  { id: "secret", class: "box", x: 650, y: 410, label: "Kubernetes Secret\nGitHub App or PAT credentials", fill: "#fef3c7" },
+  { id: "runner-ns", children: ["autoscaling-resource", "listener-resource", "listener-pod", "listener-sa", "ers", "er-controller", "jit", "runner-pod", "container-job", "job-storage"], class: "box", x: 1130, y: 150, label: "arc-runners namespace", width: 490, height: 700, fill: "#f0fdf4" },
+  { id: "autoscaling-resource", class: "box", x: 1160, y: 200, label: "AutoScalingRunnerSet\narc-linux · minRunners · maxRunners", fill: "#fef3c7" },
+  { id: "listener-resource", class: "box", x: 1160, y: 300, label: "RunnerScaleSetListener\ncustom resource" },
+  { id: "listener-pod", class: "box", x: 1390, y: 300, label: "Listener Pod\nlistener container", fill: "#dbeafe" },
+  { id: "listener-sa", class: "box", x: 1160, y: 400, label: "Listener ServiceAccount\n+ Role / RoleBinding" },
+  { id: "ers", class: "box", x: 1160, y: 500, label: "EphemeralRunnerSet\ndesired replica count", fill: "#fef3c7" },
+  { id: "er-controller", class: "box", x: 1390, y: 500, label: "EphemeralRunner\ncontroller reconciliation" },
+  { id: "jit", class: "box", x: 1160, y: 600, label: "JIT configuration token\nper runner registration" },
+  { id: "runner-pod", children: ["runner"], class: "box", x: 1390, y: 610, label: "Ephemeral runner Pod\nrunner container · one job", fill: "#dcfce7" },
+  { id: "runner", class: "box", x: 1390, y: 700, label: "GitHub Actions Runner\nconnects outbound to Actions" },
+  { id: "container-job", class: "box", x: 1160, y: 740, label: "Container job / service / action Pod\noptional Kubernetes container mode", fill: "#e0f2fe" },
+  { id: "job-storage", class: "box", x: 1160, y: 820, label: "Optional RWX volume or\nlifecycle-hook file transfer" },
+  { id: "node-pool", class: "box", x: 850, y: 710, label: "Kubernetes worker nodes\nScheduler places runner pods", fill: "#f1f5f9" },
   { id: "registry", class: "box", x: 20, y: 600, label: "Container registry\nrunner image pull", fill: "#f1f5f9" },
-  { id: "metrics", class: "box", x: 650, y: 540, label: "Controller / listener metrics\nPrometheus scrape endpoints", parent: "cluster" },
+  { id: "metrics", class: "box", x: 650, y: 540, label: "Controller / listener metrics\nPrometheus scrape endpoints" },
   { id: "prometheus", class: "box", x: 20, y: 740, label: "Prometheus", fill: "#f1f5f9" },
   { id: "logs", class: "box", x: 20, y: 850, label: "Cluster log collection\ncontroller · listener · runner", fill: "#f1f5f9" },
-  { id: "failed", class: "box", x: 880, y: 600, label: "Failed runner pod\nretry creation up to 5 times", parent: "cluster", fill: "#fee2e2" },
+  { id: "failed", class: "box", x: 880, y: 600, label: "Failed runner pod\nretry creation up to 5 times", fill: "#fee2e2" },
 ];
 
 const edges = [

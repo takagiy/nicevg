@@ -11,7 +11,7 @@
 import { box } from "nicevg/style/simple";
 import type { Sketch } from "nicevg";
 
-type Node = { id: string; class: "box"; x: number; y: number; label: string; parent?: string };
+type Node = { id: string; class: "box"; x: number; y: number; label: string; children?: readonly string[] };
 
 const nodes: Node[] = [
   { id: "control", class: "box", x: 30, y: 20, label: "kube-scheduler / default-scheduler profile" },

@@ -12,22 +12,22 @@ import { area, table, type ErNode } from "../styles/er.ts";
 
 const sketch = {
   nodes: [
-    { id: "catalog", class: "area", x: 70, y: 40, title: "OpenAlex records", width: 760, height: 540 },
+    { id: "catalog", children: ["works", "authors", "authorship", "institutions"], class: "area", x: 70, y: 40, title: "OpenAlex records", width: 760, height: 540 },
     {
-      id: "works", class: "table", parent: "catalog", x: 330, y: 120,
+      id: "works", class: "table", x: 330, y: 120,
       columns: [["id", "W…", "PK"], ["doi", "URI"], ["title", "text"], ["publication_year", "int"], ["authorships", "array"]],
     },
     {
-      id: "authors", class: "table", parent: "catalog", x: 100, y: 230,
+      id: "authors", class: "table", x: 100, y: 230,
       columns: [["id", "A…", "PK"], ["display_name", "text"], ["orcid", "URI"], ["works_count", "int"]],
     },
     {
-      id: "authorship", class: "table", parent: "catalog", x: 340, y: 390,
+      id: "authorship", class: "table", x: 340, y: 390,
       title: "authorships (inline)",
       columns: [["author", "dehydrated"], ["raw_author_name", "text"], ["author_position", "enum"], ["is_corresponding", "bool"], ["raw_affiliation_strings", "array"], ["institutions", "array"]],
     },
     {
-      id: "institutions", class: "table", parent: "catalog", x: 620, y: 280,
+      id: "institutions", class: "table", x: 620, y: 280,
       columns: [["id", "I…", "PK"], ["display_name", "text"], ["ror", "URI"], ["country_code", "ISO"]],
     },
     { id: "sources", class: "box", x: 880, y: 120, label: "Crossref / DataCite\nsource metadata" },
