@@ -4,8 +4,12 @@
 
 ## Command
 
-- [x] When `nicevg man` runs, it can print the help page to stdout and exit 0.
-- [x] When `nicevg man --toc` runs, it can print the table of contents alone.
+- [x] When `nicevg man` runs with no query, it can print the table of contents and how to query it.
+- [x] When a query is a tag, `nicevg man` can print that section with its title line and subsections.
+- [x] When a query is text in a section, `nicevg man` can print that section with its title line, without the sections inside or outside it, the text emphasized.
+- [x] When matches of several queries nest, `nicevg man` can print only the widest, once, with the emphasis of all.
+- [x] When matches do not nest, `nicevg man` can print each in page order, separated by a rule.
+- [x] When a query matches nothing, `nicevg man` can report it and exit 1.
 - [x] When `nicevg --help` runs, it can name `nicevg man`.
 
 ## Help page

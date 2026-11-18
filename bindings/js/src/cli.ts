@@ -9,11 +9,11 @@ import { readFileSync, writeSync } from "node:fs";
 import { parseArgs } from "node:util";
 
 import { NicevgError, render } from "./index.ts";
+import { man } from "./man.ts";
 
 const ABOUT =
-  "Repair mechanical layout errors in an SVG diagram read from stdin, move nodes a little so connectors bend, cross and crowd less, and write the result to stdout";
-const USAGE = "Usage: nicevg\n       nicevg doc [options] <files...>\n       nicevg man [--toc]";
-const MAN_USAGE = "Usage: nicevg man [--toc]";
+  "A diagram tool for AI agents. It adjusts the layout and fixes visual issues, so the agent does not have to. With no command, it reads an SVG diagram from stdin and writes the result to stdout.";
+const USAGE = "Usage: nicevg\n       nicevg doc [options] <files...>\n       nicevg man [<tag> | <text>]...";
 const DOC_USAGE = `Usage: nicevg doc [options] <files...>
 
 Draws the diagrams written as diagram scripts in <!-- nicevg ... --> comments of
@@ -101,21 +101,17 @@ async function docMain(args: string[]): Promise<number> {
   }
 }
 
-/** `nicevg man`: prints the help page, in Vim's help format, or with `--toc` its table of contents alone. */
-function manMain(args: string[]): number {
-  if (args.length > 1 || (args.length === 1 && args[0] !== "--toc")) {
-    process.stderr.write(`error: unexpected argument '${args.find((arg) => arg !== "--toc") ?? args[1]}' found\n\n${MAN_USAGE}\n`);
-    return 2;
-  }
+/** `nicevg man`: reads the help page by tags and text (see man.ts); exits 1 if a query matched nothing. */
+function manMain(queries: string[]): number {
   const page = readFileSync(new URL("../doc/nicevg.txt", import.meta.url), "utf8");
-  if (args[0] === "--toc") {
-    // The lines between the CONTENTS heading and the next rule.
-    const contents = page.slice(page.indexOf("*nicevg-contents*\n") + "*nicevg-contents*\n".length);
-    print(`${contents.slice(0, contents.indexOf("\n=")).trim()}\n`);
-  } else {
-    print(page);
+  // Emphasis as grep does: on a terminal, or when FORCE_COLOR asks, unless NO_COLOR is set.
+  const color = !process.env.NO_COLOR && ((!!process.env.FORCE_COLOR && process.env.FORCE_COLOR !== "0") || process.stdout.isTTY);
+  const { text, missing } = man(page, queries, (match) => (color ? `\x1b[1;31m${match}\x1b[0m` : match));
+  print(text);
+  for (const query of missing) {
+    process.stderr.write(`error: no section matches '${query}'\n`);
   }
-  return 0;
+  return missing.length > 0 ? 1 : 0;
 }
 
 function main(args: string[]): number | Promise<number> {
