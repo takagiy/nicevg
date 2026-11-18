@@ -5,8 +5,10 @@
 ## Command
 
 - [x] When `nicevg man` runs with no query, it can print the table of contents and how to query it.
+- [x] When `nicevg man` runs with no query, it can list the tag of each issue in the table of contents.
 - [x] When a query is a tag, `nicevg man` can print that section with its title line and subsections.
 - [x] When a query is text in a section, `nicevg man` can print that section with its title line, without the sections inside or outside it, the text emphasized.
+- [x] When text is in the table of contents too, `nicevg man` can leave the table of contents out.
 - [x] When matches of several queries nest, `nicevg man` can print only the widest, once, with the emphasis of all.
 - [x] When matches do not nest, `nicevg man` can print each in page order, separated by a rule.
 - [x] When a query matches nothing, `nicevg man` can report it and exit 1.

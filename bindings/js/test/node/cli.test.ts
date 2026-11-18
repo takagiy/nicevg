@@ -232,11 +232,12 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
     };
 
     /**
-     * [x] When `nicevg man` runs with no query, it can print the table of contents and how to query it.
-     * Given the installed command
-     * When `nicevg man` runs with no query
-     * Then the entries of the table of contents are written, then how to read a tag and search text
-     */
+      * [x] When `nicevg man` runs with no query, it can print the table of contents and how to query it.
+      * [x] When `nicevg man` runs with no query, it can list the tag of each issue in the table of contents.
+      * Given the installed command
+      * When `nicevg man` runs with no query
+      * Then the entries of the table of contents, each issue's tag among them, are written, then how to read a tag and search text
+      */
     test("man with no query prints the table of contents and how to query it", () => {
       const result = man();
 
@@ -244,10 +245,27 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
       const [toc, hint] = result.stdout.trimEnd().split("\n\n");
       const lines = toc!.split("\n");
       assert.match(lines[0]!, /^1\. Introduction \.+ \|nicevg-intro\|$/);
-      assert.match(lines.at(-1)!, /\|nicevg-engine-issue\|$/);
+      assert.match(lines.at(-1)!, /\|nicevg-engine-issue-label-detached\|$/);
+      for (const [, tag] of page.matchAll(/\*(nicevg-engine-issue-[a-z-]+)\*$/gm)) {
+        assert.ok(lines.some((line) => line.endsWith(`|${tag}|`)), tag);
+      }
       assert.ok(lines.every((line) => /\|[\w-]+\|$/.test(line)), toc);
       assert.match(hint!, /`nicevg man <tag>`/);
       assert.match(hint!, /`nicevg man <text>`/);
+    });
+
+    /**
+     * [x] When text is in the table of contents too, `nicevg man` can leave the table of contents out.
+     * Given text found in the table of contents and in the title line of 4.3 Built-in styles alone
+     * When `nicevg man` runs with it
+     * Then 4.3 Built-in styles is written, and the table of contents is not
+     */
+    test("man searches text outside the table of contents", () => {
+      const result = man("Built-in styles");
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /^4\.3 /);
+      assert.doesNotMatch(result.stdout, /nicevg-contents/);
     });
 
     /**

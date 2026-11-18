@@ -21,6 +21,25 @@ CONTENTS                                                     *nicevg-contents*
    4.3 Built-in styles ........................... |nicevg-dsl-builtin-styles|
 5. Layout engine ............................................. |nicevg-engine|
    5.1 Issues .......................................... |nicevg-engine-issue|
+       |nicevg-engine-issue-viewport-clipping|
+       |nicevg-engine-issue-text-overflow|
+       |nicevg-engine-issue-node-overlap|
+       |nicevg-engine-issue-node-gap|
+       |nicevg-engine-issue-node-outside-parent|
+       |nicevg-engine-issue-parent-text-overlap|
+       |nicevg-engine-issue-node-duplicate-id|
+       |nicevg-engine-issue-connector-unknown-node|
+       |nicevg-engine-issue-connector-node-crossing|
+       |nicevg-engine-issue-connector-overlap|
+       |nicevg-engine-issue-connector-near-miss|
+       |nicevg-engine-issue-connector-slanted|
+       |nicevg-engine-issue-connector-endpoint-inside|
+       |nicevg-engine-issue-connector-endpoint-detached|
+       |nicevg-engine-issue-connector-end-along-side|
+       |nicevg-engine-issue-label-overlap|
+       |nicevg-engine-issue-label-node-overlap|
+       |nicevg-engine-issue-connector-label-clearance|
+       |nicevg-engine-issue-label-detached|
 
 ==============================================================================
 1. Introduction                                                 *nicevg-intro*
