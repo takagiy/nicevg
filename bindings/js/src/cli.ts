@@ -12,7 +12,8 @@ import { NicevgError, render } from "./index.ts";
 
 const ABOUT =
   "Repair mechanical layout errors in an SVG diagram read from stdin, move nodes a little so connectors bend, cross and crowd less, and write the result to stdout";
-const USAGE = "Usage: nicevg\n       nicevg doc [options] <files...>";
+const USAGE = "Usage: nicevg\n       nicevg doc [options] <files...>\n       nicevg man [--toc]";
+const MAN_USAGE = "Usage: nicevg man [--toc]";
 const DOC_USAGE = `Usage: nicevg doc [options] <files...>
 
 Draws the diagrams written as diagram scripts in <!-- nicevg ... --> comments of
@@ -46,8 +47,8 @@ function print(text: string): void {
 
 /** `nicevg doc`: exits 0 when every diagram was drawn, 2 when one failed or the arguments are wrong. */
 async function docMain(args: string[]): Promise<number> {
-// Loaded here, so that drawing from stdin does not load the sandbox and the markdown parser.
-const { UsageError, doc } = await import("./doc.ts");
+  // Loaded here, so that drawing from stdin does not load the sandbox and the markdown parser.
+  const { UsageError, doc } = await import("./doc.ts");
   let parsed;
   try {
     parsed = parseArgs({
@@ -100,9 +101,29 @@ const { UsageError, doc } = await import("./doc.ts");
   }
 }
 
+/** `nicevg man`: prints the help page, in Vim's help format, or with `--toc` its table of contents alone. */
+function manMain(args: string[]): number {
+  if (args.length > 1 || (args.length === 1 && args[0] !== "--toc")) {
+    process.stderr.write(`error: unexpected argument '${args.find((arg) => arg !== "--toc") ?? args[1]}' found\n\n${MAN_USAGE}\n`);
+    return 2;
+  }
+  const page = readFileSync(new URL("../doc/nicevg.txt", import.meta.url), "utf8");
+  if (args[0] === "--toc") {
+    // The lines between the CONTENTS heading and the next rule.
+    const contents = page.slice(page.indexOf("*nicevg-contents*\n") + "*nicevg-contents*\n".length);
+    print(`${contents.slice(0, contents.indexOf("\n=")).trim()}\n`);
+  } else {
+    print(page);
+  }
+  return 0;
+}
+
 function main(args: string[]): number | Promise<number> {
   if (args[0] === "doc") {
     return docMain(args.slice(1));
+  }
+  if (args[0] === "man") {
+    return manMain(args.slice(1));
   }
   for (const arg of args) {
     if (arg === "-h" || arg === "--help") {

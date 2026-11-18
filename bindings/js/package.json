@@ -39,6 +39,7 @@
     "dist",
     "src/*.ts",
     "src/style/*.ts",
+    "doc",
     "native"
   ],
   "engines": {

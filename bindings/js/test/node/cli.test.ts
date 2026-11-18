@@ -13,6 +13,22 @@ const runtimes = [
   ["bun", fileURLToPath(new URL("../../src/cli.ts", import.meta.url))],
 ] as const;
 
+const page = readFileSync(new URL("../../doc/nicevg.txt", import.meta.url), "utf8");
+
+/** The help page's section under `*tag*`, up to the next rule. */
+const section = (tag: string) => page.slice(page.indexOf(`*${tag}*`)).split(/\n[-=]{78}\n/)[0]!;
+
+/** The help page's code block after the line ending with `lead` and `>`, its tab indent taken off. */
+const codeAfter = (lead: string) => {
+  const start = page.indexOf(`${lead} >\n`) + lead.length + 3;
+  return page
+    .slice(start, page.indexOf("\n<\n", start))
+    .split("\n")
+    .map((line) => line.replace(/^\t/, ""))
+    .join("\n")
+    .concat("\n");
+};
+
 const bends = (svg: string, id: string) => {
   const d = new RegExp(`<path[^>]*id="${id}"[^>]*\\sd="([^"]*)"`).exec(svg)![1]!;
   return d.match(/[ML]/g)!.length - 2;
@@ -187,5 +203,110 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
       assert.match(readFileSync(join(root, "a.svg"), "utf8"), /data-node="a"/);
       assert.match(readFileSync(join(root, "guide.md"), "utf8"), /<!-- nicevg:output -->\n!\[a\]\(a\.svg\)\n<!-- \/nicevg:output -->/);
     });
+
+    /**
+     * [x] When `nicevg man` runs, it can print the help page to stdout and exit 0.
+     * Given the installed command
+     * When `nicevg man` runs
+     * Then the help page is written to stdout as it is, and the command succeeds
+     */
+    test("man prints the help page", () => {
+      const result = run("", ["man"]);
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout, page);
+    });
+
+    /**
+     * [x] When `nicevg man --toc` runs, it can print the table of contents alone.
+     * Given the installed command
+     * When `nicevg man --toc` runs
+     * Then only the entries of the table of contents are written
+     */
+    test("man --toc prints the table of contents alone", () => {
+      const result = run("", ["man", "--toc"]);
+
+      assert.equal(result.status, 0, result.stderr);
+      const lines = result.stdout.trimEnd().split("\n");
+      assert.match(lines[0]!, /^1\. Introduction \.+ \|nicevg-intro\||nicevg-engine-issue|$/);
+      assert.match(lines.at(-1)!, /\|nicevg-engine-issue\|$/);
+      assert.ok(lines.every((line) => /\|[\w-]+\||nicevg-engine-issue|$/.test(line)), result.stdout);
+    });
+
+    /**
+     * [x] When `nicevg --help` runs, it can name `nicevg man`.
+     * Given the installed command
+     * When its help is displayed
+     * Then it names `nicevg man`
+     */
+    test("help names nicevg man", () => {
+      assert.match(run("", ["--help"]).stdout, /nicevg man/);
+    });
+
+    /**
+     * [x] When the style example in `nicevg-dsl-render-style` is drawn with `nicevg doc`, it can draw with no failures.
+     * Given a git repository whose README.md has the help page's style example as a diagram block
+     * When nicevg doc runs on it
+     * Then the diagram is drawn without failures
+     */
+    test("draws the help page's style example", () => {
+      const root = mkdtempSync(join(tmpdir(), "nicevg-man-"));
+      mkdirSync(join(root, ".git"));
+      writeFileSync(join(root, "README.md"), `<!-- nicevg pill.svg\n${codeAfter("as the origin:")}\n-->\n`);
+
+      const result = spawnSync(runtime, [cli, "doc", "README.md"], { cwd: root, encoding: "utf8" });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout).failures, []);
+      assert.match(readFileSync(join(root, "pill.svg"), "utf8"), /data-node="orders"/);
+    });
   });
 }
+
+describe("nicevg help page", () => {
+  /**
+   * [x] When the help page is read, every issue code but the port ones can be found as a `*nicevg-engine-issue-<code>*` tag.
+   * Given the issue codes the native library reports
+   * When the help page is read
+   * Then each, but those of ports, which it does not document yet, has an entry
+   */
+  test("documents every issue code but the port ones", () => {
+    const inspect = readFileSync(new URL("../../../../src/inspect.rs", import.meta.url), "utf8");
+    const codes = [...inspect.matchAll(/issue\(\s*"([a-z][a-z-]*)"/g)].map(([, code]) => code!);
+    const ports = ["connector-end-off-port", "connector-unknown-port"];
+
+    assert.ok(codes.length > 0);
+    for (const code of codes.filter((code) => !ports.includes(code))) {
+      assert.ok(page.includes(`*nicevg-engine-issue-${code}*`), code);
+    }
+  });
+
+  /**
+   * [x] When the help page is read, every option of `nicevg doc` can be found in `nicevg-cli-doc-input`.
+   * Given the options `nicevg doc --help` lists
+   * When the help page's input section is read
+   * Then it names each
+   */
+  test("documents every option of nicevg doc in its input section", () => {
+    const usage = spawnSync("node", [runtimes[0][1], "doc", "--help"], { encoding: "utf8" }).stdout;
+    const options = usage.match(/--[a-z-]+/g)!;
+    const input = section("nicevg-cli-doc-input");
+
+    assert.ok(options.length > 0);
+    for (const option of options) {
+      assert.ok(input.includes(option), option);
+    }
+  });
+
+  /**
+   * [x] When the help page is read, every `|link|` can be found as a `*tag*`.
+   * Given the help page
+   * When its links are read
+   * Then each names a tag the page has
+   */
+  test("links only to tags it has", () => {
+    for (const [, tag] of page.matchAll(/\|([\w-]+)\|/g)) {
+      assert.ok(page.includes(`*${tag}*`), tag);
+    }
+  });
+});
