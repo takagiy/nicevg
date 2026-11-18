@@ -14,9 +14,11 @@ type Range = { start: number; end: number };
 
 const TITLE = /\s\*([a-z0-9.-]+)\*$/;
 const RULE = "=".repeat(78);
+/** The table of contents, printed with no query; text is not searched in it, as it names every section. */
+const CONTENTS = "nicevg-contents";
 const HINT = `Use \`nicevg man <tag>\` to read a section with its subsections, or
 \`nicevg man <text>\` to read the sections holding the text. Pass several
-queries to read them at once.`;
+queries to read them at once. Read sections as you need them, not up front.`;
 
 function sections(lines: string[]): Section[] {
   // The modeline closes the page.
@@ -47,7 +49,7 @@ export function man(page: string, queries: string[], emphasize: (text: string) =
   const lines = page.split("\n");
   const all = sections(lines);
   if (queries.length === 0) {
-    const contents = all.find((section) => section.tag === "nicevg-contents")!;
+    const contents = all.find((section) => section.tag === CONTENTS)!;
     return { text: `${lines.slice(contents.start + 1, contents.own).join("\n").trim()}\n\n${HINT}\n`, missing: [] };
   }
 
@@ -61,7 +63,8 @@ export function man(page: string, queries: string[], emphasize: (text: string) =
       continue;
     }
     const needle = query.toLowerCase();
-    const holding = needle ? all.filter((section) => lines.slice(section.start, section.own).some((line) => line.toLowerCase().includes(needle))) : [];
+    const searched = all.filter((section) => section.tag !== CONTENTS);
+    const holding = needle ? searched.filter((section) => lines.slice(section.start, section.own).some((line) => line.toLowerCase().includes(needle))) : [];
     if (holding.length === 0) {
       missing.push(query);
       continue;
