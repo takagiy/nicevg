@@ -336,11 +336,12 @@ pub fn label_covers_node(label: &Bounds, node: &DiagramNode) -> bool {
     }
 }
 
-/// A container's free space is a valid place for labels; only its children
-/// and its border are off limits.
+/// A container's free space is a valid place for labels; only its children,
+/// its border and its own texts are off limits.
 fn lies_within_container(nodes: &[DiagramNode], label: &Bounds, node: &DiagramNode) -> bool {
     nodes.iter().any(|child| child.parent_id.as_deref() == Some(&node.id))
         && intersection(label, &node.bounds) == Some(*label)
+        && node.label_bounds.iter().all(|text| intersection(label, text).is_none())
 }
 
 fn label_node_overlaps(nodes: &[DiagramNode], labels: &[DiagramLabel]) -> Vec<DiagramIssue> {

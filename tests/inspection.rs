@@ -535,6 +535,31 @@ fn ignores_labels_inside_a_container_unless_they_cover_a_child() {
     );
 }
 
+/// Given a container holding a child node, with a label in its free space
+///   lying on the container's title
+/// When the diagram is analyzed
+/// Then the label is reported as overlapping the container
+#[test]
+fn reports_labels_on_a_text_of_their_container() {
+    let svg = r#"
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="360" height="200" />
+          <text x="36" y="48" font-size="13">Cluster</text>
+          <g data-node="service">
+            <rect x="60" y="80" width="120" height="56" />
+            <text x="120" y="113" text-anchor="middle" font-size="14">Service</text>
+          </g>
+        </g>
+        <text data-label="note" x="40" y="46" font-size="11">free note</text>
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    assert_eq!(issues_with_code(&report, "label-node-overlap"), [["note", "cluster"]]);
+}
+
 /// Given a free label that extends beyond the viewBox safety area
 /// When the diagram is analyzed
 /// Then viewport clipping is reported even when no nodes exist
