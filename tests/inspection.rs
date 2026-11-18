@@ -560,6 +560,32 @@ fn reports_labels_on_a_text_of_their_container() {
     assert_eq!(issues_with_code(&report, "label-node-overlap"), [["note", "cluster"]]);
 }
 
+/// Given a connector between two children of a container, with its label
+///   written inside the container's group, in its free space
+/// When the diagram is analyzed
+/// Then the label is not taken for the container's own text, and no
+///   overlap is reported
+#[test]
+fn does_not_take_a_label_inside_a_container_group_for_its_text() {
+    let svg = r#"
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="360" height="200" />
+          <text x="36" y="48" font-size="13">Cluster</text>
+          <g data-node="p"><rect x="60" y="80" width="100" height="56"/><text x="110" y="113" text-anchor="middle" font-size="14">P</text></g>
+          <g data-node="q"><rect x="260" y="80" width="100" height="56"/><text x="310" y="113" text-anchor="middle" font-size="14">Q</text></g>
+          <text data-label="e-label" data-label-for="e" x="210" y="95" text-anchor="middle" font-size="11">calls</text>
+        </g>
+        <line id="e" data-from="p" data-to="q" x1="160" y1="108" x2="260" y2="108" />
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    assert_eq!(report.diagram.node("cluster").expect("cluster").label_bounds.len(), 1);
+    assert!(!has_issue(&report, "label-node-overlap"), "{:?}", issue_codes(&report));
+}
+
 /// Given a free label that extends beyond the viewBox safety area
 /// When the diagram is analyzed
 /// Then viewport clipping is reported even when no nodes exist
