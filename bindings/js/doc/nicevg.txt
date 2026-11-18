@@ -1,0 +1,333 @@
+*nicevg.txt*  Draw diagrams from scripts in markdown
+
+==============================================================================
+CONTENTS                                                     *nicevg-contents*
+
+1. Introduction ............................................... |nicevg-intro|
+2. nicevg doc ............................................... |nicevg-cli-doc|
+   2.1 Input .......................................... |nicevg-cli-doc-input|
+       Diagram blocks ........................... |nicevg-cli-doc-input-block|
+       Module blocks ........................... |nicevg-cli-doc-input-module|
+   2.2 Output ........................................ |nicevg-cli-doc-output|
+3. Diagram DSL .................................................. |nicevg-dsl|
+   3.1 render() .......................................... |nicevg-dsl-render|
+       Nodes ....................................... |nicevg-dsl-render-nodes|
+       Edges ....................................... |nicevg-dsl-render-edges|
+       Styles ...................................... |nicevg-dsl-render-style|
+   3.2 Built-in styles ........................... |nicevg-dsl-builtin-styles|
+4. Layout engine ............................................. |nicevg-engine|
+   4.1 Issues .......................................... |nicevg-engine-issue|
+
+==============================================================================
+1. Introduction                                                 *nicevg-intro*
+
+nicevg is a diagram tool for AI agents. It draws diagrams written in a
+DSL (|nicevg-dsl|) in markdown comments (|nicevg-cli-doc|). It adjusts the
+layout and fixes visual issues (|nicevg-engine|), so the agent does not have
+to. The agent only fixes the issues it reports (|nicevg-engine-issue|).
+
+==============================================================================
+2. nicevg doc                                                 *nicevg-cli-doc*
+
+	nicevg doc [options] {files}
+
+Draws every diagram block in the markdown {files} and prints the result as
+JSON. See |nicevg-cli-doc-input| for the blocks and options, and
+|nicevg-cli-doc-output| for the result.
+
+------------------------------------------------------------------------------
+2.1 Input                                               *nicevg-cli-doc-input*
+
+{files} are markdown files in one git repository. Their scripts may import
+files and write SVGs only inside the sandbox directory: the repository's
+root unless --sandbox-dir is given.
+
+Options:
+
+--dry-run
+	Write nothing; report the files that would change.
+
+--sandbox-dir {dir}
+	The directory scripts may import from and write SVGs to.
+
+-h, --help
+	Print help.
+
+Limits, each for one diagram:
+
+--sandbox-memory {MB}
+	Memory for its script. Default: 256.
+
+--timeout-per-diagram {sec}
+	Time for running its script and laying it out. Default: 300.
+
+--max-svg-size {MB}
+	Size of its SVG. Default: 20.
+
+DIAGRAM BLOCKS                                    *nicevg-cli-doc-input-block*
+
+A diagram block is an HTML comment at the top level of the markdown, not
+inside a list or a quote: >
+	<!-- nicevg {path.svg} {description}
+	{script}
+	-->
+<
+{path.svg} is where the SVG is written, relative to the markdown file.
+Write it as a JSON string, such as "my diagram.svg", when it has spaces.
+{description} is the image's alt text: the file's name unless given.
+
+Without {path.svg}, the SVG is embedded in the markdown, titled by the rest
+of the first line.
+
+nicevg writes the link or the SVG between these markers after the block,
+adding them when missing, and changes nothing else in the markdown: >
+	<!-- nicevg:output -->
+	<!-- /nicevg:output -->
+<
+{script} is TypeScript. It imports `render` from "nicevg" and calls it once
+with the diagram (|nicevg-dsl-render|), and must not use what it returns.
+It may also import:
+- "nicevg/style/simple" (|nicevg-dsl-builtin-styles|)
+- module blocks (|nicevg-cli-doc-input-module|)
+- .ts and .js files in the sandbox directory, by a path starting with ./ or
+  ../ relative to the markdown file
+
+MODULE BLOCKS                                    *nicevg-cli-doc-input-module*
+
+A module block holds code that diagram blocks of the same markdown file
+share, such as a style: >
+	<!-- nicevg-module {name}
+	{script}
+	-->
+<
+Diagram blocks import its exports from "#{name}": >
+	import { table } from "#er";
+<
+------------------------------------------------------------------------------
+2.2 Output                                             *nicevg-cli-doc-output*
+
+nicevg doc prints JSON to stdout. Paths in it are relative to the sandbox
+directory: >
+	{
+	  "changedFiles": ["docs/order-flow.svg", "docs/README.md"],
+	  "failures": [
+	    { "file": "docs/README.md", "line": 12,
+	      "message": "...", "error": "..." }
+	  ],
+	  "remainingIssues": [
+	    { "file": "docs/README.md", "line": 30,
+	      "code": "label-detached", "message": "..." }
+	  ]
+	}
+<
+"failures" are blocks that drew nothing: a script that threw or broke a
+limit, or a diagram nicevg could not read. "error" holds the script's error
+with its markdown line and column.
+
+"remainingIssues" are problems left in drawn diagrams. They do not fail the
+run; see |nicevg-engine-issue|.
+
+The exit status is 0 when every block drew, and 2 when a block failed or the
+arguments are wrong. What a script writes to `console` goes to stderr.
+
+==============================================================================
+3. Diagram DSL                                                    *nicevg-dsl*
+
+A diagram is nodes, each drawn by a style, and edges between them.
+
+------------------------------------------------------------------------------
+3.1 render()                                               *nicevg-dsl-render*
+
+	render({ nodes, edges, style, rootAttrs })
+
+nodes		The nodes (|nicevg-dsl-render-nodes|).
+edges		The edges (|nicevg-dsl-render-edges|). Optional.
+style		A style for each node class (|nicevg-dsl-render-style|).
+rootAttrs	Attributes for the root <svg>, such as
+		`{ "font-family": "sans-serif" }`, which its texts inherit.
+		nicevg writes `xmlns`, `viewBox`, `width` and `height`.
+
+A diagram that names a missing node or class, or a style that draws invalid
+SVG, fails the block with a message naming the field, such as
+`nodes[1].class`.
+
+NODES                                                *nicevg-dsl-render-nodes*
+
+id		Its id, unique among the nodes.
+class		The style that draws it.
+x, y		Its top left, where its style's drawing starts. Required
+		unless it has children.
+children	The ids of the nodes inside it. Optional.
+allowOverlap	`true` if it may overlap other nodes. Optional.
+
+Other fields, such as `label`, are passed to its style.
+
+nicevg moves nodes but never resizes them.
+
+A node with `children` is a parent: nicevg sizes it round its children and
+calls its style with that size as `width` and `height`. Its own `x`, `y`,
+`width` and `height`, where given, are the least it takes.
+
+EDGES                                                *nicevg-dsl-render-edges*
+
+from, to	The ids of the nodes it joins.
+label		Its text, beside it; `\n` splits lines. Optional.
+fontSize	The label's size. Optional.
+arrow		The ends with an arrowhead: the `to` end unless given,
+		`"both"` or `"none"`.
+color		The paint of its line and arrowheads, such as `"#c00"`:
+		black unless given.
+strokeWidth	Its line's width. Optional.
+strokeDasharray	Its line's dashes, as the SVG attribute. Optional.
+points		Its route, as `{ x, y }` points. Leave it out to let
+		nicevg route it.
+
+STYLES                                               *nicevg-dsl-render-style*
+
+A style is a function from a node to its drawing, with the node's top left
+as the origin: >
+	import { render, svg, text } from "nicevg";
+
+	render({
+	  nodes: [
+	    { id: "orders", class: "pill", x: 20, y: 20, label: "Orders" },
+	  ],
+	  style: {
+	    pill: ({ label }) => {
+	      const name = text(label);
+	      const w = name.width + 32, h = name.height + 20;
+	      return svg`
+	        <rect width="${w}" height="${h}" rx="${h / 2}"
+	          fill="white" stroke="black"/>
+	        ${name.at({ cx: w / 2, cy: h / 2 })}`;
+	    },
+	  },
+	});
+<
+svg`...`	SVG as written. Embedded strings are escaped; `svg`
+		fragments, texts and arrays of them are embedded as they
+		are. `fragment.at(x, y)` moves a fragment's origin.
+text(s, size)	A <text> of `size` (14 unless given); `\n` splits
+		lines. `width` and `height` are its size as nicevg
+		estimates it. `.at({ cx, cy })` places it: one of `left`,
+		`cx`, `right` and one of `top`, `cy`, `bottom`.
+
+A node lies round what its style draws, or round the <rect> or <circle> its
+style marks `data-bounds="true"`. Edges meet that border. nicevg does not
+check that texts fit inside a node a style draws.
+
+A parent's children keep 12px inside its border, or what its style marks as
+`data-padding` on the `data-bounds` element.
+
+------------------------------------------------------------------------------
+3.2 Built-in styles                                *nicevg-dsl-builtin-styles*
+
+	import { box, circle } from "nicevg/style/simple";
+
+`box` draws a rectangle and `circle` a circle, white and outlined in black,
+the label centred. A node drawn by them takes:
+
+label		Its text; `\n` splits lines.
+fontSize	The label's size: 14 unless given.
+width, height	Its size. Without them it just fits its label; a label
+		too big for them grows it.
+fill, stroke	Its paint, as the SVG attributes.
+strokeWidth	Its outline's width.
+strokeDasharray	Its outline's dashes.
+
+`box` also takes:
+
+labelPosition	`"top-left"` to write the label at the top left, as a
+		parent's title: `"center"` unless given.
+padding		How far the label, and a parent's children, keep inside
+		its border: 12px unless given.
+
+==============================================================================
+4. Layout engine                                               *nicevg-engine*
+
+------------------------------------------------------------------------------
+4.1 Issues                                               *nicevg-engine-issue*
+
+Each issue is a problem nicevg could not repair in a drawn diagram. Fix it
+by changing the layout in the script as below, and run nicevg doc again.
+
+viewport-clipping                      *nicevg-engine-issue-viewport-clipping*
+	The drawing runs past the edge of the image.
+	Fix: move the nodes near that edge inwards.
+
+text-overflow                              *nicevg-engine-issue-text-overflow*
+	A node's label does not fit inside it.
+	Fix: give the node a larger `width` and `height`, or leave them out.
+
+node-overlap                                *nicevg-engine-issue-node-overlap*
+	Two nodes overlap.
+	Fix: move them apart, or set `allowOverlap: true` if they overlap on
+	purpose.
+
+node-gap                                        *nicevg-engine-issue-node-gap*
+	Two nodes side by side are closer than 20px, or than the label of an
+	edge between them needs.
+	Fix: move them apart.
+
+node-outside-parent                  *nicevg-engine-issue-node-outside-parent*
+	A node does not fit inside its parent.
+	Fix: move the node inside its parent.
+
+parent-text-overlap                  *nicevg-engine-issue-parent-text-overlap*
+	A node lies on a text its parent draws, such as its title.
+	Fix: move the node below or to the right of the text.
+
+node-duplicate-id                      *nicevg-engine-issue-node-duplicate-id*
+	Two nodes share an id.
+	Fix: give each node its own id.
+
+connector-unknown-node            *nicevg-engine-issue-connector-unknown-node*
+	An edge's `from` or `to` names no node.
+	Fix: name a node in `nodes`.
+
+connector-node-crossing          *nicevg-engine-issue-connector-node-crossing*
+	An edge passes through a node it does not join.
+	Fix: move that node out of the way between the edge's two nodes.
+
+connector-overlap                      *nicevg-engine-issue-connector-overlap*
+	Two edges run along the same segment, so they read as one.
+	Fix: move one of the nodes they join so they leave different sides.
+
+connector-near-miss                  *nicevg-engine-issue-connector-near-miss*
+	Two edges come close where one turns.
+	Fix: move one of the nodes they join a little.
+
+connector-slanted                      *nicevg-engine-issue-connector-slanted*
+	An edge has a segment neither horizontal nor vertical.
+	Fix: leave out the edge's `points`, or give points in straight lines.
+
+connector-endpoint-inside      *nicevg-engine-issue-connector-endpoint-inside*
+	An edge ends inside its node.
+	Fix: leave out the edge's `points`, or end them on the node's border.
+
+connector-endpoint-detached  *nicevg-engine-issue-connector-endpoint-detached*
+	An edge ends more than 16px away from its node.
+	Fix: leave out the edge's `points`, or end them on the node's border.
+
+connector-end-along-side        *nicevg-engine-issue-connector-end-along-side*
+	An edge's last segment runs along a side of its node.
+	Fix: leave out the edge's `points`, or meet the side square.
+
+label-overlap                              *nicevg-engine-issue-label-overlap*
+	Two labels overlap.
+	Fix: move apart the nodes their edges join.
+
+label-node-overlap                    *nicevg-engine-issue-label-node-overlap*
+	An edge's label overlaps a node.
+	Fix: move that node away from the edge.
+
+connector-label-clearance      *nicevg-engine-issue-connector-label-clearance*
+	An edge passes within 8px of another edge's label.
+	Fix: move the nodes so the edge passes further from the label.
+
+label-detached                            *nicevg-engine-issue-label-detached*
+	An edge's label sits more than 16px from its edge: there was no room
+	beside it.
+	Fix: move apart the nodes the edge joins.
+
+ vim:tw=78:ts=8:noet:ft=help:norl:
