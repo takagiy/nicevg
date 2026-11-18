@@ -81,6 +81,15 @@ export type ConsoleCall = { method: string; place?: string };
 /** A module name the normalizer gives an import it refuses, carrying why: the loader reports it. */
 const REFUSED = "refused:";
 
+/** A value a script logs: its JSON, or its `String` where JSON cannot write it, as for a BigInt or `undefined`. */
+function printable(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
 /** A syntax error in a diagram script's TypeScript, printed as JavaScript prints one. */
 class StripError extends Error { }
 
@@ -227,7 +236,7 @@ export async function run<Result>(
     const write = context.newFunction("write", (method, stack, ...args) => {
       const frame = context.getString(stack).split("\n").find((line) => line.trim().startsWith("at") && !line.includes("nicevg:"));
       const place = frame && /\(?([^()\s]+:\d+:\d+)\)?\s*$/.exec(frame)?.[1];
-      const text = args.map((arg) => (context.typeof(arg) === "string" ? context.getString(arg) : JSON.stringify(context.dump(arg)))).join(" ");
+      const text = args.map((arg) => (context.typeof(arg) === "string" ? context.getString(arg) : printable(context.dump(arg)))).join(" ");
       print(text, { method: context.getString(method), ...(place && { place }) });
     });
     context.setProp(context.global, CONSOLE, write);

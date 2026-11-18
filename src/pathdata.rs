@@ -3,7 +3,7 @@
 //! curves and arcs contribute their end points, and malformed data yields
 //! no points at all.
 
-use crate::geometry::{Point, point};
+use crate::geometry::{Point, point, within};
 
 pub fn end_points(data: &str) -> Vec<Point> {
     parse(data).unwrap_or_default()
@@ -173,5 +173,5 @@ fn read_number(characters: &[char]) -> Option<(f64, usize)> {
         length = exponent + exponent_digits;
     }
     let text: String = characters[..length].iter().collect();
-    text.parse::<f64>().ok().map(|value| (value, length))
+    text.parse::<f64>().ok().map(|value| (within(value), length))
 }

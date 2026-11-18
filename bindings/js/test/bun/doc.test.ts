@@ -156,7 +156,24 @@ describe("nicevg doc", () => {
   });
 
   /**
-   * Given a block followed by an opening output marker with no closing one
+    * Given a block that no --> ends, after a heading
+    * When nicevg doc runs
+    * Then it fails, asking for -->, and the markdown is left as it is
+    */
+  test("fails a block no --> ends and leaves the markdown", () => {
+    const markdown = `# Title\n\n<!-- nicevg a.svg\n${ORDER_FLOW}`;
+    const root = repository({ "guide.md": markdown });
+
+    const { exitCode, result } = doc(root, ["guide.md"]);
+
+    expect(exitCode).toBe(2);
+    expect(result.failures).toEqual([{ file: "guide.md", line: 3, message: "A diagram block must end with -->" }]);
+    expect(read(root, "guide.md")).toBe(markdown);
+    expect(existsSync(join(root, "a.svg"))).toBe(false);
+  });
+
+  /**
+    * Given a block followed by an opening output marker with no closing one
    * When nicevg doc runs
    * Then the block fails and the markdown is left as it is
    */
@@ -296,7 +313,24 @@ describe("nicevg doc diagram scripts", () => {
   });
 
   /**
-   * Given a block reading process, require and fetch
+    * Given a block importing a file through a symbolic link to a directory outside the repository
+    * When nicevg doc runs
+    * Then it fails, saying the import leads outside the sandbox directory
+    */
+  test("refuses an import through a symbolic link leading outside the sandbox directory", () => {
+    const outside = mkdtempSync(join(tmpdir(), "nicevg-outside-"));
+    writeFileSync(join(outside, "x.ts"), "export {};");
+    const root = repository({ "docs/guide.md": oneBlock(`import "./linked/x.ts";`) });
+    symlinkSync(outside, join(root, "docs", "linked"), "junction");
+
+    const [failure] = doc(root, ["docs/guide.md"]).result.failures;
+
+    expect(failure.message).toBe("The diagram script imports what it may not");
+    expect(failure.error).toContain("it leads outside the sandbox directory");
+  });
+
+  /**
+    * Given a block reading process, require and fetch
    * When nicevg doc runs
    * Then none exists in the sandbox
    */
@@ -318,6 +352,21 @@ describe("nicevg doc diagram scripts", () => {
     const { stderr, result } = doc(root, ["docs/guide.md"]);
 
     expect(stderr).toBe("docs/guide.md:1: now number number\n");
+    expect(result.failures).toEqual([]);
+  });
+
+  /**
+   * Given a block logging a BigInt, undefined and an object
+   * When nicevg doc runs
+   * Then it draws, the BigInt and undefined written as String writes them and the object as JSON
+   */
+  test("writes what JSON cannot, such as a BigInt and undefined, to the console as String does", () => {
+    const code = `import { render } from "nicevg";\nconsole.log(1n, undefined, { a: 1 });\nrender({ nodes: [] });`;
+    const root = repository({ "docs/guide.md": oneBlock(code) });
+
+    const { stderr, result } = doc(root, ["docs/guide.md"]);
+
+    expect(stderr).toBe('docs/guide.md:1: 1 undefined {"a":1}\n');
     expect(result.failures).toEqual([]);
   });
 });

@@ -6,7 +6,7 @@
 //! connector runs on to the head's tip, where it meets its node.
 
 use crate::diagram::{connector_elements, connector_points, non_empty, translation};
-use crate::geometry::{Point, format_number, hypot, number_list, point, round};
+use crate::geometry::{Point, format_number, hypot, point, point_list, round};
 use crate::xml::{Document, Element, Path};
 
 /// An arrowhead polygon at one end of a shaft: where its tip points along
@@ -100,11 +100,9 @@ fn polygons_within(document: &Document, ancestor: &[usize]) -> Vec<Path> {
 
 fn polygon_points(document: &Document, path: &[usize]) -> Vec<Point> {
     let offset = translation(document, path);
-    number_list(document.element(path).attr("points"))
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|[x, y]| point(x + offset.x, y + offset.y))
+    point_list(document.element(path).attr("points"))
+        .into_iter()
+        .map(|p| point(p.x + offset.x, p.y + offset.y))
         .collect()
 }
 
