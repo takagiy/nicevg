@@ -25,10 +25,10 @@ The package also has the `nicevg` command: install it with `npm install -g nicev
 ### CLI
 
 ```sh
-nicevg < diagram.svg > fixed.svg
+nicevg fix-raw < diagram.svg > fixed.svg
 ```
 
-It reads the SVG from stdin and writes the fixed one to stdout. The issues it could not fix go to stderr, and the exit status is `0` with none left, `1` with some, and `2` for invalid SVG.
+`nicevg fix-raw` reads the SVG from stdin and writes the fixed one to stdout. The issues it could not fix go to stderr, and the exit status is `0` with none left, `1` with some, and `2` for invalid SVG.
 
 ### Library
 

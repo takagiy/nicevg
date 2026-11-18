@@ -38,7 +38,7 @@ const bends = (svg: string, id: string) => {
 };
 
 for (const [runtime, cli] of runtimes) {
-  const run = (input: string, args: string[] = []) => {
+  const run = (input: string, args: string[] = ["fix-raw"]) => {
     const { status, stdout, stderr } = spawnSync(runtime, [cli, ...args], { input, encoding: "utf8" });
     return { status, stdout, stderr };
   };
@@ -109,15 +109,31 @@ for (const [runtime, cli] of runtimes) {
     });
 
     /**
+     * Given no command
+     * When the command runs with a diagram on standard input
+     * Then it prints its help to standard error, reads nothing and exits with status 2
+     */
+    test("prints help instead of reading stdin when given no command", () => {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>`;
+
+      const result = run(svg, []);
+
+      assert.equal(result.status, 2);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, /Usage: nicevg doc/);
+      assert.match(result.stderr, /nicevg fix-raw/);
+    });
+
+    /**
      * Given a valid diagram on standard input
-     * When the command is also given an argument, as the old fix and check commands and the old --arrange option took
+     * When nicevg fix-raw is also given an argument, such as a file or the old --arrange option, or the old fix command is used
      * Then it fails without writing anything to standard output
      */
     test("rejects file and subcommand arguments because input is stdin only", () => {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>`;
 
-      for (const argument of ["fix", "diagram.svg", "--arrange"]) {
-        const result = run(svg, [argument]);
+      for (const args of [["fix"], ["fix-raw", "diagram.svg"], ["fix-raw", "--arrange"]]) {
+        const result = run(svg, args);
 
         assert.notEqual(result.status, 0);
         assert.equal(result.stdout, "");
@@ -151,7 +167,7 @@ for (const [runtime, cli] of runtimes) {
      */
     test("succeeds when the reader of stdout goes away early", async () => {
       const svg = readFileSync(new URL("../../../../docs/images/before.svg", import.meta.url), "utf8");
-      const child = spawn(runtime, [cli], { stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawn(runtime, [cli, "fix-raw"], { stdio: ["pipe", "pipe", "pipe"] });
       let stderr = "";
       child.stderr.on("data", (chunk) => (stderr += chunk));
       child.stdout.once("data", () => child.stdout.destroy());
@@ -173,7 +189,7 @@ for (const [runtime, cli] of runtimes) {
 
       const statuses = await Promise.all(
         Array.from({ length: 16 }, () => {
-          const child = spawn(runtime, [cli], { stdio: ["pipe", "ignore", "ignore"] });
+          const child = spawn(runtime, [cli, "fix-raw"], { stdio: ["pipe", "ignore", "ignore"] });
           child.stdin.end(svg);
           return new Promise((resolve) => child.on("exit", (code, signal) => resolve(signal ?? code)));
         }),
