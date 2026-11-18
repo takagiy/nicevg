@@ -178,6 +178,57 @@ fn reports_the_gap_a_connector_label_between_nodes_needs() {
     assert!((details["requiredGap"].as_f64().unwrap() - (label.width + 16.0)).abs() < 0.01);
 }
 
+/// `a` 20px left of the container `cluster`, and a connector from `a` to
+/// `service` inside it, whose label is placed at `label_x`.
+fn label_into_a_container(label_x: u32) -> String {
+    format!(
+        r#"
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 240">
+        <g data-node="a"><rect x="20" y="90" width="100" height="56"/><text x="70" y="123" text-anchor="middle" font-size="14">A</text></g>
+        <g data-node="cluster">
+          <rect x="140" y="20" width="360" height="200"/>
+          <text x="156" y="44" font-size="13">Cluster</text>
+          <g data-node="service"><rect x="360" y="90" width="120" height="56"/><text x="420" y="123" text-anchor="middle" font-size="14">Service</text></g>
+        </g>
+        <line id="e" data-from="a" data-to="service" x1="120" y1="118" x2="360" y2="118"/>
+        <text data-label="e-label" data-label-for="e" x="{label_x}" y="107" text-anchor="middle" font-size="11">calls the service</text>
+      </svg>
+    "#
+    )
+}
+
+/// Given a connector from a node to a child of the container beside it,
+///   with its label across the container's border
+/// When the diagram is analyzed
+/// Then the gap between the node and the container is reported as needing
+///   room for the label
+#[test]
+fn reports_the_gap_a_label_into_a_container_needs() {
+    let report = analyze(&label_into_a_container(140));
+    let label = label_bounds(&report, "e-label");
+
+    let issue = report
+        .issues
+        .iter()
+        .find(|issue| issue.code == "node-gap")
+        .expect("a node-gap issue");
+    let details = issue.details.as_ref().expect("details");
+
+    assert_eq!(issue.elements, ["a", "cluster"]);
+    assert!((details["requiredGap"].as_f64().unwrap() - (label.width + 16.0)).abs() < 0.01);
+}
+
+/// Given a connector from a node to a child of the container beside it,
+///   with its label in the container's free space
+/// When the diagram is analyzed
+/// Then no gap is reported
+#[test]
+fn ignores_the_gap_when_a_label_into_a_container_lies_inside_it() {
+    let report = analyze(&label_into_a_container(250));
+
+    assert!(!has_issue(&report, "node-gap"), "{:?}", issue_codes(&report));
+}
+
 /// Given a connector whose segment passes through a third node
 /// When the diagram is analyzed
 /// Then the connector and obstructing node are reported
@@ -482,6 +533,57 @@ fn ignores_labels_inside_a_container_unless_they_cover_a_child() {
         issues_with_code(&report, "label-node-overlap"),
         [["over-child", "service"]]
     );
+}
+
+/// Given a container holding a child node, with a label in its free space
+///   lying on the container's title
+/// When the diagram is analyzed
+/// Then the label is reported as overlapping the container
+#[test]
+fn reports_labels_on_a_text_of_their_container() {
+    let svg = r#"
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="360" height="200" />
+          <text x="36" y="48" font-size="13">Cluster</text>
+          <g data-node="service">
+            <rect x="60" y="80" width="120" height="56" />
+            <text x="120" y="113" text-anchor="middle" font-size="14">Service</text>
+          </g>
+        </g>
+        <text data-label="note" x="40" y="46" font-size="11">free note</text>
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    assert_eq!(issues_with_code(&report, "label-node-overlap"), [["note", "cluster"]]);
+}
+
+/// Given a connector between two children of a container, with its label
+///   written inside the container's group, in its free space
+/// When the diagram is analyzed
+/// Then the label is not taken for the container's own text, and no
+///   overlap is reported
+#[test]
+fn does_not_take_a_label_inside_a_container_group_for_its_text() {
+    let svg = r#"
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="360" height="200" />
+          <text x="36" y="48" font-size="13">Cluster</text>
+          <g data-node="p"><rect x="60" y="80" width="100" height="56"/><text x="110" y="113" text-anchor="middle" font-size="14">P</text></g>
+          <g data-node="q"><rect x="260" y="80" width="100" height="56"/><text x="310" y="113" text-anchor="middle" font-size="14">Q</text></g>
+          <text data-label="e-label" data-label-for="e" x="210" y="95" text-anchor="middle" font-size="11">calls</text>
+        </g>
+        <line id="e" data-from="p" data-to="q" x1="160" y1="108" x2="260" y2="108" />
+      </svg>
+    "#;
+
+    let report = analyze(svg);
+
+    assert_eq!(report.diagram.node("cluster").expect("cluster").label_bounds.len(), 1);
+    assert!(!has_issue(&report, "label-node-overlap"), "{:?}", issue_codes(&report));
 }
 
 /// Given a free label that extends beyond the viewBox safety area
