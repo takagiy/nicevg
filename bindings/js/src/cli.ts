@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * The nicevg command: an SVG diagram on stdin, fixed and arranged by the
- * native library, out on stdout. Issues left go to stderr, one per line;
- * the exit status is 0 with none left, 1 with some, and 2 for bad input.
- */
+  * The nicevg command. `nicevg fix-raw` takes an SVG diagram on stdin, fixed
+  * and arranged by the native library, out on stdout. Issues left go to
+  * stderr, one per line; the exit status is 0 with none left, 1 with some,
+  * and 2 for bad input.
+  */
 
 import { readFileSync, writeSync } from "node:fs";
 import { parseArgs } from "node:util";
@@ -11,9 +12,18 @@ import { parseArgs } from "node:util";
 import { NicevgError, render } from "./index.ts";
 import { man } from "./man.ts";
 
-const ABOUT =
-  "A diagram tool for AI agents. It adjusts the layout and fixes visual issues, so the agent does not have to. With no command, it reads an SVG diagram from stdin and writes the result to stdout.";
-const USAGE = "Usage: nicevg\n       nicevg doc [options] <files...>\n       nicevg run <script> [options]\n       nicevg man [<tag> | <text>]...";
+const ABOUT = "A diagram tool for AI agents. It adjusts the layout and fixes visual issues, so the agent does not have to.";
+const USAGE = "Usage: nicevg doc [options] <files...>\n       nicevg run <script> [options]\n       nicevg fix-raw < <in.svg>\n       nicevg man [<tag> | <text>]...";
+const HELP = `${ABOUT}\n\n${USAGE}\n\nOptions:\n  -h, --help     Print help\n  -V, --version  Print version\n`;
+const FIX_RAW_USAGE = `Usage: nicevg fix-raw < <in.svg>
+
+Reads an SVG diagram from stdin, fixes it and writes it to stdout. The issues
+left go to stderr, one per line. The exit status is 0 with none left, 1 with
+some, and 2 for invalid SVG or wrong arguments.
+
+Options:
+  -h, --help  Print help
+`;
 const RUN_USAGE = `Usage: nicevg run <script> [options]
        nicevg run -s <code> [options]
 
@@ -200,32 +210,16 @@ function manMain(queries: string[]): number {
   return missing.length > 0 ? 1 : 0;
 }
 
-function main(args: string[]): number | Promise<number> {
-  if (args[0] === "doc") {
-    return docMain(args.slice(1));
-  }
-  if (args[0] === "run") {
-    return runMain(args.slice(1));
-  }
-  if (args[0] === "man") {
-    return manMain(args.slice(1));
-  }
-  for (const arg of args) {
-    if (arg === "-h" || arg === "--help") {
-      print(`${ABOUT}\n\n${USAGE}\n\nOptions:\n  -h, --help     Print help\n  -V, --version  Print version\n`);
-      return 0;
-    }
-    if (arg === "-V" || arg === "--version") {
-      const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-      print(`nicevg ${version}\n`);
-      return 0;
-    }
+/** `nicevg fix-raw`: exits 0 with no issues left, 1 with some, 2 for invalid SVG or wrong arguments. */
+function fixRawMain(args: string[]): number {
+  if (args.length === 1 && (args[0] === "-h" || args[0] === "--help")) {
+    print(FIX_RAW_USAGE);
+    return 0;
   }
   if (args.length > 0) {
-    process.stderr.write(`error: unexpected argument '${args[0]}' found\n\n${USAGE}\n\nFor more information, try '--help'.\n`);
+    process.stderr.write(`error: unexpected argument '${args[0]}' found\n\n${FIX_RAW_USAGE}`);
     return 2;
   }
-
   let svg;
   try {
     svg = render({ svg: readFileSync(0, "utf8") });
@@ -241,6 +235,34 @@ function main(args: string[]): number | Promise<number> {
     process.stderr.write(`${issue.code}: ${issue.message}\n`);
   }
   return svg.report.valid ? 0 : 1;
+}
+
+function main(args: string[]): number | Promise<number> {
+  const [command, ...rest] = args;
+  if (command === "doc") {
+    return docMain(rest);
+  }
+  if (command === "run") {
+    return runMain(rest);
+  }
+  if (command === "fix-raw") {
+    return fixRawMain(rest);
+  }
+  if (command === "man") {
+    return manMain(rest);
+  }
+  if (command === "-h" || command === "--help") {
+    print(HELP);
+    return 0;
+  }
+  if (command === "-V" || command === "--version") {
+    const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    print(`nicevg ${version}\n`);
+    return 0;
+  }
+  // With no command, help rather than waiting on stdin.
+  process.stderr.write(command === undefined ? HELP : `error: unexpected argument '${command}' found\n\n${USAGE}\n\nFor more information, try '--help'.\n`);
+  return 2;
 }
 
 // Set rather than exit, so stderr finishes writing first.

@@ -20,7 +20,7 @@ npm install -g nicevg
 brew install takagiy/tap/nicevg
 ```
 
-To run it once without installing: `npx nicevg < diagram.svg > fixed.svg`, or `bunx nicevg`.
+To run it once without installing: `npx nicevg fix-raw < diagram.svg > fixed.svg`, or `bunx nicevg fix-raw`.
 
 ### TypeScript library (Bun, Node)
 
@@ -33,7 +33,7 @@ npm install nicevg
 ### CLI
 
 ```sh
-nicevg < diagram.svg > fixed.svg
+nicevg fix-raw < diagram.svg > fixed.svg
 ```
 
 ### TypeScript library

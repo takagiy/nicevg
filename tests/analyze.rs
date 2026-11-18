@@ -276,6 +276,16 @@ fn rejects_malformed_xml_as_an_svg_input_error() {
     assert!(nicevg::analyze("<svg><g></svg>").is_err());
 }
 
+/// Given groups nested 300 deep, deeper than the reader walks
+/// When the public API analyzes it
+/// Then callers receive an input error instead of a stack overflow
+#[test]
+fn rejects_elements_nested_too_deep() {
+    let svg = format!("<svg>{}{}</svg>", "<g>".repeat(300), "</g>".repeat(300));
+
+    assert!(nicevg::analyze(&svg).is_err());
+}
+
 /// Given a standalone shape that cannot be mapped to a diagram node
 /// When the SVG is analyzed
 /// Then it is exposed for diagnostics rather than assigned guessed semantics

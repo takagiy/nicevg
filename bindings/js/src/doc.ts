@@ -73,17 +73,19 @@ export function outside(root: string, path: string): boolean {
   return inside.startsWith("../") || isAbsolute(inside);
 }
 
-/** The nicevg comments in `markdown`, and those not at its top level. */
-function blocksOf(markdown: string): { blocks: Block[]; nested: number[] } {
+/** The nicevg comments in `markdown` that can be drawn, and the lines of those that cannot, with why. */
+function blocksOf(markdown: string): { blocks: Block[]; broken: { line: number; message: string }[] } {
   const tree = fromMarkdown(markdown);
   const blocks: Block[] = [];
-  const nested: number[] = [];
+  const broken: { line: number; message: string }[] = [];
   const visit = (node: Nodes, top: boolean) => {
     if (node.type === "html" && BLOCK.test(node.value)) {
-      if (top) {
-        blocks.push(block(markdown, node));
+      const found = top ? block(markdown, node) : undefined;
+      if (found) {
+        blocks.push(found);
       } else {
-        nested.push(node.position!.start.line);
+        const message = top ? "A diagram block must end with -->" : "A diagram block must be at the top level of the markdown, not in a list or quote";
+        broken.push({ line: node.position!.start.line, message });
       }
     }
     if ("children" in node) {
@@ -93,12 +95,16 @@ function blocksOf(markdown: string): { blocks: Block[]; nested: number[] } {
     }
   };
   visit(tree, false);
-  return { blocks, nested };
+  return { blocks, broken };
 }
 
-function block(markdown: string, node: Html): Block {
+/** The block `node` starts, or `undefined` when no `-->` ends it. */
+function block(markdown: string, node: Html): Block | undefined {
   const start = node.position!.start.offset!;
   const close = markdown.indexOf("-->", start);
+  if (close < 0) {
+    return undefined;
+  }
   const text = markdown.slice(start, close);
   const newline = text.indexOf("\n");
   const first = newline < 0 ? text : text.slice(0, newline);
@@ -233,7 +239,7 @@ export function cutAt<Extra extends unknown[]>(bytes: number, say: (text: string
   let written = 0;
   return (text, ...extra) => {
     const before = written;
-    written += text.length;
+    written += Buffer.byteLength(text);
     if (written <= bytes) {
       say(text, ...extra);
     } else if (before <= bytes) {
@@ -308,9 +314,9 @@ export async function doc(files: string[], options: DocOptions, print: (text: st
     }
   }
 
-  for (const { path, file, markdown, blocks, nested } of documents) {
-    for (const line of nested) {
-      result.failures.push({ file, line, message: "A diagram block must be at the top level of the markdown, not in a list or quote" });
+  for (const { path, file, markdown, blocks, broken } of documents) {
+    for (const { line, message } of broken) {
+      result.failures.push({ file, line, message });
     }
     // Module blocks by name; two of one name fail rather than one hiding the other.
     const named = new Map<string, Block[]>();

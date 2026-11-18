@@ -8,7 +8,7 @@ use regex::Regex;
 use serde::Serialize;
 
 use crate::arrow::{drawn_connectors, names_an_end};
-use crate::geometry::{Bounds, Point, enclosing, number_list, parse_number, point, points_bounds};
+use crate::geometry::{Bounds, Point, enclosing, finite_number, parse_number, point, point_list, points_bounds};
 use crate::inspect::PARENT_PADDING;
 use crate::pathdata;
 use crate::route::Side;
@@ -254,12 +254,7 @@ pub(crate) fn connector_points(document: &Document, path: &[usize]) -> Vec<Point
             shifted(point(number_attribute(element, "x1"), number_attribute(element, "y1"))),
             shifted(point(number_attribute(element, "x2"), number_attribute(element, "y2"))),
         ],
-        "polyline" => number_list(element.attr("points"))
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|[x, y]| shifted(point(*x, *y)))
-            .collect(),
+        "polyline" => point_list(element.attr("points")).into_iter().map(shifted).collect(),
         "path" => pathdata::end_points(element.attr("d"))
             .into_iter()
             .map(shifted)
@@ -354,7 +349,7 @@ struct Recognized {
 fn padding(group: &Element, frame: Option<&Element>) -> Option<f64> {
     std::iter::once(group)
         .chain(frame)
-        .find_map(|element| non_empty(element.attr("data-padding"))?.parse().ok())
+        .find_map(|element| finite_number(non_empty(element.attr("data-padding"))?))
 }
 
 /// Whether a node group is drawn as it is: its contents are a picture, not
@@ -386,11 +381,9 @@ pub fn content_bounds(document: &Document, path: &[usize]) -> Option<Bounds> {
             "line" | "polyline" | "path" => points_bounds(&connector_points(document, path)),
             "polygon" => {
                 let offset = translation(document, path);
-                let points: Vec<Point> = number_list(element.attr("points"))
-                    .as_chunks::<2>()
-                    .0
-                    .iter()
-                    .map(|[x, y]| point(x + offset.x, y + offset.y))
+                let points: Vec<Point> = point_list(element.attr("points"))
+                    .into_iter()
+                    .map(|p| point(p.x + offset.x, p.y + offset.y))
                     .collect();
                 points_bounds(&points)
             }

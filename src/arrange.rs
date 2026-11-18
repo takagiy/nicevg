@@ -19,7 +19,9 @@ use crate::geometry::{
     Bounds, Point, format_number, hypot, intersection, parse_number, point, points_bounds, segment_intersects_interior,
     segments,
 };
-use crate::route::{Fade, SHORT_END, SHORT_END_FADE, chords_cross, crossings, route_cost, routes_cost, turns};
+use crate::route::{
+    CLEARANCE, Fade, SHORT_END, SHORT_END_FADE, chords_cross, crossings, route_cost, routes_cost, turns,
+};
 use crate::xml::Element;
 use crate::{AnalysisReport, SvgInputError, parse};
 
@@ -83,8 +85,6 @@ const LONE_PORT_COST: f64 = 8.0;
 /// Below this unevenness, in even gaps, a lone connector end counts as
 /// centred: rerouting it in place is not worth trying.
 const LONE_PORT_SLACK: f64 = 0.1;
-/// How far connectors keep from nodes they pass.
-const CLEARANCE: f64 = 8.0;
 /// A moved node keeps this far from other nodes, its container's edges and
 /// other nodes' labels, unless it was already closer.
 const NODE_GAP: f64 = 20.0;

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::arrow::shaft_end;
 use crate::diagram::{custom_extent, node_group, non_empty, number_attribute, translation};
-use crate::geometry::{Bounds, Point, enclosing, format_number, point};
+use crate::geometry::{Bounds, Point, enclosing, finite_number, format_number, point};
 use crate::inspect::DiagramIssue;
 use crate::inspect::PARENT_PADDING;
 use crate::text::text_bounds;
@@ -850,7 +850,7 @@ fn measure_picture<'a>(svg: &'a str, root_attrs: &str, referrer: &str) -> Result
         padding: elements
             .iter()
             .find(|(_, element)| element.has_attr("data-bounds"))
-            .and_then(|(_, element)| non_empty(element.attr("data-padding"))?.parse().ok()),
+            .and_then(|(_, element)| finite_number(non_empty(element.attr("data-padding"))?)),
     })
 }
 

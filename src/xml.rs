@@ -193,6 +193,10 @@ impl Document {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError(pub String);
 
+/// How deep elements may nest: the tree is walked by recursion, which a
+/// deeper one would overflow the stack of.
+const MAX_DEPTH: usize = 256;
+
 /// Parses a document the way the original DOM parser did: line breaks are
 /// normalized, literal whitespace in attribute values becomes spaces, text
 /// before the root is kept only when it is whitespace, and trailing
@@ -229,7 +233,12 @@ pub fn parse(source: &str) -> Result<Document, ParseError> {
     loop {
         let event = reader.read_event().map_err(|e| error(e.to_string()))?;
         match event {
-            Event::Start(start) => stack.push(element_of(&start)?),
+            Event::Start(start) => {
+                if stack.len() == MAX_DEPTH {
+                    return Err(error(format!("elements nest deeper than {MAX_DEPTH}")));
+                }
+                stack.push(element_of(&start)?);
+            }
             Event::Empty(start) => {
                 let element = element_of(&start)?;
                 push(&mut stack, &mut document, Node::Element(element));

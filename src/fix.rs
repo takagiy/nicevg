@@ -1763,7 +1763,8 @@ fn improve_ports(
         } else {
             (node.bounds.x, node.bounds.width)
         };
-        let margin = (length / 4.0).max(8.0);
+        // At most half the side, so a side under 16px leaves its middle.
+        let margin = (length / 4.0).max(8.0).min(length / 2.0);
         (low + margin, low + length - margin)
     };
     // Whether an end can take the coordinate `value` along `side`: within
@@ -2161,11 +2162,7 @@ fn absolute_length(text: &str) -> Option<(f64, &str)> {
         .unwrap_or(trimmed.len());
     let (number, unit) = trimmed.split_at(unit_at);
     let absolute = ["", "px", "pt", "pc", "mm", "cm", "in", "em", "ex"];
-    let value = number
-        .trim()
-        .parse::<f64>()
-        .ok()
-        .filter(|value| value.is_finite() && *value > 0.0)?;
+    let value = crate::geometry::finite_number(number).filter(|value| *value > 0.0)?;
     absolute.contains(&unit).then_some((value, unit))
 }
 

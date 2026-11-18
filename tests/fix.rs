@@ -2692,3 +2692,55 @@ fn moves_a_child_off_its_parent_s_text() {
         result.report.issues
     );
 }
+
+/// Given icons 14px a side, smaller than the margins ports keep from corners, joined by connectors
+/// When the diagram is fixed and arranged
+/// Then both succeed
+#[test]
+fn fixes_nodes_smaller_than_the_port_margins() {
+    let node = |id: &str, x: u32, y: u32| {
+        format!(
+            r#"<g data-node="{id}" data-custom="true"><rect data-bounds="" x="{x}" y="{y}" width="14" height="14"/></g>"#
+        )
+    };
+    let line = |id: &str, from: &str, to: &str| {
+        format!(r#"<line id="{id}" data-from="{from}" data-to="{to}" x1="0" y1="0" x2="1" y2="1"/>"#)
+    };
+    let svg = [
+        r#"<svg xmlns="http://www.w3.org/2000/svg">"#.to_owned(),
+        node("n0", 132, 99),
+        node("n1", 176, 228),
+        node("n2", 178, 186),
+        node("n3", 41, 112),
+        node("n4", 52, 116),
+        line("c0", "n3", "n1"),
+        line("c1", "n2", "n1"),
+        line("c2", "n3", "n0"),
+        line("c3", "n3", "n2"),
+        line("c4", "n0", "n4"),
+        line("c5", "n3", "n1"),
+        "</svg>".to_owned(),
+    ]
+    .concat();
+
+    fix(&svg);
+    arrange(&svg);
+}
+
+/// Given numbers no diagram holds: polygon points that are no number, translates summing past what an f64 holds, and a NaN padding
+/// When each diagram is fixed
+/// Then each number is read as an attribute value is, and fixing succeeds
+#[test]
+fn reads_numbers_out_of_range_as_attribute_values() {
+    let target = r#"<g data-node="n2"><rect x="300" y="0" width="100" height="40"/><text x="350" y="25" text-anchor="middle" font-size="12">N2</text></g>
+      <line id="c" data-from="n1" data-to="n2" x1="0" y1="0" x2="300" y2="0"/></svg>"#;
+    let sources = [
+        r#"<g data-node="n1" data-custom="true"><polygon points="0 0 100 0 Infinity 40"/></g>"#,
+        r#"<g transform="translate(1e308 0)"><g transform="translate(1e308 0)"><g data-node="n1"><rect x="0" y="0" width="100" height="40"/><text x="50" y="25" text-anchor="middle" font-size="12">N1</text></g></g></g>"#,
+        r#"<g data-node="n1" data-padding="NaN"><rect x="0" y="0" width="100" height="40"/><text x="50" y="25" text-anchor="middle" font-size="12">N1</text></g>"#,
+    ];
+
+    for source in sources {
+        fix(&format!(r#"<svg xmlns="http://www.w3.org/2000/svg">{source}{target}"#));
+    }
+}

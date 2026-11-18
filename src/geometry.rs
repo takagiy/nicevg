@@ -113,11 +113,39 @@ pub fn js_number(text: &str) -> f64 {
     }
 }
 
-/// `Number(string)` for attribute values, collapsing anything that is not
-/// a finite number to zero as the attribute readers do.
+/// The largest magnitude a number read from a diagram takes, so that sums and
+/// products of coordinates stay finite.
+const LIMIT: f64 = 1e7;
+
+/// A number read from a diagram: held within `LIMIT`, and zero when it is not
+/// a finite number, as the attribute readers do.
+pub fn within(value: f64) -> f64 {
+    if value.is_finite() {
+        value.clamp(-LIMIT, LIMIT)
+    } else {
+        0.0
+    }
+}
+
+/// `Number(string)` for attribute values, read as `within` says.
 pub fn parse_number(text: &str) -> f64 {
+    within(js_number(text))
+}
+
+/// `Number(string)` held within `LIMIT`, if it is a finite number.
+pub fn finite_number(text: &str) -> Option<f64> {
     let value = js_number(text);
-    if value.is_finite() { value } else { 0.0 }
+    value.is_finite().then(|| within(value))
+}
+
+/// A `points` attribute as points, each number read as `within` says.
+pub fn point_list(text: &str) -> Vec<Point> {
+    number_list(text)
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|[x, y]| point(within(*x), within(*y)))
+        .collect()
 }
 
 /// `string.trim().split(/[\s,]+/).map(Number)`.
