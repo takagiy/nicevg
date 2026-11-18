@@ -18,6 +18,9 @@ const page = readFileSync(new URL("../../doc/nicevg.txt", import.meta.url), "utf
 /** The help page's section under `*tag*`, up to the next rule. */
 const section = (tag: string) => page.slice(page.indexOf(`*${tag}*`)).split(/\n[-=]{78}\n/)[0]!;
 
+/** `text` emphasized as `nicevg man` does on a terminal. */
+const em = (text: string) => `\x1b[1;31m${text}\x1b[0m`;
+
 /** The help page's code block after the line ending with `lead` and `>`, its tab indent taken off. */
 const codeAfter = (lead: string) => {
   const start = page.indexOf(`${lead} >\n`) + lead.length + 3;
@@ -204,33 +207,105 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
       assert.match(readFileSync(join(root, "guide.md"), "utf8"), /<!-- nicevg:output -->\n!\[a\]\(a\.svg\)\n<!-- \/nicevg:output -->/);
     });
 
+    /** `nicevg man` with `queries`, its emphasis forced on as on a terminal. */
+    const man = (...queries: string[]) => {
+      const env: NodeJS.ProcessEnv = { ...process.env, FORCE_COLOR: "1" };
+      delete env.NO_COLOR;
+      const { status, stdout, stderr } = spawnSync(runtime, [cli, "man", ...queries], { env, encoding: "utf8" });
+      return { status, stdout, stderr };
+    };
+
     /**
-     * [x] When `nicevg man` runs, it can print the help page to stdout and exit 0.
+     * [x] When `nicevg man` runs with no query, it can print the table of contents and how to query it.
      * Given the installed command
-     * When `nicevg man` runs
-     * Then the help page is written to stdout as it is, and the command succeeds
+     * When `nicevg man` runs with no query
+     * Then the entries of the table of contents are written, then how to read a tag and search text
      */
-    test("man prints the help page", () => {
-      const result = run("", ["man"]);
+    test("man with no query prints the table of contents and how to query it", () => {
+      const result = man();
 
       assert.equal(result.status, 0, result.stderr);
-      assert.equal(result.stdout, page);
+      const [toc, hint] = result.stdout.trimEnd().split("\n\n");
+      const lines = toc!.split("\n");
+      assert.match(lines[0]!, /^1\. Introduction \.+ \|nicevg-intro\|$/);
+      assert.match(lines.at(-1)!, /\|nicevg-engine-issue\|$/);
+      assert.ok(lines.every((line) => /\|[\w-]+\|$/.test(line)), toc);
+      assert.match(hint!, /`nicevg man <tag>`/);
+      assert.match(hint!, /`nicevg man <text>`/);
     });
 
     /**
-     * [x] When `nicevg man --toc` runs, it can print the table of contents alone.
-     * Given the installed command
-     * When `nicevg man --toc` runs
-     * Then only the entries of the table of contents are written
+     * [x] When a query is a tag, `nicevg man` can print that section with its title line and subsections.
+     * Given the tag of 2.1 Input, which holds the diagram and module blocks
+     * When `nicevg man` runs with it
+     * Then 2.1 Input is written from its title line through the module blocks, and 2.2 Output is not
      */
-    test("man --toc prints the table of contents alone", () => {
-      const result = run("", ["man", "--toc"]);
+    test("man prints the section of a tag with its subsections", () => {
+      const result = man("nicevg-cli-doc-input");
 
       assert.equal(result.status, 0, result.stderr);
-      const lines = result.stdout.trimEnd().split("\n");
-      assert.match(lines[0]!, /^1\. Introduction \.+ \|nicevg-intro\||nicevg-engine-issue|$/);
-      assert.match(lines.at(-1)!, /\|nicevg-engine-issue\|$/);
-      assert.ok(lines.every((line) => /\|[\w-]+\||nicevg-engine-issue|$/.test(line)), result.stdout);
+      assert.equal(result.stdout, `${page.slice(page.indexOf("2.1 Input  "), page.indexOf(`\n${"-".repeat(78)}\n2.2 Output`))}\n`);
+    });
+
+    /**
+     * [x] When a query is text in a section, `nicevg man` can print that section with its title line, without the sections inside or outside it, the text emphasized.
+     * Given text found only in the title line of the node-gap issue
+     * When `nicevg man` runs with it
+     * Then that issue's entry alone is written, the text emphasized
+     */
+    test("man prints the sections holding a text, the text emphasized", () => {
+      const result = man("node-gap");
+
+      assert.equal(result.status, 0, result.stderr);
+      const entry = page.slice(page.indexOf("node-gap  "), page.indexOf("\nnode-outside-parent  ")).trimEnd();
+      assert.equal(result.stdout, `${entry.replaceAll("node-gap", em("node-gap"))}\n`);
+    });
+
+    /**
+     * [x] When matches of several queries nest, `nicevg man` can print only the widest, once, with the emphasis of all.
+     * Given the tag of chapter 2 and text in its diagram blocks section, in either order
+     * When `nicevg man` runs with them
+     * Then chapter 2 is written once, the text emphasized
+     */
+    test("man keeps the widest of nested matches, with all their emphasis", () => {
+      const chapter = page.slice(page.indexOf("2. nicevg doc  "), page.indexOf(`\n\n${"=".repeat(78)}\n3. Diagram DSL`));
+      const expected = `${chapter.replaceAll("alt text", em("alt text"))}\n`;
+
+      for (const queries of [["nicevg-cli-doc", "alt text"], ["alt text", "nicevg-cli-doc"]]) {
+        const result = man(...queries);
+
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(result.stdout, expected);
+      }
+    });
+
+    /**
+     * [x] When matches do not nest, `nicevg man` can print each in page order, separated by a rule.
+     * Given the node-gap issue's tag and then the introduction's tag
+     * When `nicevg man` runs with them
+     * Then the introduction, a rule and the node-gap entry are written
+     */
+    test("man prints matches that do not nest in page order, separated by a rule", () => {
+      const result = man("nicevg-engine-issue-node-gap", "nicevg-intro");
+
+      assert.equal(result.status, 0, result.stderr);
+      const intro = page.slice(page.indexOf("1. Introduction  "), page.indexOf(`\n\n${"=".repeat(78)}\n2. nicevg doc`));
+      const entry = page.slice(page.indexOf("node-gap  "), page.indexOf("\nnode-outside-parent  ")).trimEnd();
+      assert.equal(result.stdout, `${intro}\n\n${"=".repeat(78)}\n${entry}\n`);
+    });
+
+    /**
+     * [x] When a query matches nothing, `nicevg man` can report it and exit 1.
+     * Given a tag and a text found nowhere
+     * When `nicevg man` runs with them
+     * Then the tag's section is written, the text is reported, and the command fails
+     */
+    test("man reports a query that matches nothing", () => {
+      const result = man("nicevg-intro", "no such words");
+
+      assert.equal(result.status, 1);
+      assert.match(result.stdout, /^1\. Introduction/);
+      assert.match(result.stderr, /no section matches 'no such words'/);
     });
 
     /**
