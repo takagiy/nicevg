@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import type { Html, Nodes } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
-import { type Draw, type Script, run } from "./sandbox.ts";
+import { type ConsoleCall, type Draw, type Script, run } from "./sandbox.ts";
 import { type StepReply, layOutSketch } from "./sketch.ts";
 
 export interface DocOptions {
@@ -30,7 +30,7 @@ export interface DocResult {
 }
 
 /** Arguments `nicevg doc` cannot work from, such as files outside any git repository. */
-export class UsageError extends Error {}
+export class UsageError extends Error { }
 
 const BLOCK = /^<!--[ \t]*nicevg(-module)?(?=[ \t\r\n])/;
 const OUTPUT_START = "<!-- nicevg:output -->";
@@ -53,7 +53,7 @@ interface Block {
 }
 
 /** The `.git`-holding directory `path` lies in, if any. */
-function gitRoot(path: string): string | undefined {
+export function gitRoot(path: string): string | undefined {
   for (let dir = dirname(path); ; dir = dirname(dir)) {
     if (existsSync(join(dir, ".git"))) {
       return dir;
@@ -65,10 +65,10 @@ function gitRoot(path: string): string | undefined {
 }
 
 /** `path` relative to `root`, `/`-separated. */
-const shown = (root: string, path: string) => relative(root, path).split(sep).join("/");
+export const shown = (root: string, path: string) => relative(root, path).split(sep).join("/");
 
 /** Whether `path` lies outside `root`: above it, or on another drive. */
-function outside(root: string, path: string): boolean {
+export function outside(root: string, path: string): boolean {
   const inside = shown(root, path);
   return inside.startsWith("../") || isAbsolute(inside);
 }
@@ -126,13 +126,13 @@ function header(text: string): { output?: string; description: string } {
 
 /** Why `path` may not be written, if it may not: it must be an SVG inside `root`, outside `.git`. */
 function unwritable(root: string, path: string): string | undefined {
-if (outside(root, path)) {
-  return "it lies outside the sandbox directory";
-}
-// Compared ignoring case, as Windows and macOS find .GIT where .git is.
-if (shown(root, path).toLowerCase().split("/").includes(".git")) {
-  return "files in .git cannot be written";
-}
+  if (outside(root, path)) {
+    return "it lies outside the sandbox directory";
+  }
+  // Compared ignoring case, as Windows and macOS find .GIT where .git is.
+  if (shown(root, path).toLowerCase().split("/").includes(".git")) {
+    return "files in .git cannot be written";
+  }
   let existing = path;
   while (!existsSync(existing)) {
     existing = dirname(existing);
@@ -197,7 +197,7 @@ function layOut(request: unknown, deadline: number): Promise<Reply | "timeout" |
     );
     child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
     // The process may end before reading its request.
-    child.stdin.on("error", () => {});
+    child.stdin.on("error", () => { });
     child.on("error", (error) => {
       clearTimeout(timer);
       done({ stopped: `as it could not start: ${error.message}` });
@@ -221,11 +221,56 @@ function layOut(request: unknown, deadline: number): Promise<Reply | "timeout" |
 }
 
 /** Writes `text` to `path` through a file beside it, so a stop midway leaves the old file whole. */
-function replace(path: string, text: string): void {
+export function replace(path: string, text: string): void {
   const temporary = `${path}.nicevg-${process.pid}`;
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(temporary, text);
   renameSync(temporary, path);
+}
+
+/** `say`, passed what a script writes until `bytes` of it, then once that the rest was cut. */
+export function cutAt<Extra extends unknown[]>(bytes: number, say: (text: string, ...extra: Extra) => void): (text: string, ...extra: Extra) => void {
+  let written = 0;
+  return (text, ...extra) => {
+    const before = written;
+    written += text.length;
+    if (written <= bytes) {
+      say(text, ...extra);
+    } else if (before <= bytes) {
+      say("(console output cut at 1 MB)", ...extra);
+    }
+  };
+}
+
+/**
+ * Runs `script` in the sandbox of `root` and lays out the diagram it renders:
+ * its SVG and the issues left, or why it drew nothing. `print` takes what the
+ * script writes to the console.
+ */
+export async function drawScript(
+  root: string,
+  script: Script,
+  limits: { timeoutSeconds: number; memoryMB: number },
+  print: (text: string, call: ConsoleCall) => void,
+): Promise<{ svg: string; issues: { code: string; message: string }[] } | { failure: string; error?: string }> {
+  const deadline = Date.now() + limits.timeoutSeconds * 1000;
+  const outcome = await run(root, script, { deadline, memoryBytes: limits.memoryMB * 1024 * 1024 }, print, (request, draw) =>
+    drawDiagram(request, draw, deadline),
+  );
+  if ("failure" in outcome) {
+    return outcome;
+  }
+  const reply = outcome.result;
+  if (reply === "timeout") {
+    return { failure: `Gave up drawing the diagram after ${limits.timeoutSeconds} s` };
+  }
+  if ("stopped" in reply) {
+    return { failure: `The layout process stopped ${reply.stopped}` };
+  }
+  if ("error" in reply) {
+    return { failure: `The diagram passed to render is invalid: ${reply.error}${calledAt(outcome.stack)}` };
+  }
+  return { svg: reply.ok.svg, issues: reply.ok.report.issues };
 }
 
 /** Text in the markdown between output markers, in place of `[from, to)`. */
@@ -305,47 +350,21 @@ export async function doc(files: string[], options: DocOptions, print: (text: st
         continue;
       }
 
-      const deadline = Date.now() + options.timeoutPerDiagramSeconds * 1000;
-      let written = 0;
       const script: Script = { file, line: block.codeLine, code: block.code, modules };
-      const outcome = await run(
-        root,
-        script,
-        { deadline, memoryBytes: options.sandboxMemoryMB * 1024 * 1024 },
-        (text) => {
-          const before = written;
-          written += text.length;
-          if (written <= CONSOLE_BYTES) {
-            print(`${file}:${block.line}: ${text}\n`);
-          } else if (before <= CONSOLE_BYTES) {
-            print(`${file}:${block.line}: (console output cut at 1 MB)\n`);
-          }
-        },
-        (request, draw) => drawDiagram(request, draw, deadline),
+      const say = cutAt(CONSOLE_BYTES, (text) => print(`${file}:${block.line}: ${text}\n`));
+      const drawn = await drawScript(root, script, { timeoutSeconds: options.timeoutPerDiagramSeconds, memoryMB: options.sandboxMemoryMB }, (text) =>
+        say(text),
       );
-      if ("failure" in outcome) {
-        fail(outcome.failure, outcome.error);
+      if ("failure" in drawn) {
+        fail(drawn.failure, drawn.error);
         continue;
       }
-      const reply = outcome.result;
-      if (reply === "timeout") {
-        fail(`Gave up drawing the diagram after ${options.timeoutPerDiagramSeconds} s`);
-        continue;
-      }
-      if ("stopped" in reply) {
-        fail(`The layout process stopped ${reply.stopped}`);
-        continue;
-      }
-      if ("error" in reply) {
-        fail(`The diagram passed to render is invalid: ${reply.error}${calledAt(outcome.stack)}`);
-        continue;
-      }
-      const svg = reply.ok.svg;
+      const svg = drawn.svg;
       if (Buffer.byteLength(svg) > options.maxSvgSizeMB * 1024 * 1024) {
         fail(`The diagram's SVG is larger than ${options.maxSvgSizeMB} MB`);
         continue;
       }
-      for (const issue of reply.ok.report.issues) {
+      for (const issue of drawn.issues) {
         result.remainingIssues.push({ file, line: block.line, code: issue.code, message: issue.message });
       }
       if (target !== undefined && readIfExists(target) !== svg) {

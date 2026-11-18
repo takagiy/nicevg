@@ -72,11 +72,17 @@ const SOURCE = dirname(fileURLToPath(import.meta.url));
 /** What the guest `nicevg` leaves for the host (see guest.ts). */
 const RECORD = "__nicevgRender";
 const DRAW = "__nicevgDraw";
+/** Where the host's console writer waits until the sandbox's console takes it. */
+const CONSOLE = "__nicevgConsole";
+const METHODS = ["log", "info", "warn", "error", "debug"];
+
+/** A console call: its method, and where the script called it as `file:line:column`, if known. */
+export type ConsoleCall = { method: string; place?: string };
 /** A module name the normalizer gives an import it refuses, carrying why: the loader reports it. */
 const REFUSED = "refused:";
 
 /** A syntax error in a diagram script's TypeScript, printed as JavaScript prints one. */
-class StripError extends Error {}
+class StripError extends Error { }
 
 /** `code` with its types stripped, its lines and columns kept; `file` and `line` place an error. */
 function strip(code: string, file: string, line = 1): string {
@@ -193,7 +199,7 @@ export async function run<Result>(
   root: string,
   script: Script,
   limits: Limits,
-  print: (text: string) => void,
+  print: (text: string, call: ConsoleCall) => void,
   then: (request: unknown, draw: Draw) => Promise<Result>,
 ): Promise<Outcome<Result>> {
   let code: string;
@@ -217,16 +223,24 @@ export async function run<Result>(
   );
   const context = runtime.newContext();
   try {
-    const console = context.newObject();
-    for (const level of ["log", "info", "warn", "error", "debug"]) {
-      const write = context.newFunction(level, (...args) =>
-        print(args.map((arg) => (context.typeof(arg) === "string" ? context.getString(arg) : JSON.stringify(context.dump(arg)))).join(" ")),
-      );
-      context.setProp(console, level, write);
-      write.dispose();
-    }
-    context.setProp(context.global, "console", console);
-    console.dispose();
+    // The console is made in the sandbox, so that each call hands over the stack it was made from.
+    const write = context.newFunction("write", (method, stack, ...args) => {
+      const frame = context.getString(stack).split("\n").find((line) => line.trim().startsWith("at") && !line.includes("nicevg:"));
+      const place = frame && /\(?([^()\s]+:\d+:\d+)\)?\s*$/.exec(frame)?.[1];
+      const text = args.map((arg) => (context.typeof(arg) === "string" ? context.getString(arg) : JSON.stringify(context.dump(arg)))).join(" ");
+      print(text, { method: context.getString(method), ...(place && { place }) });
+    });
+    context.setProp(context.global, CONSOLE, write);
+    write.dispose();
+    const made = context.evalCode(
+      `(() => {
+        const write = globalThis.${CONSOLE};
+        delete globalThis.${CONSOLE};
+        globalThis.console = Object.fromEntries(${JSON.stringify(METHODS)}.map((method) => [method, (...args) => write(method, new Error().stack, ...args)]));
+      })();`,
+      "nicevg:console",
+    );
+    context.unwrapResult(made).dispose();
 
     const result = context.evalCode(code, script.file, { type: "module" });
     if (result.error) {

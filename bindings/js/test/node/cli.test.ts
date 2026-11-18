@@ -268,7 +268,7 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
      * Then chapter 2 is written once, the text emphasized
      */
     test("man keeps the widest of nested matches, with all their emphasis", () => {
-      const chapter = page.slice(page.indexOf("2. nicevg doc  "), page.indexOf(`\n\n${"=".repeat(78)}\n3. Diagram DSL`));
+      const chapter = page.slice(page.indexOf("2. nicevg doc  "), page.indexOf(`\n\n${"=".repeat(78)}\n3. nicevg run`));
       const expected = `${chapter.replaceAll("alt text", em("alt text"))}\n`;
 
       for (const queries of [["nicevg-cli-doc", "alt text"], ["alt text", "nicevg-cli-doc"]]) {
@@ -358,20 +358,23 @@ describe("nicevg help page", () => {
 
   /**
    * [x] When the help page is read, every option of `nicevg doc` can be found in `nicevg-cli-doc-input`.
-   * Given the options `nicevg doc --help` lists
-   * When the help page's input section is read
+   * [x] When the help page is read, every option of `nicevg run` can be found in `nicevg-cli-run-input`.
+   * Given the options `nicevg <command> --help` lists
+   * When the help page's input section of the command is read
    * Then it names each
    */
-  test("documents every option of nicevg doc in its input section", () => {
-    const usage = spawnSync("node", [runtimes[0][1], "doc", "--help"], { encoding: "utf8" }).stdout;
-    const options = usage.match(/--[a-z-]+/g)!;
-    const input = section("nicevg-cli-doc-input");
+  for (const command of ["doc", "run"]) {
+    test(`documents every option of nicevg ${command} in its input section`, () => {
+      const usage = spawnSync("node", [runtimes[0][1], command, "--help"], { encoding: "utf8" }).stdout;
+      const options = usage.match(/--[a-z-]+/g)!;
+      const input = section(`nicevg-cli-${command}-input`);
 
-    assert.ok(options.length > 0);
-    for (const option of options) {
-      assert.ok(input.includes(option), option);
-    }
-  });
+      assert.ok(options.length > 0);
+      for (const option of options) {
+        assert.ok(input.includes(option), option);
+      }
+    });
+  }
 
   /**
    * [x] When the help page is read, every `|link|` can be found as a `*tag*`.
