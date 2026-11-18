@@ -53,7 +53,7 @@ pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue>
         children_on_parent_texts(&diagram.nodes),
         duplicate_node_ids(&diagram.nodes),
         node_overlaps(&diagram.nodes),
-        node_gaps(&diagram.nodes),
+        node_gaps(diagram),
         connector_crossings(&diagram.nodes, &diagram.connectors),
         label_overlaps(&diagram.labels),
         label_node_overlaps(&diagram.nodes, &diagram.labels),
@@ -192,8 +192,11 @@ fn node_overlaps(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
         .collect()
 }
 
-fn node_gaps(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
-    comparable_pairs(nodes)
+/// Nodes side by side in a row closer than they may be: 20px, or wider
+/// when a connector joining the two has a label, which must fit between
+/// them beside the straight connector, a clearance off each node.
+fn node_gaps(diagram: &Diagram) -> Vec<DiagramIssue> {
+    comparable_pairs(&diagram.nodes)
         .filter_map(|(first, second)| {
             let vertical_overlap =
                 first.bounds.bottom().min(second.bounds.bottom()) - first.bounds.y.max(second.bounds.y);
@@ -206,7 +209,8 @@ fn node_gaps(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
                 (second, first)
             };
             let gap = right.bounds.x - left.bounds.right();
-            (0.0..NODE_GAP).contains(&gap).then(|| {
+            let required = label_gap(diagram, &left.id, &right.id);
+            (0.0..required).contains(&gap).then(|| {
                 issue(
                     "node-gap",
                     format!(
@@ -214,18 +218,38 @@ fn node_gaps(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
                         left.id,
                         right.id,
                         format_number(gap),
-                        format_number(NODE_GAP)
+                        format_number(required)
                     ),
                     &[&left.id, &right.id],
                     Some(json!({
                         "actualGap": json_number(gap),
-                        "requiredGap": json_number(NODE_GAP),
-                        "shortage": json_number(NODE_GAP - gap),
+                        "requiredGap": json_number(required),
+                        "shortage": json_number(required - gap),
                     })),
                 )
             })
         })
         .collect()
+}
+
+/// The gap two nodes need: the widest label of a connector joining them,
+/// a clearance off each, or the node gap when that is wider.
+fn label_gap(diagram: &Diagram, first: &str, second: &str) -> f64 {
+    let joins = |connector: &DiagramConnector| {
+        (connector.from == first && connector.to == second) || (connector.from == second && connector.to == first)
+    };
+    diagram
+        .labels
+        .iter()
+        .filter(|label| {
+            label
+                .connector
+                .as_deref()
+                .and_then(|id| diagram.connector(id))
+                .is_some_and(joins)
+        })
+        .map(|label| label.bounds.width + 2.0 * CLEARANCE)
+        .fold(NODE_GAP, f64::max)
 }
 
 /// Whether a segment passes through the open interior of a node's shape.

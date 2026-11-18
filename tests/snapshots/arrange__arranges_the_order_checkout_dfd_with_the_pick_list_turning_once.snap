@@ -3,9 +3,9 @@ source: tests/arrange.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "badness": 903.62,
-  "bends": 17,
-  "bentConnectors": 13,
+  "badness": 846.74,
+  "bends": 16,
+  "bentConnectors": 12,
   "cornerShortfall": 0.0,
   "crossings": 1,
   "crossingsNearEnds": 0,
@@ -15,7 +15,7 @@ expression: "support :: quality_of(& result.report)"
   "jogs": 0,
   "jogShortfall": 0.0,
   "lateBends": 0,
-  "parallelDensity": 27.7,
+  "parallelDensity": 30.82,
   "remainingIssues": 0,
   "shortEnds": 0,
   "shortEndShortfall": 0.0,
