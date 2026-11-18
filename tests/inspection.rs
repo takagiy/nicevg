@@ -141,6 +141,43 @@ fn reports_insufficient_spacing_between_nodes_in_the_same_row() {
     })));
 }
 
+/// A row of two nodes 40px apart, joined by a connector whose label is
+/// much wider than the gap.
+const LONG_LABEL_ROW: &str = r#"
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 500 300">
+    <g data-node="first">
+      <rect x="20" y="20" width="100" height="56" />
+      <text x="70" y="53" text-anchor="middle" font-size="14">First</text>
+    </g>
+    <g data-node="second">
+      <rect x="160" y="20" width="100" height="56" />
+      <text x="210" y="53" text-anchor="middle" font-size="14">Second</text>
+    </g>
+    <path id="flow" data-from="first" data-to="second" d="M 120 48 L 160 48" />
+    <text data-label="flow" data-label-for="flow" x="140" y="39" text-anchor="middle" font-size="12">a fairly long label</text>
+  </svg>
+"#;
+
+/// Given two nodes in a row joined by a connector whose label is wider than their gap
+/// When the diagram is analyzed
+/// Then the gap the label needs, its width and 8px on each side, is reported as required
+#[test]
+fn reports_the_gap_a_connector_label_between_nodes_needs() {
+    let report = analyze(LONG_LABEL_ROW);
+    let label = label_bounds(&report, "flow");
+
+    let issue = report
+        .issues
+        .iter()
+        .find(|issue| issue.code == "node-gap")
+        .expect("a node-gap issue");
+    let details = issue.details.as_ref().expect("details");
+
+    assert_eq!(issue.elements, ["first", "second"]);
+    assert_eq!(details["actualGap"], json!(40));
+    assert!((details["requiredGap"].as_f64().unwrap() - (label.width + 16.0)).abs() < 0.01);
+}
+
 /// Given a connector whose segment passes through a third node
 /// When the diagram is analyzed
 /// Then the connector and obstructing node are reported

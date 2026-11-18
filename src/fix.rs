@@ -16,7 +16,7 @@ use crate::diagram::{
 use crate::geometry::{
     Bounds, Point, distance_to_route, enclosing, format_number, intersection, point, route_is_clear, segments,
 };
-use crate::inspect::{TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
+use crate::inspect::{NODE_GAP, TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing};
 use crate::route::{
     CLEARANCE, CLOSE_RUN, CROSSING_PENALTY, END_STUBS, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, LabelSpot, PortRequest,
     Ports, Pushable, Side, Sides, choose_sides, connector_ports, crossings, end_on_shapes, is_on_outline,
@@ -344,7 +344,8 @@ fn grow_round(document: &Document, parent: &DiagramNode, child: &DiagramNode) ->
 }
 
 /// Pushes the right node of each overlapping or too-close pair rightwards,
-/// one pair at a time, until the row keeps its 20px gaps.
+/// one pair at a time, until the row keeps the gaps its issues require:
+/// 20px, or room for the label of a connector between the two.
 #[tracing::instrument(skip_all)]
 fn separate_nodes(draft: Draft) -> Draft {
     fn step(draft: Draft, attempt: usize) -> Draft {
@@ -368,14 +369,21 @@ fn separate_nodes(draft: Draft) -> Draft {
         } else {
             (second, first)
         };
-        let delta = left.bounds.right() + 20.0 - right.bounds.x;
+        // An overlap reports no gap; the gap it then leaves, if too small, is reported next.
+        let required = issue
+            .details
+            .as_ref()
+            .and_then(|details| details.get("requiredGap")?.as_f64())
+            .unwrap_or(NODE_GAP);
+        let delta = left.bounds.right() + required - right.bounds.x;
         if delta <= 0.0 {
             return draft;
         }
         let message = format!(
-            "Moved node \"{}\" {}px right to preserve a 20px gap.",
+            "Moved node \"{}\" {}px right to preserve a {}px gap.",
             right.id,
-            format_number(delta)
+            format_number(delta),
+            format_number(required)
         );
         let id = right.id.clone();
         match moved(&draft, &id, point(delta, 0.0), message) {

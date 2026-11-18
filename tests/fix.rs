@@ -292,6 +292,42 @@ fn pushes_overlapping_nodes_apart_while_preserving_their_order() {
     assert_fix_snapshots!(result);
 }
 
+/// Given two nodes in a row joined by a connector whose label is wider than their gap
+/// When the diagram is fixed
+/// Then the right node is pushed right, and the label sits beside the
+///   connector, which stays straight
+#[test]
+fn pushes_nodes_apart_to_fit_the_label_of_the_connector_between_them() {
+    let svg = r#"
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 500 300">
+        <g data-node="first">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">First</text>
+        </g>
+        <g data-node="second">
+          <rect x="160" y="20" width="100" height="56" />
+          <text x="210" y="53" text-anchor="middle" font-size="14">Second</text>
+        </g>
+        <path id="flow" data-from="first" data-to="second" d="M 120 48 L 160 48" />
+        <text data-label="flow" data-label-for="flow" x="140" y="39" text-anchor="middle" font-size="12">a fairly long label</text>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let first = node_bounds(&result.report, "first");
+    let second = node_bounds(&result.report, "second");
+    let label = label_bounds(&result.report, "flow");
+
+    assert_eq!(first, bounds(20.0, 20.0, 100.0, 56.0));
+    assert!(gap_between(&first, &second) >= label.width + 16.0 - 0.01);
+    assert_eq!(bend_count(&connector_points(&result.report, "flow")), 0);
+    assert!(label.x >= first.right() && label.right() <= second.x);
+    assert!(!has_issue(&result.report, "label-detached"));
+    assert!(!has_issue(&result.report, "node-gap"));
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a horizontal connector that crosses an unrelated node
 /// When the diagram is fixed
 /// Then it follows an orthogonal path with 8px obstacle clearance
