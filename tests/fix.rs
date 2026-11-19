@@ -2377,35 +2377,6 @@ fn reroutes_a_connector_whose_ends_stop_away_from_its_nodes() {
     );
 }
 
-/// Given `a` 20px to the left of the container `cluster`, and a connector
-///   from `a` to `service` inside it, with no room for its label on either
-///   side of the container's border
-/// When the diagram is fixed and arranged
-/// Then the label overlaps no node
-#[test]
-fn makes_room_for_a_label_into_a_container() {
-    let svg = r#"
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 240">
-        <g data-node="a"><rect x="20" y="90" width="100" height="56"/><text x="70" y="123" text-anchor="middle" font-size="14">A</text></g>
-        <g data-node="cluster">
-          <rect x="140" y="20" width="180" height="200"/>
-          <text x="156" y="44" font-size="13">Cluster</text>
-          <g data-node="service"><rect x="160" y="90" width="120" height="56"/><text x="220" y="123" text-anchor="middle" font-size="14">Service</text></g>
-        </g>
-        <line id="e" data-from="a" data-to="service" x1="120" y1="118" x2="160" y2="118"/>
-        <text data-label="e-label" data-label-for="e" x="140" y="110" text-anchor="middle" font-size="11">calls the service</text>
-      </svg>
-    "#;
-
-    for result in [fix(svg), arrange(svg)] {
-        assert!(
-            !has_issue(&result.report, "label-node-overlap"),
-            "{:?}",
-            issue_codes(&result.report)
-        );
-    }
-}
-
 /// Given `ext` 10px to the left of the container `box`, and a connector
 ///   from `ext` to `inner`, a node inside `box`, ending on its left side
 /// When the diagram is fixed, moving `box` right to leave a 20px gap

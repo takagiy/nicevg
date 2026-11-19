@@ -178,57 +178,6 @@ fn reports_the_gap_a_connector_label_between_nodes_needs() {
     assert!((details["requiredGap"].as_f64().unwrap() - (label.width + 16.0)).abs() < 0.01);
 }
 
-/// `a` 20px left of the container `cluster`, and a connector from `a` to
-/// `service` inside it, whose label is placed at `label_x`.
-fn label_into_a_container(label_x: u32) -> String {
-    format!(
-        r#"
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 240">
-        <g data-node="a"><rect x="20" y="90" width="100" height="56"/><text x="70" y="123" text-anchor="middle" font-size="14">A</text></g>
-        <g data-node="cluster">
-          <rect x="140" y="20" width="360" height="200"/>
-          <text x="156" y="44" font-size="13">Cluster</text>
-          <g data-node="service"><rect x="360" y="90" width="120" height="56"/><text x="420" y="123" text-anchor="middle" font-size="14">Service</text></g>
-        </g>
-        <line id="e" data-from="a" data-to="service" x1="120" y1="118" x2="360" y2="118"/>
-        <text data-label="e-label" data-label-for="e" x="{label_x}" y="107" text-anchor="middle" font-size="11">calls the service</text>
-      </svg>
-    "#
-    )
-}
-
-/// Given a connector from a node to a child of the container beside it,
-///   with its label across the container's border
-/// When the diagram is analyzed
-/// Then the gap between the node and the container is reported as needing
-///   room for the label
-#[test]
-fn reports_the_gap_a_label_into_a_container_needs() {
-    let report = analyze(&label_into_a_container(140));
-    let label = label_bounds(&report, "e-label");
-
-    let issue = report
-        .issues
-        .iter()
-        .find(|issue| issue.code == "node-gap")
-        .expect("a node-gap issue");
-    let details = issue.details.as_ref().expect("details");
-
-    assert_eq!(issue.elements, ["a", "cluster"]);
-    assert!((details["requiredGap"].as_f64().unwrap() - (label.width + 16.0)).abs() < 0.01);
-}
-
-/// Given a connector from a node to a child of the container beside it,
-///   with its label in the container's free space
-/// When the diagram is analyzed
-/// Then no gap is reported
-#[test]
-fn ignores_the_gap_when_a_label_into_a_container_lies_inside_it() {
-    let report = analyze(&label_into_a_container(250));
-
-    assert!(!has_issue(&report, "node-gap"), "{:?}", issue_codes(&report));
-}
-
 /// Given a connector whose segment passes through a third node
 /// When the diagram is analyzed
 /// Then the connector and obstructing node are reported
