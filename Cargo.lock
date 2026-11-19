@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "nicevg"
-version = "0.31.2"
+version = "0.31.3"
 dependencies = [
  "clap",
  "insta",
@@ -301,7 +301,7 @@ dependencies = [
 
 [[package]]
 name = "nicevg-ffi"
-version = "0.31.2"
+version = "0.31.3"
 dependencies = [
  "mimalloc",
  "nicevg",

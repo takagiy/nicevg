@@ -58,7 +58,34 @@ pub(crate) fn parse(svg: &str) -> Result<xml::Document, SvgInputError> {
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn report_of(document: &xml::Document) -> AnalysisReport {
-    let diagram = tracing::info_span!("read_diagram").in_scope(|| diagram::read(document));
+    report_around(document, diagram::read_nodes(document, None).nodes)
+}
+
+impl AnalysisReport {
+    /// The report of the same diagram under another viewBox: only the check
+    /// that the drawing fits the viewBox is made again.
+    pub(crate) fn with_view_box(&self, view_box: Option<Bounds>) -> AnalysisReport {
+        let issues: Vec<DiagramIssue> = inspect::viewport(view_box, self.drawing_bounds)
+            .into_iter()
+            .chain(
+                self.issues
+                    .iter()
+                    .filter(|issue| issue.code != "viewport-clipping")
+                    .cloned(),
+            )
+            .collect();
+        AnalysisReport {
+            valid: issues.is_empty(),
+            issues,
+            drawing_bounds: self.drawing_bounds,
+            diagram: self.diagram.clone(),
+        }
+    }
+}
+
+/// The report of a document whose nodes are already read.
+pub(crate) fn report_around(document: &xml::Document, nodes: Vec<DiagramNode>) -> AnalysisReport {
+    let diagram = tracing::info_span!("read_diagram").in_scope(|| diagram::read_around(document, nodes));
     let view_box = inspect::parse_view_box(document.root().attr("viewBox"));
     let issues = inspect::inspect(view_box, &diagram);
     AnalysisReport {

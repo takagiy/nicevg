@@ -1,0 +1,5 @@
+name = "nicevg_proofs"
+defaultTargets = ["NicevgProofs"]
+
+[[lean_lib]]
+name = "NicevgProofs"

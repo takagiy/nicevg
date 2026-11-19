@@ -1098,6 +1098,31 @@ fn astar(
         let queued = visits.reach(state, terminal.cost, None);
         queue.push(entry(terminal.cost + estimate(state, xi, yi), state, queued));
     }
+    // How close the step that brought a route to a state ran alongside
+    // another connector.
+    let near_into = |visits: &Visits, state: usize| {
+        visits.previous(state).map_or(0.0, |before| {
+            let (cell, before) = (cell_of_state(state), cell_of_state(before));
+            let edge = key((cell % width).min(before % width), (cell / width).min(before / width));
+            near_costs[usize::from(if axis_of(state) == 1 {
+                near_vertical[edge]
+            } else {
+                near_horizontal[edge]
+            })]
+        })
+    };
+    // A state at the same point and axis with fewer turns, reached for less
+    // by more than this one's last step ran closer alongside a connector,
+    // makes every way on cheaper: this one lies on no cheapest route, so it
+    // is neither queued nor looked at (proofs/NicevgProofs/Dominance.lean).
+    let dominated = |visits: &Visits, state: usize, cost: f64, near: f64| {
+        let turned = turned_of(state);
+        (0..turned).any(|fewer| {
+            let other = state - turned + fewer;
+            let reached = visits.distance(other);
+            reached < cost && reached + (near - near_into(visits, other)).max(0.0) < cost
+        })
+    };
     let mut reached = None;
     let mut visited = 0usize;
     while let Some(Reverse(queued)) = queue.pop() {
@@ -1117,15 +1142,11 @@ fn astar(
         let here = point(xs[xi], ys[yi]);
         // How close the step that brought the route here ran alongside
         // another connector.
-        let near_here = visits.previous(state).map_or(0.0, |before| {
-            let before = cell_of_state(before);
-            let edge = key(xi.min(before % width), yi.min(before / width));
-            near_costs[usize::from(if axis_of(state) == 1 {
-                near_vertical[edge]
-            } else {
-                near_horizontal[edge]
-            })]
-        });
+        let near_here = near_into(&visits, state);
+        if dominated(&visits, state, cost, near_here) {
+            continue;
+        }
+        let came_from = visits.previous(state).map(cell_of_state);
         let neighbours = [
             (xi.checked_sub(1), Some(yi)),
             (Some(xi + 1), Some(yi)),
@@ -1138,6 +1159,11 @@ fn astar(
                 continue;
             }
             let next_cell = key(nxi, nyi);
+            // Stepping back to where the route came from is never part of
+            // a cheapest route (proofs/NicevgProofs/BackStep.lean).
+            if came_from == Some(next_cell) {
+                continue;
+            }
             let end = end_at(next_cell);
             if end.is_none() && blocked_cell[next_cell] {
                 continue;
@@ -1229,6 +1255,9 @@ fn astar(
                 + if crossing { CROSSING_PENALTY } else { 0.0 }
                 + if beside || past { NEAR_MISS_PENALTY } else { 0.0 };
             if next_cost >= visits.distance(next_state) {
+                continue;
+            }
+            if dominated(&visits, next_state, next_cost, near) {
                 continue;
             }
             let queued = visits.reach(next_state, next_cost, Some(state));
@@ -2255,9 +2284,16 @@ pub fn place_label(
                         })
                 })
             })
-            .filter(|(bounds, _, beside)| fits(bounds, *beside))
             .fold(None, |best: Option<(f64, Placement)>, (bounds, anchor, beside)| {
-                let score = clearance(&bounds) - crowding(&bounds, beside);
+                // Other connectors only take from a spot's clearance, so one
+                // no clearer than the best so far cannot win: it is left out
+                // before the costly check that it fits
+                // (proofs/NicevgProofs/Ceiling.lean).
+                let clear = clearance(&bounds);
+                if best.as_ref().is_some_and(|(best_score, _)| *best_score >= clear) || !fits(&bounds, beside) {
+                    return best;
+                }
+                let score = clear - crowding(&bounds, beside);
                 match best {
                     Some((best_score, _)) if best_score >= score => best,
                     _ => Some((score, Placement { anchor, bounds })),

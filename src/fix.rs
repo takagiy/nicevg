@@ -10,8 +10,8 @@ use serde::Serialize;
 
 use crate::arrow::{drawn_connectors, moved_head, shaft_route};
 use crate::diagram::{
-    Diagram, DiagramConnector, DiagramLabel, DiagramNode, ancestor_ids, child_element_paths, circle_bounds, holds_end,
-    is_node_shape, node_group, non_empty, number_attribute, rect_bounds, translation,
+    Diagram, DiagramConnector, DiagramLabel, DiagramNode, ReadNodes, ancestor_ids, child_element_paths, circle_bounds,
+    holds_end, is_node_shape, node_group, non_empty, number_attribute, read_nodes, rect_bounds, translation,
 };
 use crate::geometry::{
     Bounds, Point, distance_to_route, enclosing, format_number, intersection, point, route_is_clear, segments,
@@ -24,8 +24,8 @@ use crate::route::{
     spread_ports, turns,
 };
 use crate::text::{label_text_index, move_label, text_bounds};
-use crate::xml::{Document, Element, serialize};
-use crate::{AnalysisReport, SvgInputError, parse, report_of};
+use crate::xml::{Document, Element, Path, serialize};
+use crate::{AnalysisReport, SvgInputError, parse, report_around};
 
 #[derive(Clone, Debug, PartialEq, Serialize, serde::Deserialize)]
 pub struct FixChange {
@@ -95,6 +95,12 @@ pub(crate) struct Draft {
     moved_node_ids: Vec<String>,
     /// The report of `document`, read once; a changed draft starts without.
     report: OnceLock<Arc<AnalysisReport>>,
+    /// The nodes of `document`, read once; a draft changed away from every
+    /// node starts with those of the draft before it.
+    nodes: OnceLock<Arc<ReadNodes>>,
+    /// The nodes of the draft this one was made from by moving groups, with
+    /// those groups: the nodes beside them are read from there.
+    nodes_before: Option<(Arc<ReadNodes>, Vec<Path>)>,
 }
 
 impl Draft {
@@ -104,12 +110,57 @@ impl Draft {
             changes,
             moved_node_ids,
             report: OnceLock::new(),
+            nodes: OnceLock::new(),
+            nodes_before: None,
+        }
+    }
+
+    /// A draft of this one's document with the groups at `groups` moved, as
+    /// `document`: the nodes beside those groups are read as this draft's.
+    pub(crate) fn with_groups_moved(
+        &self,
+        document: Document,
+        changes: Changes,
+        moved_node_ids: Vec<String>,
+        groups: Vec<Path>,
+    ) -> Draft {
+        Draft {
+            nodes_before: self.nodes.get().map(|read| (Arc::clone(read), groups)),
+            ..Draft::new(document, changes, moved_node_ids)
         }
     }
 
     #[tracing::instrument(name = "draft_report", skip_all)]
     pub(crate) fn report(&self) -> &Arc<AnalysisReport> {
-        self.report.get_or_init(|| Arc::new(report_of(&self.document)))
+        self.report.get_or_init(|| {
+            let read = self.nodes.get_or_init(|| {
+                let before = self
+                    .nodes_before
+                    .as_ref()
+                    .map(|(read, groups)| (read.as_ref(), groups.as_slice()));
+                Arc::new(read_nodes(&self.document, before))
+            });
+            Arc::new(report_around(&self.document, read.nodes.clone()))
+        })
+    }
+
+    /// A draft changed by replacing the elements at `edited`, none of them
+    /// a group or by one: where they stand beside every node, the nodes
+    /// read for this draft are those of the changed one too.
+    fn changed_beside_nodes(
+        self,
+        document: Document,
+        code: &str,
+        message: String,
+        elements: &[&str],
+        edited: &[&[usize]],
+    ) -> Draft {
+        let kept = self.nodes.get().filter(|read| read.stand_beside(edited)).cloned();
+        let draft = self.changed(document, code, message, elements);
+        if let Some(kept) = kept {
+            draft.nodes.set(kept).ok();
+        }
+        draft
     }
 
     /// The same document and changes, now following the nodes `moved`; the
@@ -749,10 +800,13 @@ fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_ro
                     },
                 );
             let message = format!("Rerouted connector \"{}\" around diagram obstacles.", connector.id);
+            let edited: Vec<&[usize]> = std::iter::once(shaft.as_slice())
+                .chain(drawn.heads.iter().map(|head| head.path.as_slice()))
+                .collect();
             Routing {
                 draft: state
                     .draft
-                    .changed(updated, "route-connector", message, &[&connector.id]),
+                    .changed_beside_nodes(updated, "route-connector", message, &[&connector.id], &edited),
                 routes,
             }
         })
@@ -1016,10 +1070,30 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             reroute.target,
         )
     };
-    let chosen: HashMap<&str, Sides> = choose_all(&choose_all(&HashMap::new()))
-        .into_iter()
-        .map(|(id, (sides, _))| (id, sides))
-        .collect();
+    // An end naming a port takes its side from the port, whatever side is
+    // chosen for it: when every end does, no chosen side is read, and none
+    // is searched for (proofs/NicevgProofs/Pinned.lean).
+    let all_pinned = reroutes
+        .iter()
+        .all(|reroute| reroute.port_places().iter().all(|places| !places.is_empty()));
+    let chosen: HashMap<&str, Sides> = if all_pinned {
+        reroutes
+            .iter()
+            .map(|reroute| {
+                let ports = connector_ports(&reroute.source.bounds, &reroute.target.bounds);
+                let sides = Sides {
+                    start: side_of(ports.start, &reroute.source.bounds),
+                    end: side_of(ports.end, &reroute.target.bounds),
+                };
+                (reroute.connector.id.as_str(), sides)
+            })
+            .collect()
+    } else {
+        choose_all(&choose_all(&HashMap::new()))
+            .into_iter()
+            .map(|(id, (sides, _))| (id, sides))
+            .collect()
+    };
     // An end whose port has several places takes the one its route costs
     // least from, among the connectors that stay, with each free end at the
     // middle of the side chosen for it.
@@ -1047,30 +1121,56 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             let default = connector_ports(&reroute.source.bounds, &reroute.target.bounds);
             let starts = options(0);
             let ends = options(1);
-            let cost = |pins: [Option<(Point, Side)>; 2]| {
-                let ports = Ports {
-                    start: pins[0].map_or_else(
-                        || free_end(&reroute.source.bounds, sides.map(|sides| sides.start), default.start),
-                        |(at, _)| at,
-                    ),
-                    end: pins[1].map_or_else(
-                        || free_end(&reroute.target.bounds, sides.map(|sides| sides.end), default.end),
-                        |(at, _)| at,
-                    ),
-                };
+            let ports_of = |pins: [Option<(Point, Side)>; 2]| Ports {
+                start: pins[0].map_or_else(
+                    || free_end(&reroute.source.bounds, sides.map(|sides| sides.start), default.start),
+                    |(at, _)| at,
+                ),
+                end: pins[1].map_or_else(
+                    || free_end(&reroute.target.bounds, sides.map(|sides| sides.end), default.end),
+                    |(at, _)| at,
+                ),
+            };
+            let cost = |ports: Ports| {
                 let route = route_with(reroute, ports, &settled);
                 if !orthogonal(&route) {
                     return f64::INFINITY;
                 }
                 route_cost(&route) + settled.iter().map(|other| routes_cost(&route, other)).sum::<f64>()
             };
-            let pins = starts
+            // A route costs at least its length, and is no shorter than its
+            // ports lie apart: places that far apart or more than the best
+            // route so far costs are not routed, as only a cheaper route
+            // would be taken (proofs/NicevgProofs/PrunedMin.lean). On a
+            // circle the route ends off the port, so every place is routed.
+            let floored = !reroute.source.is_circle() && !reroute.target.is_circle();
+            // The nearest places are routed first, so the best cost falls
+            // early; of routes that cost the same, the place listed first
+            // still wins (proofs/NicevgProofs/AnyOrder.lean).
+            type Pins = [Option<(Point, Side)>; 2];
+            let mut options: Vec<(usize, Pins, Ports, f64)> = starts
                 .iter()
                 .flat_map(|start| ends.iter().map(move |end| [*start, *end]))
-                .map(|pins| (cost(pins), pins))
-                .min_by(|a, b| a.0.total_cmp(&b.0))
-                .expect("a place for each end")
-                .1;
+                .enumerate()
+                .map(|(listed, pins)| {
+                    let ports = ports_of(pins);
+                    let apart = (ports.start.x - ports.end.x).abs() + (ports.start.y - ports.end.y).abs();
+                    (listed, pins, ports, apart)
+                })
+                .collect();
+            options.sort_by(|a, b| a.3.total_cmp(&b.3));
+            let mut best: Option<(f64, usize, Pins)> = None;
+            for (listed, pins, ports, apart) in options {
+                // (The margin covers rounding in the sums.)
+                if floored && best.is_some_and(|(least, ..)| apart >= least + 1e-6) {
+                    continue;
+                }
+                let cost = cost(ports);
+                if best.is_none_or(|(least, first, _)| cost.total_cmp(&least).then(listed.cmp(&first)).is_lt()) {
+                    best = Some((cost, listed, pins));
+                }
+            }
+            let pins = best.expect("a place for each end").2;
             Reroute { pins, ..*reroute }
         })
         .collect();
@@ -1292,7 +1392,9 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
                 placement.anchor,
             );
             let message = format!("Moved label \"{}\" beside connector \"{connector_id}\".", label.id);
-            let draft = draft.changed(updated, "move-label", message, &[&label.id, &connector_id]);
+            let edited: Vec<&[usize]> = texts.iter().map(Vec::as_slice).collect();
+            let draft =
+                draft.changed_beside_nodes(updated, "move-label", message, &[&label.id, &connector_id], &edited);
             (draft, [obstacles, vec![placement.bounds]].concat(), stuck)
         },
     );
@@ -1585,7 +1687,9 @@ fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
                     label.id, connector.id
                 )
             };
-            let draft = draft.changed(updated, "move-label", message, &[&label.id, &connector.id]);
+            let edited: Vec<&[usize]> = texts.iter().map(Vec::as_slice).collect();
+            let draft =
+                draft.changed_beside_nodes(updated, "move-label", message, &[&label.id, &connector.id], &edited);
             let obstacles = obstacles
                 .into_iter()
                 .map(|bounds| {
@@ -2031,6 +2135,7 @@ fn regex_fill(style: &str) -> bool {
 #[tracing::instrument(skip_all)]
 fn expand_view_box(draft: Draft) -> Draft {
     let report = draft.report().clone();
+    let nodes = draft.nodes.get().cloned();
     let root_path = vec![draft.document.root_index()];
     let view_box = parse_view_box(draft.document.root().attr("viewBox"));
     let clipped = report.issues.iter().any(|issue| issue.code == "viewport-clipping");
@@ -2057,7 +2162,16 @@ fn expand_view_box(draft: Draft) -> Draft {
         &view_box,
         &expanded,
     );
-    scale_size(draft, &view_box, &expanded)
+    let draft = scale_size(draft, &view_box, &expanded);
+    // The viewBox, the backgrounds and the size are read only by the check
+    // that the drawing fits the viewBox: the grown draft's report is the one
+    // before it with that check made again (proofs/NicevgProofs/Viewport.lean).
+    let grown = parse_view_box(draft.document.root().attr("viewBox"));
+    draft.report.set(Arc::new(report.with_view_box(grown))).ok();
+    if let Some(nodes) = nodes {
+        draft.nodes.set(nodes).ok();
+    }
+    draft
 }
 
 /// Grows each rect drawn straight on the root that covered the whole old
