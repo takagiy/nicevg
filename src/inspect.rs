@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
-use crate::diagram::{Diagram, DiagramConnector, DiagramLabel, DiagramNode, ancestor_ids, holds_end};
+use crate::diagram::{Diagram, DiagramConnector, DiagramLabel, DiagramNode, holds_end};
 use crate::geometry::{
     Bounds, Point, distance_to_route, distance_to_segment, enclosing, format_number, hypot, intersection, json_bounds,
     json_number, number_list, point_is_inside, round, routes_overlap, segment_intersects_interior, segments,
@@ -209,7 +209,7 @@ fn node_gaps(diagram: &Diagram) -> Vec<DiagramIssue> {
                 (second, first)
             };
             let gap = right.bounds.x - left.bounds.right();
-            let required = label_gap(diagram, left, right);
+            let required = label_gap(diagram, &left.id, &right.id);
             (0.0..required).contains(&gap).then(|| {
                 issue(
                     "node-gap",
@@ -232,28 +232,11 @@ fn node_gaps(diagram: &Diagram) -> Vec<DiagramIssue> {
         .collect()
 }
 
-/// The gap two nodes need: the widest label of a connector joining them, a
-/// clearance off each, or the node gap when that is wider. A connector to a
-/// node inside one of them counts when its label lies in the row they share
-/// and not in that one's free space, as one across its border does.
-fn label_gap(diagram: &Diagram, first: &DiagramNode, second: &DiagramNode) -> f64 {
-    let holds =
-        |node: &DiagramNode, end: &str| end == node.id || ancestor_ids(&diagram.nodes, end).contains(&node.id.as_str());
-    let (top, bottom) = (
-        first.bounds.y.max(second.bounds.y),
-        first.bounds.bottom().min(second.bounds.bottom()),
-    );
-    let needs_gap = |connector: &DiagramConnector, label: &DiagramLabel| {
-        let ends = [connector.from.as_str(), connector.to.as_str()];
-        if ends == [&first.id, &second.id] || ends == [&second.id, &first.id] {
-            return true;
-        }
-        label.bounds.y < bottom
-            && label.bounds.bottom() > top
-            && ![first, second]
-                .into_iter()
-                .any(|node| lies_within_container(&diagram.nodes, &label.bounds, node))
-            && ((holds(first, ends[0]) && holds(second, ends[1])) || (holds(second, ends[0]) && holds(first, ends[1])))
+/// The gap two nodes need: the widest label of a connector joining them,
+/// a clearance off each, or the node gap when that is wider.
+fn label_gap(diagram: &Diagram, first: &str, second: &str) -> f64 {
+    let joins = |connector: &DiagramConnector| {
+        (connector.from == first && connector.to == second) || (connector.from == second && connector.to == first)
     };
     diagram
         .labels
@@ -263,7 +246,7 @@ fn label_gap(diagram: &Diagram, first: &DiagramNode, second: &DiagramNode) -> f6
                 .connector
                 .as_deref()
                 .and_then(|id| diagram.connector(id))
-                .is_some_and(|connector| needs_gap(connector, label))
+                .is_some_and(joins)
         })
         .map(|label| label.bounds.width + 2.0 * CLEARANCE)
         .fold(NODE_GAP, f64::max)
@@ -336,12 +319,11 @@ pub fn label_covers_node(label: &Bounds, node: &DiagramNode) -> bool {
     }
 }
 
-/// A container's free space is a valid place for labels; only its children,
-/// its border and its own texts are off limits.
+/// A container's free space is a valid place for labels; only its children
+/// and its border are off limits.
 fn lies_within_container(nodes: &[DiagramNode], label: &Bounds, node: &DiagramNode) -> bool {
     nodes.iter().any(|child| child.parent_id.as_deref() == Some(&node.id))
         && intersection(label, &node.bounds) == Some(*label)
-        && node.label_bounds.iter().all(|text| intersection(label, text).is_none())
 }
 
 fn label_node_overlaps(nodes: &[DiagramNode], labels: &[DiagramLabel]) -> Vec<DiagramIssue> {

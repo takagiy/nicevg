@@ -363,7 +363,7 @@ node-overlap                                *nicevg-engine-issue-node-overlap*
 
 node-gap                                        *nicevg-engine-issue-node-gap*
 	Two nodes side by side are closer than 20px, or than the label of an
-	edge between them, or into a node inside one, needs.
+	edge between them needs.
 	Fix: move them apart.
 
 node-outside-parent                  *nicevg-engine-issue-node-outside-parent*

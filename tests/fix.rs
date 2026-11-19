@@ -2377,68 +2377,6 @@ fn reroutes_a_connector_whose_ends_stop_away_from_its_nodes() {
     );
 }
 
-/// Given a connector between two nodes of `cluster`, running just below
-///   the container's title, and its label far from it
-/// When the diagram is fixed
-/// Then the label moves beside the connector, clear of the title
-#[test]
-fn places_labels_clear_of_a_text_of_their_container() {
-    let svg = r#"
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240">
-        <g data-node="cluster">
-          <rect x="20" y="20" width="520" height="200"/>
-          <text x="280" y="48" text-anchor="middle" font-size="13">A cluster of services</text>
-          <g data-node="p"><rect x="40" y="36" width="100" height="40"/><text x="90" y="61" text-anchor="middle" font-size="14">P</text></g>
-          <g data-node="q"><rect x="420" y="36" width="100" height="40"/><text x="470" y="61" text-anchor="middle" font-size="14">Q</text></g>
-        </g>
-        <line id="e" data-from="p" data-to="q" x1="140" y1="56" x2="420" y2="56"/>
-        <text data-label="e-label" data-label-for="e" x="280" y="180" text-anchor="middle" font-size="11">calls</text>
-      </svg>
-    "#;
-
-    let result = fix(svg);
-    let label = label_bounds(&result.report, "e-label");
-    let title = result.report.diagram.node("cluster").expect("cluster").label_bounds[0];
-
-    let overlaps =
-        label.x < title.right() && title.x < label.right() && label.y < title.bottom() && title.y < label.bottom();
-    assert!(!overlaps, "{label:?} {title:?}");
-    assert!(
-        !has_issue(&result.report, "label-node-overlap"),
-        "{:?}",
-        issue_codes(&result.report)
-    );
-}
-
-/// Given `a` 20px to the left of the container `cluster`, and a connector
-///   from `a` to `service` inside it, with no room for its label on either
-///   side of the container's border
-/// When the diagram is fixed and arranged
-/// Then the label overlaps no node
-#[test]
-fn makes_room_for_a_label_into_a_container() {
-    let svg = r#"
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 240">
-        <g data-node="a"><rect x="20" y="90" width="100" height="56"/><text x="70" y="123" text-anchor="middle" font-size="14">A</text></g>
-        <g data-node="cluster">
-          <rect x="140" y="20" width="180" height="200"/>
-          <text x="156" y="44" font-size="13">Cluster</text>
-          <g data-node="service"><rect x="160" y="90" width="120" height="56"/><text x="220" y="123" text-anchor="middle" font-size="14">Service</text></g>
-        </g>
-        <line id="e" data-from="a" data-to="service" x1="120" y1="118" x2="160" y2="118"/>
-        <text data-label="e-label" data-label-for="e" x="140" y="110" text-anchor="middle" font-size="11">calls the service</text>
-      </svg>
-    "#;
-
-    for result in [fix(svg), arrange(svg)] {
-        assert!(
-            !has_issue(&result.report, "label-node-overlap"),
-            "{:?}",
-            issue_codes(&result.report)
-        );
-    }
-}
-
 /// Given `ext` 10px to the left of the container `box`, and a connector
 ///   from `ext` to `inner`, a node inside `box`, ending on its left side
 /// When the diagram is fixed, moving `box` right to leave a 20px gap
