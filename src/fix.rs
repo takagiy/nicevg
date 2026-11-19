@@ -1705,21 +1705,15 @@ fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
     settled
 }
 
-/// Boxes a connector's label keeps clear of: every node except the
-/// containers around the connector's ends, inside which the label may sit
-/// off their texts.
+/// Node boxes a connector's label keeps clear of: every node except the
+/// containers around the connector's ends, inside which the label may sit.
 fn label_blockers(diagram: &Diagram, connector_id: &str) -> Vec<Bounds> {
     let containers = end_container_ids(diagram, connector_id);
     diagram
         .nodes
         .iter()
-        .flat_map(|node| {
-            if containers.contains(&node.id.as_str()) {
-                node.label_bounds.clone()
-            } else {
-                vec![node.bounds]
-            }
-        })
+        .filter(|node| !containers.contains(&node.id.as_str()))
+        .map(|node| node.bounds)
         .collect()
 }
 
