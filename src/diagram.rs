@@ -332,6 +332,7 @@ pub fn custom_extent(document: &Document, path: &[usize]) -> Option<(Option<Shap
     }
 }
 
+#[derive(Clone)]
 struct Recognized {
     path: Path,
     id: String,
@@ -394,17 +395,11 @@ pub fn content_bounds(document: &Document, path: &[usize]) -> Option<Bounds> {
     enclosing(&bounds)
 }
 
-fn recognize_nodes(document: &Document) -> Vec<Recognized> {
-    let groups = document.elements_named("g");
-    let custom: Vec<&Path> = groups
-        .iter()
-        .filter(|(_, group)| is_custom(group) && !group.attr("data-node").is_empty())
-        .map(|(path, _)| path)
-        .collect();
-    groups
-        .iter()
-        .enumerate()
-        .filter_map(|(index, (path, group))| {
+/// The node a group is, if it is one. `index` is the group's place among
+/// the document's groups and `custom` the groups of its custom nodes.
+fn recognize(document: &Document, custom: &[&Path], index: usize, path: &Path, group: &Element) -> Option<Recognized> {
+    {
+        {
             let annotation = group.attr("data-node");
             let annotated = !annotation.is_empty();
             let id = non_empty(annotation)
@@ -496,19 +491,85 @@ fn recognize_nodes(document: &Document) -> Vec<Recognized> {
                 padding: padding(group, Some(document.element(&shape_path))),
                 redrawn: false,
             })
-        })
-        .collect()
+        }
+    }
 }
 
-pub fn read(document: &Document) -> Diagram {
-    let phase = tracing::info_span!("read_recognize_nodes").entered();
-    let recognized = recognize_nodes(document);
-    drop(phase);
-    let phase = tracing::info_span!("read_nodes").entered();
-    let by_path: HashMap<&[usize], &Recognized> = recognized.iter().map(|node| (node.path.as_slice(), node)).collect();
+/// A document's nodes as read. Kept for the documents changed from it away
+/// from its nodes, which are the same there (proofs/NicevgProofs/Beside.lean).
+pub(crate) struct ReadNodes {
+    groups: Vec<ReadGroup>,
+    pub(crate) nodes: Vec<DiagramNode>,
+}
+
+/// A group of the document with the node it is, if any, as recognized, and
+/// the bounds of that node's texts.
+type ReadGroup = (Path, Option<(Recognized, Vec<Bounds>)>);
+
+/// Whether what stands at `path` and what stands at each of `edited` lie
+/// beside each other: neither holds the other.
+fn stands_beside(path: &[usize], edited: &[impl AsRef<[usize]>]) -> bool {
+    edited.iter().all(|edit| {
+        let edit = edit.as_ref();
+        !edit.starts_with(path) && !path.starts_with(edit)
+    })
+}
+
+impl ReadNodes {
+    /// Whether replacing the elements at `edited`, none of them a group or
+    /// by one, leaves every node as read: none is a node's group, lies
+    /// inside one or holds one.
+    pub(crate) fn stand_beside(&self, edited: &[&[usize]]) -> bool {
+        self.groups
+            .iter()
+            .filter(|(_, node)| node.is_some())
+            .all(|(path, _)| stands_beside(path, edited))
+    }
+}
+
+/// Reads a document's nodes. `before` gives the nodes of the document this
+/// one was changed from and the groups whose own attributes changed: a
+/// group beside those is the node it was.
+#[tracing::instrument(skip_all)]
+pub(crate) fn read_nodes(document: &Document, before: Option<(&ReadNodes, &[Path])>) -> ReadNodes {
+    let groups = document.elements_named("g");
+    let custom: Vec<&Path> = groups
+        .iter()
+        .filter(|(_, group)| is_custom(group) && !group.attr("data-node").is_empty())
+        .map(|(path, _)| path)
+        .collect();
+    let before = before.filter(|(read, _)| {
+        read.groups.len() == groups.len()
+            && read
+                .groups
+                .iter()
+                .zip(&groups)
+                .all(|((kept, _), (path, _))| kept == path)
+    });
+    let groups: Vec<ReadGroup> = groups
+        .iter()
+        .enumerate()
+        .map(|(index, (path, group))| {
+            if let Some((read, edited)) = before
+                && stands_beside(path, edited)
+            {
+                return read.groups[index].clone();
+            }
+            let node = recognize(document, &custom, index, path, group).map(|node| {
+                let texts = node.labels.iter().map(|label| text_bounds(document, label)).collect();
+                (node, texts)
+            });
+            (path.clone(), node)
+        })
+        .collect();
+    let recognized: Vec<&(Recognized, Vec<Bounds>)> = groups.iter().filter_map(|(_, node)| node.as_ref()).collect();
+    let by_path: HashMap<&[usize], &Recognized> = recognized
+        .iter()
+        .map(|(node, _)| (node.path.as_slice(), node))
+        .collect();
     let nodes = recognized
         .iter()
-        .map(|node| {
+        .map(|(node, texts)| {
             let parent_id = (1..node.path.len())
                 .rev()
                 .find_map(|depth| by_path.get(&node.path[..depth]))
@@ -517,7 +578,7 @@ pub fn read(document: &Document) -> Diagram {
                 id: node.id.clone(),
                 shape: node.shape,
                 bounds: node.bounds,
-                label_bounds: node.labels.iter().map(|label| text_bounds(document, label)).collect(),
+                label_bounds: texts.clone(),
                 parent_id,
                 allow_overlap: node.allow_overlap,
                 custom: node.custom,
@@ -527,8 +588,11 @@ pub fn read(document: &Document) -> Diagram {
             }
         })
         .collect();
+    ReadNodes { groups, nodes }
+}
 
-    drop(phase);
+/// The diagram of a document whose nodes are already read.
+pub(crate) fn read_around(document: &Document, nodes: Vec<DiagramNode>) -> Diagram {
     let phase = tracing::info_span!("read_connectors").entered();
     let connectors = drawn_connectors(document)
         .into_iter()

@@ -79,7 +79,7 @@ pub fn parse_view_box(value: &str) -> Option<Bounds> {
     }
 }
 
-fn viewport(view_box: Option<Bounds>, drawing: Option<Bounds>) -> Vec<DiagramIssue> {
+pub(crate) fn viewport(view_box: Option<Bounds>, drawing: Option<Bounds>) -> Vec<DiagramIssue> {
     let (Some(view_box), Some(drawing)) = (view_box, drawing) else {
         return Vec::new();
     };

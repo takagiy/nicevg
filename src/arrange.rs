@@ -318,7 +318,30 @@ fn evaluate_all<'scope>(
             .filter(|c| ids.contains(c.from.as_str()) || ids.contains(c.to.as_str()))
             .count()
     };
-    let mut order: Vec<usize> = (0..candidates.len()).collect();
+    // Rerouting in place depends on the nodes a candidate names only through
+    // the connectors it reroutes, when nothing else is left for fixing to do
+    // first: candidates rerouting the same connectors share one evaluation
+    // (proofs/NicevgProofs/Shared.lean).
+    let settled = !state
+        .result
+        .report()
+        .issues
+        .iter()
+        .any(|issue| MOVING_ISSUES.contains(&issue.code.as_str()));
+    let mut first_with: HashMap<Vec<usize>, usize> = HashMap::new();
+    let same_as: Vec<usize> = candidates
+        .iter()
+        .enumerate()
+        .map(|(index, (id, step))| {
+            if !settled || step.dx != 0.0 || step.dy != 0.0 {
+                return index;
+            }
+            *first_with.entry(rerouted_with(diagram, id)).or_insert(index)
+        })
+        .collect();
+    let mut order: Vec<usize> = (0..candidates.len())
+        .filter(|index| same_as[*index] == *index)
+        .collect();
     order.sort_by_key(|index| std::cmp::Reverse(work(&candidates[*index])));
     let parent = tracing::Span::current();
     let shared = Arc::new(state.clone());
@@ -334,10 +357,41 @@ fn evaluate_all<'scope>(
         workers.jobs.send(job).expect("the workers run while arranging");
     }
     drop(results);
-    let mut evaluated: Vec<(usize, Option<State>)> = received.iter().collect();
-    assert_eq!(evaluated.len(), candidates.len(), "every evaluation finishes");
-    evaluated.sort_unstable_by_key(|(index, _)| *index);
-    evaluated.into_iter().map(|(_, evaluated)| evaluated).collect()
+    let mut evaluated: Vec<Option<Option<State>>> = vec![None; candidates.len()];
+    for (index, state) in received.iter() {
+        evaluated[index] = Some(state);
+    }
+    same_as
+        .iter()
+        .map(|index| evaluated[*index].clone().expect("every evaluation finishes"))
+        .collect()
+}
+
+/// The issues fixing answers by growing or moving nodes, before it reroutes.
+const MOVING_ISSUES: [&str; 5] = [
+    "text-overflow",
+    "parent-text-overlap",
+    "node-outside-parent",
+    "node-overlap",
+    "node-gap",
+];
+
+/// The connectors, by index, that rerouting the nodes `id` names in place
+/// reroutes: those with an end at one of them or inside one.
+fn rerouted_with(diagram: &Diagram, id: &str) -> Vec<usize> {
+    let ids: HashSet<&str> = id.split(TOGETHER).collect();
+    let moved = |node: &str| {
+        std::iter::once(node)
+            .chain(ancestor_ids(&diagram.nodes, node))
+            .any(|id| ids.contains(id))
+    };
+    diagram
+        .connectors
+        .iter()
+        .enumerate()
+        .filter(|(_, connector)| moved(&connector.from) || moved(&connector.to))
+        .map(|(index, _)| index)
+        .collect()
 }
 
 /// Moves `id` by `step` and gives the result one pass of fixing, rerouting
@@ -349,6 +403,7 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
     let ids: Vec<String> = id.split(TOGETHER).map(str::to_owned).collect();
     let mut document = state.result.document.clone();
     let mut offsets = state.offsets.clone();
+    let mut groups = Vec::new();
     if !in_place {
         for member in &ids {
             let group = node_group(&document, member)?;
@@ -367,6 +422,7 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
                     g.with_attr("transform", &transform)
                 }
             });
+            groups.push(group);
             let offset = offsets.entry(member.clone()).or_insert(point(0.0, 0.0));
             *offset = point(offset.x + step.dx, offset.y + step.dy);
         }
@@ -385,7 +441,9 @@ fn evaluate(context: &Context, state: &State, id: &str, step: Move) -> Option<St
     let draft = if in_place {
         state.result.moving(ids)
     } else {
-        Draft::new(document, state.result.changes.with(change), ids)
+        state
+            .result
+            .with_groups_moved(document, state.result.changes.with(change), ids, groups)
     };
     let result = fix_after_moves(draft, 1);
     Some(State {
