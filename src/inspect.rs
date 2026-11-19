@@ -248,12 +248,12 @@ fn label_gap(diagram: &Diagram, first: &DiagramNode, second: &DiagramNode) -> f6
         if ends == [&first.id, &second.id] || ends == [&second.id, &first.id] {
             return true;
         }
-        label.bounds.y < bottom
+        ((holds(first, ends[0]) && holds(second, ends[1])) || (holds(second, ends[0]) && holds(first, ends[1])))
+            && label.bounds.y < bottom
             && label.bounds.bottom() > top
             && ![first, second]
                 .into_iter()
                 .any(|node| lies_within_container(&diagram.nodes, &label.bounds, node))
-            && ((holds(first, ends[0]) && holds(second, ends[1])) || (holds(second, ends[0]) && holds(first, ends[1])))
     };
     diagram
         .labels

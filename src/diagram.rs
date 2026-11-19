@@ -457,13 +457,9 @@ fn recognize(document: &Document, custom: &[&Path], index: usize, path: &Path, g
         .iter()
         .find(|child| is_node_shape(document.element(child)))
         .cloned();
-    // A connector's label written inside the group is not the node's text.
     let labels: Vec<Path> = children
         .into_iter()
-        .filter(|child| {
-            let element = document.element(child);
-            element.name == "text" && element.attr("data-label").is_empty()
-        })
+        .filter(|child| document.element(child).name == "text")
         .collect();
     if !annotated && (direct_shape.is_none() || labels.is_empty()) {
         return None;
