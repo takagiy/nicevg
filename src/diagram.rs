@@ -398,101 +398,97 @@ pub fn content_bounds(document: &Document, path: &[usize]) -> Option<Bounds> {
 /// The node a group is, if it is one. `index` is the group's place among
 /// the document's groups and `custom` the groups of its custom nodes.
 fn recognize(document: &Document, custom: &[&Path], index: usize, path: &Path, group: &Element) -> Option<Recognized> {
-    {
-        {
-            let annotation = group.attr("data-node");
-            let annotated = !annotation.is_empty();
-            let id = non_empty(annotation)
-                .or_else(|| non_empty(group.attr("id")))
-                .map_or_else(|| format!("node-{}", index + 1), str::to_owned);
-            let allow_overlap = group.attr("data-allow-overlap") == "true";
-            if annotated && is_custom(group) {
-                let (shape, bounds) = custom_extent(document, path)?;
-                let picture = picture_elements(document, path);
-                let frame = picture
-                    .iter()
-                    .find(|(_, element)| is_node_shape(element) && element.has_attr("data-bounds"))
-                    .map(|(_, element)| *element);
-                let ports = picture
-                    .iter()
-                    .filter(|(_, element)| element.name == "circle" && element.has_attr("data-port"))
-                    .map(|(port, element)| {
-                        let offset = translation(document, port);
-                        let at = point(
-                            number_attribute(element, "cx") + offset.x,
-                            number_attribute(element, "cy") + offset.y,
-                        );
-                        Port {
-                            name: element.attr("data-port").to_owned(),
-                            point: at,
-                            side: Side::nearest(&bounds, at),
-                        }
-                    })
-                    .collect();
-                return Some(Recognized {
-                    path: path.clone(),
-                    id,
-                    shape,
-                    bounds,
-                    labels: picture
-                        .into_iter()
-                        .filter(|(_, element)| element.name == "text")
-                        .map(|(text, _)| text)
-                        .collect(),
-                    allow_overlap,
-                    custom: true,
-                    ports,
-                    padding: padding(group, frame),
-                    redrawn: group.attr("data-redrawn") == "true",
-                });
-            }
-            // A group inside a custom node's picture is part of the picture.
-            if !annotated
-                && custom
-                    .iter()
-                    .any(|outer| path.len() > outer.len() && path.starts_with(outer))
-            {
-                return None;
-            }
-            let children = child_element_paths(document, path);
-            let direct_shape = children
-                .iter()
-                .find(|child| is_node_shape(document.element(child)))
-                .cloned();
-            // A connector's label written inside the group is not the node's text.
-            let labels: Vec<Path> = children
-                .into_iter()
-                .filter(|child| {
-                    let element = document.element(child);
-                    element.name == "text" && element.attr("data-label").is_empty()
-                })
-                .collect();
-            if !annotated && (direct_shape.is_none() || labels.is_empty()) {
-                return None;
-            }
-            let shape_path = if annotated {
-                document
-                    .descendants(path)
-                    .into_iter()
-                    .find(|(_, element)| is_node_shape(element))
-                    .map(|(candidate, _)| candidate)
-            } else {
-                direct_shape
-            }?;
-            Some(Recognized {
-                path: path.clone(),
-                id,
-                shape: (document.element(&shape_path).name == "circle").then_some(Shape::Circle),
-                bounds: shape_bounds(document, &shape_path),
-                labels,
-                allow_overlap,
-                custom: false,
-                ports: Vec::new(),
-                padding: padding(group, Some(document.element(&shape_path))),
-                redrawn: false,
+    let annotation = group.attr("data-node");
+    let annotated = !annotation.is_empty();
+    let id = non_empty(annotation)
+        .or_else(|| non_empty(group.attr("id")))
+        .map_or_else(|| format!("node-{}", index + 1), str::to_owned);
+    let allow_overlap = group.attr("data-allow-overlap") == "true";
+    if annotated && is_custom(group) {
+        let (shape, bounds) = custom_extent(document, path)?;
+        let picture = picture_elements(document, path);
+        let frame = picture
+            .iter()
+            .find(|(_, element)| is_node_shape(element) && element.has_attr("data-bounds"))
+            .map(|(_, element)| *element);
+        let ports = picture
+            .iter()
+            .filter(|(_, element)| element.name == "circle" && element.has_attr("data-port"))
+            .map(|(port, element)| {
+                let offset = translation(document, port);
+                let at = point(
+                    number_attribute(element, "cx") + offset.x,
+                    number_attribute(element, "cy") + offset.y,
+                );
+                Port {
+                    name: element.attr("data-port").to_owned(),
+                    point: at,
+                    side: Side::nearest(&bounds, at),
+                }
             })
-        }
+            .collect();
+        return Some(Recognized {
+            path: path.clone(),
+            id,
+            shape,
+            bounds,
+            labels: picture
+                .into_iter()
+                .filter(|(_, element)| element.name == "text")
+                .map(|(text, _)| text)
+                .collect(),
+            allow_overlap,
+            custom: true,
+            ports,
+            padding: padding(group, frame),
+            redrawn: group.attr("data-redrawn") == "true",
+        });
     }
+    // A group inside a custom node's picture is part of the picture.
+    if !annotated
+        && custom
+            .iter()
+            .any(|outer| path.len() > outer.len() && path.starts_with(outer))
+    {
+        return None;
+    }
+    let children = child_element_paths(document, path);
+    let direct_shape = children
+        .iter()
+        .find(|child| is_node_shape(document.element(child)))
+        .cloned();
+    // A connector's label written inside the group is not the node's text.
+    let labels: Vec<Path> = children
+        .into_iter()
+        .filter(|child| {
+            let element = document.element(child);
+            element.name == "text" && element.attr("data-label").is_empty()
+        })
+        .collect();
+    if !annotated && (direct_shape.is_none() || labels.is_empty()) {
+        return None;
+    }
+    let shape_path = if annotated {
+        document
+            .descendants(path)
+            .into_iter()
+            .find(|(_, element)| is_node_shape(element))
+            .map(|(candidate, _)| candidate)
+    } else {
+        direct_shape
+    }?;
+    Some(Recognized {
+        path: path.clone(),
+        id,
+        shape: (document.element(&shape_path).name == "circle").then_some(Shape::Circle),
+        bounds: shape_bounds(document, &shape_path),
+        labels,
+        allow_overlap,
+        custom: false,
+        ports: Vec::new(),
+        padding: padding(group, Some(document.element(&shape_path))),
+        redrawn: false,
+    })
 }
 
 /// A document's nodes as read. Kept for the documents changed from it away

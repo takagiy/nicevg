@@ -4,11 +4,10 @@
 Arranging tries candidates that reroute the connectors of some nodes in
 place (`evaluate` with a zero step, src/arrange.rs). Such a candidate hands
 fixing the state's own document with the nodes it names marked as moved.
-When the state has none of the issues fixing answers by growing or moving
-nodes (`MOVING_ISSUES`), the steps before rerouting leave the draft as it
-is, and the marks are read in one place only: `pick_reroutes`
-(src/fix.rs), which reroutes the connectors with an issue and those with an
-end at a marked node or inside one. Everything after works from the
+The marks are read in one place only: `pick_reroutes` (src/fix.rs), which
+reroutes the connectors with an issue and those with an end at a marked
+node or inside one. The steps before it read no mark, so they change the
+draft alike for every candidate, and everything after works from the
 connectors picked.
 
 So two candidates that mark the same connectors (`rerouted_with`) are
@@ -19,8 +18,9 @@ every candidate the result of the first one with its key gives each its
 own result.
 
 Checked in the Rust code (2026-11-19): `moved_node_ids` is read only by
-`pick_reroutes` (and written by `separate_nodes`, which the settled state
-never reaches a move in), and whatever takes a state's draft further
+`pick_reroutes`. `separate_nodes` adds the nodes it moves to the marks, the
+same ones for every candidate, which marks the same connectors more for
+each. Whatever takes a state's draft further
 (`evaluate`, `fix_further`, `spread_close_runs`) sets the marks anew.
 -/
 

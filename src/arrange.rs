@@ -319,21 +319,14 @@ fn evaluate_all<'scope>(
             .count()
     };
     // Rerouting in place depends on the nodes a candidate names only through
-    // the connectors it reroutes, when nothing else is left for fixing to do
-    // first: candidates rerouting the same connectors share one evaluation
-    // (proofs/NicevgProofs/Shared.lean).
-    let settled = !state
-        .result
-        .report()
-        .issues
-        .iter()
-        .any(|issue| MOVING_ISSUES.contains(&issue.code.as_str()));
+    // the connectors it reroutes: candidates rerouting the same connectors
+    // share one evaluation (proofs/NicevgProofs/Shared.lean).
     let mut first_with: HashMap<Vec<usize>, usize> = HashMap::new();
     let same_as: Vec<usize> = candidates
         .iter()
         .enumerate()
         .map(|(index, (id, step))| {
-            if !settled || step.dx != 0.0 || step.dy != 0.0 {
+            if step.dx != 0.0 || step.dy != 0.0 {
                 return index;
             }
             *first_with.entry(rerouted_with(diagram, id)).or_insert(index)
@@ -366,15 +359,6 @@ fn evaluate_all<'scope>(
         .map(|index| evaluated[*index].clone().expect("every evaluation finishes"))
         .collect()
 }
-
-/// The issues fixing answers by growing or moving nodes, before it reroutes.
-const MOVING_ISSUES: [&str; 5] = [
-    "text-overflow",
-    "parent-text-overlap",
-    "node-outside-parent",
-    "node-overlap",
-    "node-gap",
-];
 
 /// The connectors, by index, that rerouting the nodes `id` names in place
 /// reroutes: those with an end at one of them or inside one.
