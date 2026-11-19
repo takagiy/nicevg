@@ -1,4 +1,4 @@
-//! Diagrams given as shapes rather than SVG: nodes and connectors as plain
+//! Diagrams given as shapes rather than SVG: nodes and edges as plain
 //! data. A sketch is written out as the SVG it stands for, following the
 //! SVG contract, and read and repaired like any other diagram.
 
@@ -17,16 +17,17 @@ use crate::inspect::DiagramIssue;
 use crate::inspect::PARENT_PADDING;
 use crate::text::text_bounds;
 use crate::xml::{self, Document, Element, Node};
-use crate::{AnalysisReport, FixResult};
-use crate::{FixChange, analyze};
+use crate::{FixChange, inspect};
+use crate::{FixResult, InspectionReport};
 
-/// A diagram as nodes and the connectors between them.
+/// A diagram as nodes and the edges between them.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Sketch {
     pub nodes: Vec<SketchNode>,
     #[serde(default)]
-    pub connectors: Vec<SketchConnector>,
+    #[serde(rename = "connectors")]
+    pub edges: Vec<SketchEdge>,
     /// Attributes for the root `svg`, such as `font-family`, which its
     /// texts inherit. nicevg writes `xmlns`, `viewBox`, `width` and
     /// `height` itself.
@@ -71,11 +72,11 @@ pub struct SketchNode {
     /// Whether it may overlap other nodes on purpose.
     #[serde(default)]
     pub allow_overlap: bool,
-    /// How far its children, and a box's title, keep inside its border:
+    /// How far its children, and a box's title, keep inside its outline:
     /// 12px unless given.
     #[serde(default)]
     pub padding: Option<f64>,
-    /// A parent a style draws: [`arrange_sketch_in_steps`] asks for its
+    /// A parent a style draws: [`layout_sketch_in_steps`] asks for its
     /// picture at the sizes it needs instead of taking `svg`.
     #[serde(default)]
     pub redrawn: bool,
@@ -89,16 +90,16 @@ pub enum SketchShape {
     Circle,
 }
 
-/// A connector from one node to another, along `points` when given. Without
+/// A edge from one node to another, along `points` when given. Without
 /// them it runs from centre to centre, its ends inside the nodes, which
-/// analysis reports and fixing reroutes from side to side.
+/// inspection reports and fixing reroutes from side to side.
 ///
-/// Connectors have no id of their own: in the diagram read back, their
-/// `from` and `to` tell them apart. They are named `connector-0`,
-/// `connector-1` and so on there, for their labels to refer to.
+/// Edges have no id of their own: in the diagram read back, their
+/// `from` and `to` tell them apart. They are named `edge-0`,
+/// `edge-1` and so on there, for their labels to refer to.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SketchConnector {
+pub struct SketchEdge {
     pub from: String,
     pub to: String,
     #[serde(default)]
@@ -116,7 +117,7 @@ pub struct SketchConnector {
     pub to_port: Option<String>,
     #[serde(default)]
     pub arrow: SketchArrow,
-    /// The paint of its line and heads, such as `#c00`: black unless given.
+    /// The paint of its line and arrowheads, such as `#c00`: black unless given.
     #[serde(default)]
     pub color: Option<String>,
     /// Its line's `stroke-width` and `stroke-dasharray`, as SVG reads them.
@@ -126,7 +127,7 @@ pub struct SketchConnector {
     pub stroke_dasharray: Option<String>,
 }
 
-/// The ends of a connector drawn with an arrowhead.
+/// The ends of a edge drawn with an arrowhead.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum SketchArrow {
@@ -139,7 +140,7 @@ pub enum SketchArrow {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SketchError {
-    /// The field at `referrer` (such as `connectors[0].to` or
+    /// The field at `referrer` (such as `edges[0].to` or
     /// `nodes[2].parent`) names a node the sketch does not have.
     UnknownNode { referrer: String, node: String },
     /// The id at `referrer` (such as `nodes[3].id`) is one an earlier node
@@ -159,7 +160,7 @@ pub enum SketchError {
     InvalidSvg { referrer: String, message: String },
     /// The root attribute `name` is not an XML name, or one nicevg writes.
     InvalidRootAttribute { name: String, message: String },
-    /// The field at `referrer` (such as `connectors[0].toPort`) names a
+    /// The field at `referrer` (such as `edges[0].toPort`) names a
     /// port that the drawing of `node` does not mark.
     UnknownPort {
         referrer: String,
@@ -216,44 +217,44 @@ impl std::error::Error for SketchError {}
 const NODE_FONT_SIZE: f64 = 14.0;
 const LABEL_FONT_SIZE: f64 = 12.0;
 const LINE_HEIGHT: f64 = 1.2;
-const MARGIN: f64 = 20.0;
+const PADDING: f64 = 20.0;
 
-pub fn analyze_sketch(sketch: &Sketch) -> Result<AnalysisReport, SketchError> {
-    Ok(crate::analyze(&sketch_svg(sketch)?).expect("a sketch's SVG parses"))
+pub fn inspect_sketch(sketch: &Sketch) -> Result<InspectionReport, SketchError> {
+    Ok(crate::inspect(&sketch_svg(sketch)?).expect("a sketch's SVG parses"))
 }
 
 pub fn fix_sketch(sketch: &Sketch) -> Result<FixResult, SketchError> {
-    Ok(with_heads(
+    Ok(with_arrowheads(
         crate::fix(&sketch_svg(sketch)?).expect("a sketch's SVG parses"),
         sketch,
     ))
 }
 
-pub fn arrange_sketch(sketch: &Sketch) -> Result<FixResult, SketchError> {
-    Ok(with_heads(
-        crate::arrange(&sketch_svg(sketch)?).expect("a sketch's SVG parses"),
+pub fn layout_sketch(sketch: &Sketch) -> Result<FixResult, SketchError> {
+    Ok(with_arrowheads(
+        crate::layout(&sketch_svg(sketch)?).expect("a sketch's SVG parses"),
         sketch,
     ))
 }
 
-/// The fixed diagram with each connector's heads drawn at the ends of the
-/// route fixing gave it, its line and heads in a group. Drawn after fixing,
-/// the heads take their direction from a route that has one even for a
-/// connector from a node to itself, whose route in the sketch's SVG is a point.
-fn with_heads(mut result: FixResult, sketch: &Sketch) -> FixResult {
+/// The fixed diagram with each edge's arrowheads drawn at the ends of the
+/// route fixing gave it, its line and arrowheads in a group. Drawn after fixing,
+/// the arrowheads take their direction from a route that has one even for a
+/// edge from a node to itself, whose route in the sketch's SVG is a point.
+fn with_arrowheads(mut result: FixResult, sketch: &Sketch) -> FixResult {
     let mut document = xml::parse(&result.svg).expect("the fixed SVG parses");
-    for (index, connector) in sketch.connectors.iter().enumerate() {
-        let id = connector_id(index);
+    for (index, edge) in sketch.edges.iter().enumerate() {
+        let id = edge_id(index);
         let route = &result
             .report
             .diagram
-            .connectors
+            .edges
             .iter()
             .find(|drawn| drawn.id == id)
             .expect("every connector read back")
             .points;
-        let (shaft, heads) = shaft_and_heads(route, connector.arrow);
-        if heads.is_empty() {
+        let (shaft, arrowheads) = shaft_and_arrowheads(route, edge.arrow);
+        if arrowheads.is_empty() {
             continue;
         }
         let (path, line) = document
@@ -263,7 +264,7 @@ fn with_heads(mut result: FixResult, sketch: &Sketch) -> FixResult {
             .map(|(path, element)| (path, element.clone()))
             .expect("the connector's line");
         let color = line.attr("stroke").to_owned();
-        let heads = heads.iter().map(|points| {
+        let arrowheads = arrowheads.iter().map(|points| {
             Element::new("polygon")
                 .with_attr("fill", &color)
                 .with_attr("points", points)
@@ -271,7 +272,7 @@ fn with_heads(mut result: FixResult, sketch: &Sketch) -> FixResult {
         let mut group = Element::new("g");
         group.children = Arc::new(
             std::iter::once(line.with_attr("d", &path_data(&shaft)))
-                .chain(heads)
+                .chain(arrowheads)
                 .map(Node::Element)
                 .collect(),
         );
@@ -300,7 +301,7 @@ pub struct StepState {
     round: usize,
 }
 
-/// What arranging a sketch in steps does next.
+/// What layout a sketch in steps does next.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SketchStep {
     /// Ask the styles for these pictures, then step again with them and the state.
@@ -308,11 +309,11 @@ pub enum SketchStep {
         pictures: Vec<PictureRequest>,
         state: Option<StepState>,
     },
-    /// The diagram, arranged and drawn.
+    /// The diagram, laid out and drawn.
     Done(FixResult),
 }
 
-/// Arranges a sketch whose `redrawn` parents styles draw, a step at a time.
+/// Lays out a sketch whose `redrawn` parents styles draw, a step at a time.
 /// `pictures` holds the pictures drawn so far, by parent, in the order the
 /// steps asked for them.
 ///
@@ -322,7 +323,7 @@ pub enum SketchStep {
 /// A picture that differs from the one laid out by, in its size or where its
 /// texts or ports lie, lays the sketch out once more by it; one that still
 /// differs is fixed round and reported as `parent-drawn-differently`.
-pub fn arrange_sketch_in_steps(
+pub fn layout_sketch_in_steps(
     sketch: &Sketch,
     pictures: &HashMap<String, Vec<String>>,
     state: Option<StepState>,
@@ -333,11 +334,11 @@ pub fn arrange_sketch_in_steps(
                 pictures: needed,
                 state: None,
             },
-            Layout::Svg(svg) => ask_for_last(sketch, crate::arrange(&svg).expect("a sketch's SVG parses"), 1),
+            Layout::Svg(svg) => ask_for_last(sketch, crate::layout(&svg).expect("a sketch's SVG parses"), 1),
         });
     };
     let root_attrs = root_attributes(&sketch.root_attrs)?;
-    let laid_out = analyze(&svg).expect("a step's SVG parses");
+    let laid_out = inspect(&svg).expect("a step's SVG parses");
     let mut lasts = Vec::new();
     let mut differences = Vec::new();
     for (index, node) in sketch.nodes.iter().enumerate().filter(|(_, node)| node.redrawn) {
@@ -370,7 +371,7 @@ pub fn arrange_sketch_in_steps(
         };
         return Ok(ask_for_last(
             sketch,
-            crate::arrange(&svg).expect("a sketch's SVG parses"),
+            crate::layout(&svg).expect("a sketch's SVG parses"),
             round + 1,
         ));
     }
@@ -378,7 +379,7 @@ pub fn arrange_sketch_in_steps(
     let drawn = xml::serialize(&with_pictures(&document, &lasts));
     let mut result = if differences.is_empty() {
         FixResult {
-            report: analyze(&drawn).expect("a step's SVG parses"),
+            report: inspect(&drawn).expect("a step's SVG parses"),
             svg: drawn,
             changes,
         }
@@ -401,7 +402,7 @@ pub fn arrange_sketch_in_steps(
             elements: vec![id],
             details: None,
         }));
-    Ok(SketchStep::Done(with_heads(result, sketch)))
+    Ok(SketchStep::Done(with_arrowheads(result, sketch)))
 }
 
 /// The step after laying out: done when no style draws a parent, else
@@ -422,7 +423,7 @@ fn ask_for_last(sketch: &Sketch, result: FixResult, round: usize) -> SketchStep 
         })
         .collect();
     if needed.is_empty() {
-        return SketchStep::Done(with_heads(result, sketch));
+        return SketchStep::Done(with_arrowheads(result, sketch));
     }
     SketchStep::Draw {
         pictures: needed,
@@ -511,7 +512,7 @@ fn path_data(points: &[Point]) -> String {
 
 /// The SVG a sketch stands for: a `data-node` group for each node, with
 /// its children nested in it, and a `data-from`/`data-to` path for each
-/// connector, its label a `data-label-for` text.
+/// edge, its label a `data-label-for` text.
 pub fn sketch_svg(sketch: &Sketch) -> Result<String, SketchError> {
     match layout_svg(sketch, None)? {
         Layout::Svg(svg) => Ok(svg),
@@ -561,8 +562,8 @@ fn layout_svg(sketch: &Sketch, steps: Option<(&HashMap<String, Vec<String>>, usi
             }
         }
     }
-    for (index, connector) in sketch.connectors.iter().enumerate() {
-        for (field, end) in [("from", &connector.from), ("to", &connector.to)] {
+    for (index, edge) in sketch.edges.iter().enumerate() {
+        for (field, end) in [("from", &edge.from), ("to", &edge.to)] {
             if !nodes.contains_key(end.as_str()) {
                 return Err(unknown(format!("connectors[{index}].{field}"), end));
             }
@@ -633,10 +634,10 @@ fn layout_svg(sketch: &Sketch, steps: Option<(&HashMap<String, Vec<String>>, usi
     if !needed.is_empty() {
         return Ok(Layout::Needs(needed));
     }
-    for (index, connector) in sketch.connectors.iter().enumerate() {
+    for (index, edge) in sketch.edges.iter().enumerate() {
         for (field, end, port) in [
-            ("fromPort", &connector.from, &connector.from_port),
-            ("toPort", &connector.to, &connector.to_port),
+            ("fromPort", &edge.from, &edge.from_port),
+            ("toPort", &edge.to, &edge.to_port),
         ] {
             if let Some(port) = port.as_ref().filter(|port| !ports[end.as_str()].contains(port)) {
                 return Err(SketchError::UnknownPort {
@@ -648,16 +649,13 @@ fn layout_svg(sketch: &Sketch, steps: Option<(&HashMap<String, Vec<String>>, usi
         }
     }
     let routes: Vec<Vec<Point>> = sketch
-        .connectors
+        .edges
         .iter()
-        .map(|connector| {
-            if connector.points.len() >= 2 {
-                connector.points.clone()
+        .map(|edge| {
+            if edge.points.len() >= 2 {
+                edge.points.clone()
             } else {
-                vec![
-                    boxes[connector.from.as_str()].centre(),
-                    boxes[connector.to.as_str()].centre(),
-                ]
+                vec![boxes[edge.from.as_str()].centre(), boxes[edge.to.as_str()].centre()]
             }
         })
         .collect();
@@ -672,35 +670,32 @@ fn layout_svg(sketch: &Sketch, steps: Option<(&HashMap<String, Vec<String>>, usi
     for node in sketch.nodes.iter().filter(|node| node.parent.is_none()) {
         write_node(&mut body, node, &place, 1);
     }
-    for (index, (connector, route)) in sketch.connectors.iter().zip(&routes).enumerate() {
-        let id = connector_id(index);
+    for (index, (edge, route)) in sketch.edges.iter().zip(&routes).enumerate() {
+        let id = edge_id(index);
         let d = path_data(route);
         let port = |name: &str, port: &Option<String>| {
             port.as_deref()
                 .map_or_else(String::new, |port| format!(r#" data-{name}-port="{}""#, escape(port)))
         };
-        let color = escape(connector.color.as_deref().unwrap_or("black"));
-        let width = connector
+        let color = escape(edge.color.as_deref().unwrap_or("black"));
+        let width = edge
             .stroke_width
             .map_or_else(String::new, |width| format!(r#" stroke-width="{}""#, number(width)));
-        let dashes = connector
-            .stroke_dasharray
-            .as_deref()
-            .map_or_else(String::new, |dashes| {
-                format!(r#" stroke-dasharray="{}""#, escape(dashes))
-            });
+        let dashes = edge.stroke_dasharray.as_deref().map_or_else(String::new, |dashes| {
+            format!(r#" stroke-dasharray="{}""#, escape(dashes))
+        });
         let _ = writeln!(
             body,
             r#"  <path id="{id}" data-from="{}"{} data-to="{}"{} fill="none" stroke="{color}"{width}{dashes} d="{d}"/>"#,
-            escape(&connector.from),
-            port("from", &connector.from_port),
-            escape(&connector.to),
-            port("to", &connector.to_port)
+            escape(&edge.from),
+            port("from", &edge.from_port),
+            escape(&edge.to),
+            port("to", &edge.to_port)
         );
-        if let Some(label) = &connector.label {
+        if let Some(label) = &edge.label {
             let (first, last) = (route[0], route[route.len() - 1]);
             let at = point((first.x + last.x) / 2.0, (first.y + last.y) / 2.0);
-            let font_size = connector.font_size.unwrap_or(LABEL_FONT_SIZE);
+            let font_size = edge.font_size.unwrap_or(LABEL_FONT_SIZE);
             let _ = writeln!(
                 body,
                 r#"  <text data-label="{id}" data-label-for="{id}" text-anchor="middle" font-size="{}">{}</text>"#,
@@ -726,8 +721,8 @@ fn layout_svg(sketch: &Sketch, steps: Option<(&HashMap<String, Vec<String>>, usi
     if !left.is_finite() {
         (left, top, right, bottom) = (0.0, 0.0, 0.0, 0.0);
     }
-    let (x, y) = (left - MARGIN, top - MARGIN);
-    let (width, height) = (right - left + 2.0 * MARGIN, bottom - top + 2.0 * MARGIN);
+    let (x, y) = (left - PADDING, top - PADDING);
+    let (width, height) = (right - left + 2.0 * PADDING, bottom - top + 2.0 * PADDING);
     Ok(Layout::Svg(format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\" width=\"{}\" height=\"{}\"{root_attrs}>\n{body}</svg>\n",
         number(x),
@@ -739,13 +734,13 @@ fn layout_svg(sketch: &Sketch, steps: Option<(&HashMap<String, Vec<String>>, usi
     )))
 }
 
-const HEAD_LENGTH: f64 = 10.0;
-const HEAD_HALF_WIDTH: f64 = 5.0;
+const ARROWHEAD_LENGTH: f64 = 10.0;
+const ARROWHEAD_HALF_WIDTH: f64 = 5.0;
 
-/// A connector's line along `route`, stopped short of each end with a head
-/// as `shaft_end` says, and the `points` of the heads: a corner of the base,
+/// A edge's line along `route`, stopped short of each end with a arrowhead
+/// as `shaft_end` says, and the `points` of the arrowheads: a corner of the base,
 /// the tip at the route's end, the other corner.
-fn shaft_and_heads(route: &[Point], arrow: SketchArrow) -> (Vec<Point>, Vec<String>) {
+fn shaft_and_arrowheads(route: &[Point], arrow: SketchArrow) -> (Vec<Point>, Vec<String>) {
     let last = route.len() - 1;
     let ends: &[(usize, usize)] = match arrow {
         SketchArrow::End => &[(last, last - 1)],
@@ -753,14 +748,14 @@ fn shaft_and_heads(route: &[Point], arrow: SketchArrow) -> (Vec<Point>, Vec<Stri
         SketchArrow::None => &[],
     };
     let mut shaft = route.to_vec();
-    let heads = ends
+    let arrowheads = ends
         .iter()
         .filter_map(|&(end, inner)| {
             let tip = route[end];
-            let (stop, Point { x: dx, y: dy }) = shaft_end(route[inner], tip, HEAD_LENGTH)?;
+            let (stop, Point { x: dx, y: dy }) = shaft_end(route[inner], tip, ARROWHEAD_LENGTH)?;
             shaft[end] = stop;
-            let base = point(tip.x - dx * HEAD_LENGTH, tip.y - dy * HEAD_LENGTH);
-            let (nx, ny) = (-dy * HEAD_HALF_WIDTH, dx * HEAD_HALF_WIDTH);
+            let base = point(tip.x - dx * ARROWHEAD_LENGTH, tip.y - dy * ARROWHEAD_LENGTH);
+            let (nx, ny) = (-dy * ARROWHEAD_HALF_WIDTH, dx * ARROWHEAD_HALF_WIDTH);
             Some(format!(
                 "{},{} {},{} {},{}",
                 number(base.x + nx),
@@ -772,11 +767,11 @@ fn shaft_and_heads(route: &[Point], arrow: SketchArrow) -> (Vec<Point>, Vec<Stri
             ))
         })
         .collect();
-    (shaft, heads)
+    (shaft, arrowheads)
 }
-/// The id of the connector at `index` in a sketch, as the diagram read back
+/// The id of the edge at `index` in a sketch, as the diagram read back
 /// names it, and the label describing it.
-fn connector_id(index: usize) -> String {
+fn edge_id(index: usize) -> String {
     format!("connector-{index}")
 }
 

@@ -3,11 +3,11 @@
 
 mod support;
 
-use nicevg::{AnalysisReport, Bounds};
+use nicevg::{Bounds, InspectionReport};
 use support::*;
 
 /// Given a free label of six full-width Japanese characters at 14px
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the label is estimated at about one font size per character
 #[test]
 fn estimates_full_width_characters_at_one_font_size_each() {
@@ -17,14 +17,14 @@ fn estimates_full_width_characters_at_one_font_size_each() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert!((label_bounds(&report, "pay").width - 6.0 * 14.0).abs() < 1.0);
 }
 
 /// Given a free label whose anchor and size are set only in its style
 ///   attribute, end-anchored at x=160 and 14px
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the label ends at x=160 and is as tall as 14px text
 #[test]
 fn reads_text_anchor_and_font_size_from_the_style_attribute() {
@@ -35,7 +35,7 @@ fn reads_text_anchor_and_font_size_from_the_style_attribute() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
     let note = label_bounds(&report, "note");
 
     assert_eq!(note.x + note.width, 160.0);
@@ -45,7 +45,7 @@ fn reads_text_anchor_and_font_size_from_the_style_attribute() {
 
 /// Given a free label inside a group that sets the anchor and size for the
 ///   texts in it
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the label is estimated with the group's anchor and size
 #[test]
 fn inherits_text_anchor_and_font_size_from_ancestor_groups() {
@@ -58,7 +58,7 @@ fn inherits_text_anchor_and_font_size_from_ancestor_groups() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
     let note = label_bounds(&report, "note");
     let reference = label_bounds(&report, "reference");
 
@@ -69,7 +69,7 @@ fn inherits_text_anchor_and_font_size_from_ancestor_groups() {
 }
 
 /// Given free labels at y=50 with a central baseline and with a hanging one
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the central label is centred on y=50 and the hanging one hangs
 ///   from it
 #[test]
@@ -81,7 +81,7 @@ fn places_text_vertically_by_its_dominant_baseline() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
     let central = label_bounds(&report, "central");
     let hanging = label_bounds(&report, "hanging");
 
@@ -100,7 +100,7 @@ fn reference_lines(lines: &[(f64, f64, &str)]) -> String {
         .collect()
 }
 
-fn union_of_lines(report: &AnalysisReport, count: usize) -> Bounds {
+fn union_of_lines(report: &InspectionReport, count: usize) -> Bounds {
     (0..count)
         .map(|index| label_bounds(report, &format!("line-{index}")))
         .reduce(|first, second| {
@@ -121,7 +121,7 @@ const LINES: [(f64, f64, &str); 3] = [
 
 /// Given a label written as one text whose tspans each start a new line
 ///   with their own x and a dy
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the label takes the space of its three lines, as separate texts
 ///   at the same places would
 #[test]
@@ -138,7 +138,7 @@ fn estimates_a_text_with_tspan_lines_line_by_line() {
         reference_lines(&LINES)
     );
 
-    let report = analyze(&svg);
+    let report = inspect(&svg);
     let lines = union_of_lines(&report, 3);
 
     assert_eq!(
@@ -148,7 +148,7 @@ fn estimates_a_text_with_tspan_lines_line_by_line() {
 }
 
 /// Given a label written as three texts that share one data-label
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then they form one label taking the space of all three lines
 #[test]
 fn treats_texts_sharing_a_data_label_as_one_label() {
@@ -162,7 +162,7 @@ fn treats_texts_sharing_a_data_label_as_one_label() {
         reference_lines(&LINES)
     );
 
-    let report = analyze(&svg);
+    let report = inspect(&svg);
     let lines = union_of_lines(&report, 3);
 
     assert_eq!(
@@ -176,7 +176,7 @@ fn treats_texts_sharing_a_data_label_as_one_label() {
 }
 
 /// Given a group carrying data-label around three plain texts
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the group is one label taking the space of all three lines
 #[test]
 fn treats_a_labelled_group_of_texts_as_one_label() {
@@ -192,7 +192,7 @@ fn treats_a_labelled_group_of_texts_as_one_label() {
         reference_lines(&LINES)
     );
 
-    let report = analyze(&svg);
+    let report = inspect(&svg);
     let lines = union_of_lines(&report, 3);
 
     assert_eq!(

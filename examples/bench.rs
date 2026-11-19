@@ -1,4 +1,4 @@
-//! Times arranging each fixture and prints a fingerprint of the result, so a
+//! Times layout each fixture and prints a fingerprint of the result, so a
 //! change can be checked to leave every output as it was:
 //!
 //! ```text
@@ -29,13 +29,13 @@ fn main() {
         let mut output = String::new();
         for _ in 0..runs {
             let start = std::time::Instant::now();
-            let result = nicevg::arrange(&svg).unwrap();
+            let result = nicevg::layout(&svg).unwrap();
             best = best.min(start.elapsed().as_secs_f64() * 1000.0);
             output = result.svg;
         }
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         output.hash(&mut hasher);
-        let report = nicevg::analyze(&output).unwrap();
+        let report = nicevg::inspect(&output).unwrap();
         let quality = support::quality_of(&report);
         total += best;
         println!(

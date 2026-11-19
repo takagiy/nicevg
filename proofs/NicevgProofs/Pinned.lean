@@ -2,7 +2,7 @@
 # Ends pinned to ports read no chosen side
 
 `reroute_around` (src/fix.rs) first chooses a pair of node sides for every
-connector it reroutes (`choose_all`, two route searches a connector and
+edge it reroutes (`choose_all`, two route searches a edge and
 more on its second pass), then pins each end that names a port to one of
 the port's places. A chosen side is read in three places only:
 
@@ -10,13 +10,13 @@ the port's places. A chosen side is read in three places only:
   chosen side, a pinned end from its place (`ports_of`);
 * the sides the ports are then spread on: a pinned end meets the side its
   place lies on, another its chosen side;
-* choosing sides for the other connectors, which crowd away from the sides
+* choosing sides for the other edges, which crowd away from the sides
   already taken.
 
 `pinned_reads_no_side` proves the first two give the same whatever sides
-were chosen, for a connector whose ends both name ports: every place
+were chosen, for a edge whose ends both name ports: every place
 priced and the sides met come out equal. The third is read only while
-sides are being chosen. So when every connector rerouted has both ends on
+sides are being chosen. So when every edge rerouted has both ends on
 ports, nothing reads a chosen side, and the code does not search for any.
 
 Checked in the Rust code (2026-11-19): an end whose port has a place is
@@ -51,7 +51,7 @@ theorem endSide_pinned (sideOf : Pin → Side) (s t : Side) (pin : Option Pin) (
   | none => cases h
   | some p => rfl
 
-/-- **A connector pinned at both ends reads no chosen side.** Whatever
+/-- **A edge pinned at both ends reads no chosen side.** Whatever
 sides `s` and `t` were chosen for it, every option of places is priced from
 the same ports and meets the same sides. -/
 theorem pinned_reads_no_side (point : Pin → Point) (sideOf : Pin → Side)

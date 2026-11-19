@@ -1,11 +1,11 @@
 //! A C interface to nicevg for runtimes that load native libraries, such as
-//! Bun's FFI or koffi on Node: a diagram as JSON in, the fixed and arranged
+//! Bun's FFI or koffi on Node: a diagram as JSON in, the fixed and laid out
 //! diagram as JSON out.
 //!
 //! The request is either `{"svg": "..."}`, a sketch (`{"nodes": [...],
-//! "connectors": [...]}`), or a step of a sketch whose parents styles draw
+//! "edges": [...]}`), or a step of a sketch whose parents styles draw
 //! (`{"sketch": {...}, "pictures": {...}, "state": ...}`, see
-//! `nicevg::arrange_sketch_in_steps`). The reply is `{"ok": ...}`, holding
+//! `nicevg::layout_sketch_in_steps`). The reply is `{"ok": ...}`, holding
 //! the fix result, `{"draw": [...], "state": ...}`, asking for pictures and
 //! holding the state to step on from, or `{"error": "..."}`.
 
@@ -52,13 +52,13 @@ fn read(request: &[u8]) -> Result<Input, String> {
 
 fn render(request: &[u8]) -> Result<Value, String> {
     let result = match read(request)? {
-        Input::Svg(svg) => nicevg::arrange(&svg).map_err(|error| error.to_string())?,
-        Input::Sketch(sketch) => nicevg::arrange_sketch(&sketch).map_err(|error| error.to_string())?,
+        Input::Svg(svg) => nicevg::layout(&svg).map_err(|error| error.to_string())?,
+        Input::Sketch(sketch) => nicevg::layout_sketch(&sketch).map_err(|error| error.to_string())?,
         Input::Step(Step {
             sketch,
             pictures,
             state,
-        }) => match nicevg::arrange_sketch_in_steps(&sketch, &pictures, state).map_err(|error| error.to_string())? {
+        }) => match nicevg::layout_sketch_in_steps(&sketch, &pictures, state).map_err(|error| error.to_string())? {
             nicevg::SketchStep::Done(result) => result,
             nicevg::SketchStep::Draw { pictures, state } => {
                 return Ok(json!({ "draw": pictures, "state": state }));
@@ -68,7 +68,7 @@ fn render(request: &[u8]) -> Result<Value, String> {
     Ok(json!({ "ok": result }))
 }
 
-/// Fixes and arranges the diagram in the JSON request of `length` bytes at
+/// Fixes and lays out the diagram in the JSON request of `length` bytes at
 /// `request`, and returns the JSON reply, its length written to
 /// `reply_length`. The caller frees the reply with [`nicevg_free`].
 ///

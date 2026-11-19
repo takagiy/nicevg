@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
-use crate::diagram::{Diagram, DiagramConnector, DiagramLabel, DiagramNode, holds_end};
+use crate::diagram::{Diagram, DiagramEdge, DiagramLabel, DiagramNode, holds_end};
 use crate::geometry::{
     Bounds, Point, distance_to_route, distance_to_segment, enclosing, format_number, hypot, intersection, json_bounds,
     json_number, number_list, point_is_inside, round, routes_overlap, segment_intersects_interior, segments,
@@ -35,37 +35,38 @@ fn issue(code: &str, message: String, elements: &[&str], details: Option<Value>)
 }
 
 pub const TEXT_PADDING: f64 = 12.0;
-/// How far a child keeps inside its parent's border.
+/// How far a child keeps inside its parent's outline.
 pub const PARENT_PADDING: f64 = 12.0;
 pub const VIEWPORT_PADDING: f64 = 20.0;
 pub const NODE_GAP: f64 = 20.0;
-pub const CLEARANCE: f64 = 8.0;
-/// Labels are placed one clearance plus a pixel away from their connector,
+/// Space an edge label keeps from routes and nodes.
+pub const EDGE_LABEL_CLEARANCE: f64 = 8.0;
+/// Labels are placed one clearance plus a pixel away from their edge,
 /// so a tied label further than this no longer reads as belonging to it.
 pub const DETACHED_LABEL_DISTANCE: f64 = 16.0;
 
-#[tracing::instrument(skip_all, fields(nodes = diagram.nodes.len(), connectors = diagram.connectors.len(), labels = diagram.labels.len()))]
+#[tracing::instrument(skip_all, fields(nodes = diagram.nodes.len(), edges = diagram.edges.len(), labels = diagram.labels.len()))]
 pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue> {
     [
-        viewport(view_box, diagram.drawing_bounds()),
+        viewport(view_box, diagram.diagram_bounds()),
         text_fit(&diagram.nodes),
         children_outside_parents(&diagram.nodes),
         children_on_parent_texts(&diagram.nodes),
         duplicate_node_ids(&diagram.nodes),
         node_overlaps(&diagram.nodes),
         node_gaps(diagram),
-        connector_crossings(&diagram.nodes, &diagram.connectors),
+        edge_crossings(&diagram.nodes, &diagram.edges),
         label_overlaps(&diagram.labels),
         label_node_overlaps(&diagram.nodes, &diagram.labels),
-        connector_label_clearance(&diagram.connectors, &diagram.labels),
-        connector_unknown_nodes(&diagram.nodes, &diagram.connectors),
-        connector_endpoints(&diagram.nodes, &diagram.connectors),
-        slanted_connectors(&diagram.connectors),
-        connector_ends_off_ports(&diagram.nodes, &diagram.connectors),
-        connector_ends_along_sides(&diagram.nodes, &diagram.connectors),
-        connector_overlaps(&diagram.connectors),
-        connector_near_misses(&diagram.connectors),
-        detached_labels(&diagram.labels, &diagram.connectors),
+        edge_label_clearance(&diagram.edges, &diagram.labels),
+        edge_unknown_nodes(&diagram.nodes, &diagram.edges),
+        edge_ends(&diagram.nodes, &diagram.edges),
+        slanted_edges(&diagram.edges),
+        edge_ends_off_ports(&diagram.nodes, &diagram.edges),
+        edge_ends_along_sides(&diagram.nodes, &diagram.edges),
+        edge_overlaps(&diagram.edges),
+        edge_near_misses(&diagram.edges),
+        detached_labels(&diagram.labels, &diagram.edges),
     ]
     .concat()
 }
@@ -79,11 +80,11 @@ pub fn parse_view_box(value: &str) -> Option<Bounds> {
     }
 }
 
-pub(crate) fn viewport(view_box: Option<Bounds>, drawing: Option<Bounds>) -> Vec<DiagramIssue> {
-    let (Some(view_box), Some(drawing)) = (view_box, drawing) else {
+pub(crate) fn viewport(view_box: Option<Bounds>, diagram: Option<Bounds>) -> Vec<DiagramIssue> {
+    let (Some(view_box), Some(diagram)) = (view_box, diagram) else {
         return Vec::new();
     };
-    let required = drawing.inflate(VIEWPORT_PADDING);
+    let required = diagram.inflate(VIEWPORT_PADDING);
     let sides: Vec<&str> = [
         (required.x < view_box.x, "left"),
         (required.y < view_box.y, "top"),
@@ -112,7 +113,7 @@ pub fn fits_in_box(label: &Bounds, box_: &Bounds, padding: f64) -> bool {
 }
 
 /// Radius a circle centred like `box_` needs so that every corner of the
-/// label keeps `padding` from its edge.
+/// label keeps `padding` from its outline.
 pub fn radius_enclosing(label: &Bounds, box_: &Bounds, padding: f64) -> f64 {
     let centre = box_.centre();
     let dx = (label.x - centre.x).abs().max((label.right() - centre.x).abs());
@@ -193,8 +194,8 @@ fn node_overlaps(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
 }
 
 /// Nodes side by side in a row closer than they may be: 20px, or wider
-/// when a connector joining the two has a label, which must fit between
-/// them beside the straight connector, a clearance off each node.
+/// when a edge joining the two has a label, which must fit between
+/// them beside the straight edge, a clearance off each node.
 fn node_gaps(diagram: &Diagram) -> Vec<DiagramIssue> {
     comparable_pairs(&diagram.nodes)
         .filter_map(|(first, second)| {
@@ -232,23 +233,16 @@ fn node_gaps(diagram: &Diagram) -> Vec<DiagramIssue> {
         .collect()
 }
 
-/// The gap two nodes need: the widest label of a connector joining them,
+/// The gap two nodes need: the widest label of a edge joining them,
 /// a clearance off each, or the node gap when that is wider.
 fn label_gap(diagram: &Diagram, first: &str, second: &str) -> f64 {
-    let joins = |connector: &DiagramConnector| {
-        (connector.from == first && connector.to == second) || (connector.from == second && connector.to == first)
-    };
+    let joins =
+        |edge: &DiagramEdge| (edge.from == first && edge.to == second) || (edge.from == second && edge.to == first);
     diagram
         .labels
         .iter()
-        .filter(|label| {
-            label
-                .connector
-                .as_deref()
-                .and_then(|id| diagram.connector(id))
-                .is_some_and(joins)
-        })
-        .map(|label| label.bounds.width + 2.0 * CLEARANCE)
+        .filter(|label| label.edge.as_deref().and_then(|id| diagram.edge(id)).is_some_and(joins))
+        .map(|label| label.bounds.width + 2.0 * EDGE_LABEL_CLEARANCE)
         .fold(NODE_GAP, f64::max)
 }
 
@@ -261,23 +255,23 @@ pub fn segment_enters_node(start: Point, end: Point, node: &DiagramNode) -> bool
     }
 }
 
-fn connector_crossings(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
-    connectors
+fn edge_crossings(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
+    edges
         .iter()
-        .flat_map(|connector| {
+        .flat_map(|edge| {
             nodes
                 .iter()
-                .filter(move |node| !holds_end(nodes, connector, node))
+                .filter(move |node| !holds_end(nodes, edge, node))
                 .filter(move |node| {
-                    segments(&connector.points)
+                    segments(&edge.points)
                         .iter()
                         .any(|(from, to)| segment_enters_node(*from, *to, node))
                 })
                 .map(move |node| {
                     issue(
                         "connector-node-crossing",
-                        format!("Connector \"{}\" crosses unrelated node \"{}\".", connector.id, node.id),
-                        &[&connector.id, &node.id],
+                        format!("Connector \"{}\" crosses unrelated node \"{}\".", edge.id, node.id),
+                        &[&edge.id, &node.id],
                         None,
                     )
                 })
@@ -319,9 +313,9 @@ pub fn label_covers_node(label: &Bounds, node: &DiagramNode) -> bool {
     }
 }
 
-/// A container's free space is a valid place for labels; only its children
-/// and its border are off limits.
-fn lies_within_container(nodes: &[DiagramNode], label: &Bounds, node: &DiagramNode) -> bool {
+/// A parent's free space is a valid place for labels; only its children
+/// and its outline are off limits.
+fn lies_within_parent(nodes: &[DiagramNode], label: &Bounds, node: &DiagramNode) -> bool {
     nodes.iter().any(|child| child.parent_id.as_deref() == Some(&node.id))
         && intersection(label, &node.bounds) == Some(*label)
 }
@@ -333,7 +327,7 @@ fn label_node_overlaps(nodes: &[DiagramNode], labels: &[DiagramLabel]) -> Vec<Di
             nodes
                 .iter()
                 .filter(|node| {
-                    label_covers_node(&label.bounds, node) && !lies_within_container(nodes, &label.bounds, node)
+                    label_covers_node(&label.bounds, node) && !lies_within_parent(nodes, &label.bounds, node)
                 })
                 .map(move |node| {
                     issue(
@@ -347,15 +341,15 @@ fn label_node_overlaps(nodes: &[DiagramNode], labels: &[DiagramLabel]) -> Vec<Di
         .collect()
 }
 
-fn connector_label_clearance(connectors: &[DiagramConnector], labels: &[DiagramLabel]) -> Vec<DiagramIssue> {
-    connectors
+fn edge_label_clearance(edges: &[DiagramEdge], labels: &[DiagramLabel]) -> Vec<DiagramIssue> {
+    edges
         .iter()
-        .flat_map(|connector| {
+        .flat_map(|edge| {
             labels
                 .iter()
                 .filter(move |label| {
-                    let expanded = label.bounds.inflate(CLEARANCE);
-                    segments(&connector.points)
+                    let expanded = label.bounds.inflate(EDGE_LABEL_CLEARANCE);
+                    segments(&edge.points)
                         .iter()
                         .any(|(from, to)| segment_intersects_interior(*from, *to, &expanded))
                 })
@@ -364,19 +358,19 @@ fn connector_label_clearance(connectors: &[DiagramConnector], labels: &[DiagramL
                         "connector-label-clearance",
                         format!(
                             "Connector \"{}\" passes within {}px of label \"{}\".",
-                            connector.id,
-                            format_number(CLEARANCE),
+                            edge.id,
+                            format_number(EDGE_LABEL_CLEARANCE),
                             label.id
                         ),
-                        &[&connector.id, &label.id],
-                        Some(json!({ "requiredClearance": json_number(CLEARANCE) })),
+                        &[&edge.id, &label.id],
+                        Some(json!({ "requiredClearance": json_number(EDGE_LABEL_CLEARANCE) })),
                     )
                 })
         })
         .collect()
 }
 
-/// Endpoints on a circle are written with whole-unit coordinates, so a point
+/// Ends on a circle are written with whole-unit coordinates, so a point
 /// within half a unit of the circle counts as on it.
 pub fn point_is_inside_node(target: Point, node: &DiagramNode) -> bool {
     if node.is_circle() {
@@ -387,9 +381,9 @@ pub fn point_is_inside_node(target: Point, node: &DiagramNode) -> bool {
     }
 }
 
-/// How far short of its node a connector may stop, for an arrowhead drawn
+/// How far short of its node a edge may stop, for an arrowhead drawn
 /// in the gap.
-pub const ENDPOINT_GAP: f64 = 16.0;
+pub const END_GAP: f64 = 16.0;
 
 /// How far a point outside a node lies from the node's outline.
 fn distance_to_node(target: Point, node: &DiagramNode) -> f64 {
@@ -401,77 +395,69 @@ fn distance_to_node(target: Point, node: &DiagramNode) -> f64 {
     }
 }
 
-/// Connectors with a segment neither horizontal nor vertical: nicevg routes
+/// Edges with a segment neither horizontal nor vertical: nicevg routes
 /// orthogonally, and a slanted line counts as straight to the bend count.
-fn slanted_connectors(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
-    connectors
+fn slanted_edges(edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
+    edges
         .iter()
-        .filter(|connector| {
-            connector
-                .points
+        .filter(|edge| {
+            edge.points
                 .windows(2)
                 .any(|pair| pair[0].x != pair[1].x && pair[0].y != pair[1].y)
         })
-        .map(|connector| {
+        .map(|edge| {
             issue(
                 "connector-slanted",
-                format!("Connector \"{}\" runs slanted.", connector.id),
-                &[&connector.id],
+                format!("Connector \"{}\" runs slanted.", edge.id),
+                &[&edge.id],
                 None,
             )
         })
         .collect()
 }
 
-fn connector_endpoints(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
+fn edge_ends(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
     let node = |id: &str| nodes.iter().find(|node| node.id == id);
-    connectors
+    edges
         .iter()
-        .flat_map(|connector| {
+        .flat_map(|edge| {
             let ends = [
                 (
-                    connector.points.first(),
-                    node(&connector.from),
-                    &connector.from_port,
+                    edge.points.first(),
+                    node(&edge.from),
+                    &edge.from_port,
                     "starts",
                     "start",
                 ),
-                (
-                    connector.points.last(),
-                    node(&connector.to),
-                    &connector.to_port,
-                    "ends",
-                    "end",
-                ),
+                (edge.points.last(), node(&edge.to), &edge.to_port, "ends", "end"),
             ];
-            ends.into_iter()
-                .filter_map(move |(endpoint, owner, port, verb, which)| {
-                    let (endpoint, owner) = (endpoint?, owner?);
-                    if point_is_inside_node(*endpoint, owner) {
-                        return Some(issue(
-                            "connector-endpoint-inside",
-                            format!("Connector \"{}\" {verb} inside node \"{}\".", connector.id, owner.id),
-                            &[&connector.id, &owner.id],
-                            Some(json!({ "endpoint": which })),
-                        ));
-                    }
-                    // An end at a port may lie outside the node, where the port
-                    // is drawn; whether it meets the port is checked on its own.
-                    let distance = distance_to_node(*endpoint, owner);
-                    (port.is_none() && distance > ENDPOINT_GAP).then(|| {
-                        issue(
-                            "connector-endpoint-detached",
-                            format!(
-                                "Connector \"{}\" {verb} {}px away from node \"{}\".",
-                                connector.id,
-                                format_number(distance),
-                                owner.id
-                            ),
-                            &[&connector.id, &owner.id],
-                            Some(json!({ "endpoint": which, "distance": json_number(distance) })),
-                        )
-                    })
+            ends.into_iter().filter_map(move |(end, owner, port, verb, which)| {
+                let (end, owner) = (end?, owner?);
+                if point_is_inside_node(*end, owner) {
+                    return Some(issue(
+                        "connector-endpoint-inside",
+                        format!("Connector \"{}\" {verb} inside node \"{}\".", edge.id, owner.id),
+                        &[&edge.id, &owner.id],
+                        Some(json!({ "endpoint": which })),
+                    ));
+                }
+                // An end at a port may lie outside the node, where the port
+                // is drawn; whether it meets the port is checked on its own.
+                let distance = distance_to_node(*end, owner);
+                (port.is_none() && distance > END_GAP).then(|| {
+                    issue(
+                        "connector-endpoint-detached",
+                        format!(
+                            "Connector \"{}\" {verb} {}px away from node \"{}\".",
+                            edge.id,
+                            format_number(distance),
+                            owner.id
+                        ),
+                        &[&edge.id, &owner.id],
+                        Some(json!({ "endpoint": which, "distance": json_number(distance) })),
+                    )
                 })
+            })
         })
         .collect()
 }
@@ -479,25 +465,25 @@ fn connector_endpoints(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -
 /// How far an end may lie from its port's point and still meet it.
 pub const PORT_TOLERANCE: f64 = 0.5;
 
-/// Each end of a connector, as (its point, the node it meets, the port it
+/// Each end of a edge, as (its point, the node it meets, the port it
 /// names, its verb, which end), for the ends that name a port.
 fn port_ends<'a>(
     nodes: &'a [DiagramNode],
-    connector: &'a DiagramConnector,
+    edge: &'a DiagramEdge,
 ) -> impl Iterator<Item = (Point, &'a DiagramNode, &'a str, &'static str, &'static str)> {
     let node = |id: &str| nodes.iter().find(|node| node.id == id);
     [
         (
-            connector.points.first(),
-            node(&connector.from),
-            connector.from_port.as_deref(),
+            edge.points.first(),
+            node(&edge.from),
+            edge.from_port.as_deref(),
             "starts",
             "start",
         ),
         (
-            connector.points.last(),
-            node(&connector.to),
-            connector.to_port.as_deref(),
+            edge.points.last(),
+            node(&edge.to),
+            edge.to_port.as_deref(),
             "ends",
             "end",
         ),
@@ -508,7 +494,7 @@ fn port_ends<'a>(
 
 /// Ends naming a port their node does not declare, and ends naming one of
 /// its ports that meet none of its points.
-/// Children out of their parent, or nearer its border than its padding.
+/// Children out of their parent, or nearer its outline than its padding.
 fn children_outside_parents(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
     nodes
         .iter()
@@ -561,7 +547,7 @@ fn children_on_parent_texts(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
         .collect()
 }
 
-/// Ids more than one node has, once each: a connector naming one meets only
+/// Ids more than one node has, once each: a edge naming one meets only
 /// the first of them.
 fn duplicate_node_ids(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
     let mut counts: HashMap<&str, usize> = HashMap::new();
@@ -584,13 +570,13 @@ fn duplicate_node_ids(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
         .collect()
 }
 
-/// Connector ends naming a node the diagram does not have, such as a
+/// Edge ends naming a node the diagram does not have, such as a
 /// misspelt id: nothing checks or reroutes them.
-fn connector_unknown_nodes(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
-    connectors
+fn edge_unknown_nodes(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
+    edges
         .iter()
-        .flat_map(|connector| {
-            [(&connector.from, "starts", "start"), (&connector.to, "ends", "end")]
+        .flat_map(|edge| {
+            [(&edge.from, "starts", "start"), (&edge.to, "ends", "end")]
                 .into_iter()
                 .filter(|(id, _, _)| !id.is_empty() && !nodes.iter().any(|node| node.id == **id))
                 .map(move |(id, verb, which)| {
@@ -598,20 +584,20 @@ fn connector_unknown_nodes(nodes: &[DiagramNode], connectors: &[DiagramConnector
                         "connector-unknown-node",
                         format!(
                             "Connector \"{}\" {verb} at node \"{id}\", which the diagram does not have.",
-                            connector.id
+                            edge.id
                         ),
-                        &[&connector.id],
+                        &[&edge.id],
                         Some(json!({ "endpoint": which, "node": id })),
                     )
                 })
         })
         .collect()
 }
-fn connector_ends_off_ports(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
-    connectors
+fn edge_ends_off_ports(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
+    edges
         .iter()
-        .flat_map(|connector| {
-            port_ends(nodes, connector).filter_map(move |(end, owner, port, verb, which)| {
+        .flat_map(|edge| {
+            port_ends(nodes, edge).filter_map(move |(end, owner, port, verb, which)| {
                 let places: Vec<Point> = owner
                     .ports
                     .iter()
@@ -619,13 +605,13 @@ fn connector_ends_off_ports(nodes: &[DiagramNode], connectors: &[DiagramConnecto
                     .map(|place| place.point)
                     .collect();
                 let details = Some(json!({ "endpoint": which, "port": port }));
-                let elements: [&str; 2] = [&connector.id, &owner.id];
+                let elements: [&str; 2] = [&edge.id, &owner.id];
                 if places.is_empty() {
                     return Some(issue(
                         "connector-unknown-port",
                         format!(
                             "Connector \"{}\" {verb} at port \"{port}\", which node \"{}\" does not have.",
-                            connector.id, owner.id
+                            edge.id, owner.id
                         ),
                         &elements,
                         details,
@@ -639,7 +625,7 @@ fn connector_ends_off_ports(nodes: &[DiagramNode], connectors: &[DiagramConnecto
                             "connector-end-off-port",
                             format!(
                                 "Connector \"{}\" {verb} off port \"{port}\" of node \"{}\".",
-                                connector.id, owner.id
+                                edge.id, owner.id
                             ),
                             &elements,
                             details,
@@ -650,10 +636,10 @@ fn connector_ends_off_ports(nodes: &[DiagramNode], connectors: &[DiagramConnecto
         .collect()
 }
 
-/// Ends whose last stretch lies on a side of the box they end on: the line
+/// Ends whose last segment lies on a side of the box they end on: the line
 /// runs along the outline instead of meeting it, and its arrowhead points
 /// along the side.
-fn connector_ends_along_sides(nodes: &[DiagramNode], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
+fn edge_ends_along_sides(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
     let node = |id: &str| nodes.iter().find(|node| node.id == id && !node.is_circle());
     let along = |end: Point, inner: Point, b: &Bounds| {
         let overlap = |low: f64, high: f64, a: f64, c: f64| high.min(a.max(c)) - low.max(a.min(c));
@@ -662,17 +648,17 @@ fn connector_ends_along_sides(nodes: &[DiagramNode], connectors: &[DiagramConnec
                 && (end.y == b.y || end.y == b.bottom())
                 && overlap(b.x, b.right(), end.x, inner.x) > 0.5)
     };
-    connectors
+    edges
         .iter()
-        .filter(|connector| connector.points.len() >= 2)
-        .flat_map(|connector| {
-            let points = &connector.points;
+        .filter(|edge| edge.points.len() >= 2)
+        .flat_map(|edge| {
+            let points = &edge.points;
             let ends = [
-                (points[0], points[1], node(&connector.from), "starts", "start"),
+                (points[0], points[1], node(&edge.from), "starts", "start"),
                 (
                     points[points.len() - 1],
                     points[points.len() - 2],
-                    node(&connector.to),
+                    node(&edge.to),
                     "ends",
                     "end",
                 ),
@@ -684,9 +670,9 @@ fn connector_ends_along_sides(nodes: &[DiagramNode], connectors: &[DiagramConnec
                         "connector-end-along-side",
                         format!(
                             "Connector \"{}\" {verb} running along a side of node \"{}\".",
-                            connector.id, owner.id
+                            edge.id, owner.id
                         ),
-                        &[&connector.id, &owner.id],
+                        &[&edge.id, &owner.id],
                         Some(json!({ "endpoint": which })),
                     )
                 })
@@ -695,31 +681,23 @@ fn connector_ends_along_sides(nodes: &[DiagramNode], connectors: &[DiagramConnec
         .collect()
 }
 
-/// A connector's ends as (node, port, point, whether it is the last point).
-fn named_ends(connector: &DiagramConnector) -> [(&str, Option<&str>, Option<&Point>, bool); 2] {
+/// A edge's ends as (node, port, point, whether it is the last point).
+fn named_ends(edge: &DiagramEdge) -> [(&str, Option<&str>, Option<&Point>, bool); 2] {
     [
         (
-            connector.from.as_str(),
-            connector.from_port.as_deref(),
-            connector.points.first(),
+            edge.from.as_str(),
+            edge.from_port.as_deref(),
+            edge.points.first(),
             false,
         ),
-        (
-            connector.to.as_str(),
-            connector.to_port.as_deref(),
-            connector.points.last(),
-            true,
-        ),
+        (edge.to.as_str(), edge.to_port.as_deref(), edge.points.last(), true),
     ]
 }
 
-/// The routes of two connectors with the run they share into a port they
+/// The routes of two edges with the run they share into a port they
 /// both end at cut off, so that merging there does not read as running
 /// along each other; both routes as they are when they share no port end.
-fn before_merging<'a>(
-    first: &'a DiagramConnector,
-    second: &'a DiagramConnector,
-) -> (Cow<'a, [Point]>, Cow<'a, [Point]>) {
+fn before_merging<'a>(first: &'a DiagramEdge, second: &'a DiagramEdge) -> (Cow<'a, [Point]>, Cow<'a, [Point]>) {
     let shared = named_ends(first).into_iter().find_map(|(node, port, point, last)| {
         let (port, point) = (port?, point?);
         named_ends(second)
@@ -777,12 +755,12 @@ fn before_merging<'a>(
     (Cow::Owned(a), Cow::Owned(b))
 }
 
-fn connector_overlaps(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
-    connectors
+fn edge_overlaps(edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
+    edges
         .iter()
         .enumerate()
         .flat_map(|(index, first)| {
-            connectors[index + 1..]
+            edges[index + 1..]
                 .iter()
                 .filter(move |second| {
                     let (a, b) = before_merging(first, second);
@@ -803,13 +781,13 @@ fn connector_overlaps(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
         .collect()
 }
 
-/// How close a connector may turn to another before the two read as one
-/// line turning.
+/// How close a edge may bend to another before the two read as one
+/// line bending.
 pub const NEAR_MISS_DISTANCE: f64 = 5.0;
 
-/// How many turns of `route` lie within the near-miss distance of the
+/// How many bends of `route` lie within the near-miss distance of the
 /// segments of another route.
-pub(crate) fn turns_beside(route: &[Point], other: &[(Point, Point)]) -> usize {
+pub(crate) fn bends_beside(route: &[Point], other: &[(Point, Point)]) -> usize {
     route
         .get(1..route.len().saturating_sub(1))
         .unwrap_or_default()
@@ -822,16 +800,16 @@ pub(crate) fn turns_beside(route: &[Point], other: &[(Point, Point)]) -> usize {
         .count()
 }
 
-fn connector_near_misses(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
-    connectors
+fn edge_near_misses(edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
+    edges
         .iter()
         .enumerate()
         .flat_map(|(index, first)| {
-            connectors[index + 1..]
+            edges[index + 1..]
                 .iter()
                 .filter(move |second| {
                     let (a, b) = before_merging(first, second);
-                    turns_beside(&a, &segments(&b)) + turns_beside(&b, &segments(&a)) > 0
+                    bends_beside(&a, &segments(&b)) + bends_beside(&b, &segments(&a)) > 0
                 })
                 .map(move |second| {
                     issue(
@@ -850,14 +828,12 @@ fn connector_near_misses(connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
         .collect()
 }
 
-fn detached_labels(labels: &[DiagramLabel], connectors: &[DiagramConnector]) -> Vec<DiagramIssue> {
+fn detached_labels(labels: &[DiagramLabel], edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
     labels
         .iter()
         .filter_map(|label| {
-            let connector = connectors
-                .iter()
-                .find(|item| Some(&item.id) == label.connector.as_ref())?;
-            let distance = distance_to_route(&label.bounds, &connector.points);
+            let edge = edges.iter().find(|item| Some(&item.id) == label.edge.as_ref())?;
+            let distance = distance_to_route(&label.bounds, &edge.points);
             (distance > DETACHED_LABEL_DISTANCE).then(|| {
                 issue(
                     "label-detached",
@@ -865,9 +841,9 @@ fn detached_labels(labels: &[DiagramLabel], connectors: &[DiagramConnector]) -> 
                         "Label \"{}\" sits {}px from its connector \"{}\".",
                         label.id,
                         format_number(round(distance)),
-                        connector.id
+                        edge.id
                     ),
-                    &[&label.id, &connector.id],
+                    &[&label.id, &edge.id],
                     Some(json!({
                         "distance": json_number(distance),
                         "maximumDistance": json_number(DETACHED_LABEL_DISTANCE),

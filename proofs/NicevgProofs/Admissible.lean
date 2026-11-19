@@ -21,12 +21,12 @@ that for a model of the search.
   the crossings, each as the search adds them. The search adds more on a
   step (`pushes`, running close, near misses, 1.01 on outlines); taking
   each to be never negative, a way costs at least `lowCost`.
-* Edge weights (`Weights`): a count per grid edge, for the edges a route
+* Link weights (`Weights`): a count per grid link, for the links a route
   cannot take (`blocked_horizontal`, `blocked_vertical`) and those that
-  cross a connector (`crossing_horizontal`, `crossing_vertical`). `pre` is
+  cross a edge (`crossing_horizontal`, `crossing_vertical`). `pre` is
   the running count `along_rows` and `down_columns` build, and
   `absI (run ..)` the difference `run_counts` takes.
-* Turns: a state keeps at most `EASY_TURNS` of them, which `turn_cost`
+* Bends: a state keeps at most `EASY_BENDS` of them, which `bends_cost`
   cannot tell from more (`tc_cap`), so the model keeps them all.
 
 ## Assumptions checked in the Rust code (2026-11-19)
@@ -38,14 +38,14 @@ that for a model of the search.
 * What a step adds beyond `lowCost` is never negative: `pushes` is 0 or
   a sum of `max(0)` terms times `CROWDED_PUSH_COST` (`push_cost` in
   src/fix.rs); running close is `(near - near_before).max(0.0)`; near
-  misses cost `NEAR_MISS_PENALTY`; outlines scale a length by 1.01.
-* `bend` is `BEND_PENALTY` or `SIDE_BEND_PENALTY`, both positive.
+  misses cost `NEAR_MISS_COST`; outlines scale a length by 1.01.
+* `bend` is `BEND_COST` or `SIDE_BEND_COST`, both positive.
 * An end terminal's cost is not negative (needed with more than
   `MAX_ENDS` ends, whose estimate leaves it out): `end_terminals` gives
   `END_STUBS[0] - length + short` with `length` one of `END_STUBS`, and
   `choose_sides` gives 0 or `SIDE_CHANGE_COST` plus `CROWDING_COST` times
-  a side's load. A load counts the connector ends on the side and takes
-  off exactly what the connector's own previous choice added (`load_of`
+  a side's load. A load counts the edge ends on the side and takes
+  off exactly what the edge's own previous choice added (`load_of`
   in src/fix.rs), so it is never negative.
 -/
 
@@ -125,7 +125,7 @@ def Straight (v : Axis) : Cell → List Cell → Prop
 
 /-! ## Counts along a line -/
 
-/-- A count per grid edge: by axis, the line it lies on and its lower end. -/
+/-- A count per grid link: by axis, the line it lies on and its lower end. -/
 abbrev Weights := Axis → Nat → Nat → Nat
 
 def stepW (w : Weights) (a b : Cell) : Nat :=
@@ -160,7 +160,7 @@ theorem run_step (w : Weights) {c b : Cell} {v : Axis} (h : Step c b) (hv : axis
   · rw [h1, pre, show min (along v b + 1) (along v b) = along v b by omega]
     unfold absI; split <;> omega
 
-/-- A straight way stays on its line and takes every edge of its run. -/
+/-- A straight way stays on its line and takes every link of its run. -/
 theorem straight_run (w : Weights) (v : Axis) : ∀ (c : Cell) (l : List Cell), IsWalk c l →
     Straight v c l → across v (last c l) = across v c ∧ absI (run w v c (last c l)) ≤ walkW w c l := by
   intro c l
@@ -211,16 +211,16 @@ theorem straight_arrival (v : Axis) : ∀ (c : Cell) (l : List Cell), IsWalk c l
       simp only [last, prevOf]
       exact ⟨hpa, fun h => hlt (by omega), fun h => hgt (by omega)⟩
 
-/-! ## Turns -/
+/-! ## Bends -/
 
-/-- `turn_cost` with `EASY_TURNS` = 2 and `LATE_TURN_FACTOR` = 3. -/
+/-- `bends_cost` with `EASY_BENDS` = 2 and `LATE_BEND_FACTOR` = 3. -/
 def tc (p : Int) (t : Nat) : Int := if 2 ≤ t then 3 * p else p
 
-/-- Capping the turns kept at `EASY_TURNS` changes no turn's cost. -/
+/-- Capping the bends kept at `EASY_BENDS` changes no bend's cost. -/
 theorem tc_cap (p : Int) (k j : Nat) : tc p (min k 2 + j) = tc p (k + j) := by
   unfold tc; split <;> split <;> omega
 
-/-- The cost of `n` more turns after `t`. -/
+/-- The cost of `n` more bends after `t`. -/
 def sumTc (p : Int) : Nat → Nat → Int
   | _, 0 => 0
   | t, n + 1 => tc p t + sumTc p (t + 1) n
@@ -249,48 +249,48 @@ theorem sumTc_mono {p : Int} (hp : 0 ≤ p) (t : Nat) {m n : Nat} (h : m ≤ n) 
   have := sumTc_nonneg hp (t + m) d
   omega
 
-/-- The turns a way makes from axis `a`, counting the one onto an end stub
+/-- The bends a way makes from axis `a`, counting the one onto an end stub
 along `ta`. -/
-def turns (ta : Axis) : Axis → Cell → List Cell → Nat
+def bends (ta : Axis) : Axis → Cell → List Cell → Nat
   | a, _, [] => if a = ta then 0 else 1
-  | a, c, b :: l => (if axisOf c b = a then 0 else 1) + turns ta (axisOf c b) b l
+  | a, c, b :: l => (if axisOf c b = a then 0 else 1) + bends ta (axisOf c b) b l
 
-/-- The bends as the search pays them: a turn at `turn_cost(turned)`, and the
-turn onto the end stub with the move into it. -/
-def bends (p : Int) (ta : Axis) : Axis → Nat → Cell → List Cell → Int
+/-- The bends as the search pays them: a bend at `bends_cost(bent)`, and the
+bend onto the end stub with the move into it. -/
+def bendsCost (p : Int) (ta : Axis) : Axis → Nat → Cell → List Cell → Int
   | a, k, _, [] => if a = ta then 0 else tc p k
   | a, k, c, b :: l =>
     (if axisOf c b = a then 0 else tc p k) +
-      bends p ta (axisOf c b) (if axisOf c b = a then k else k + 1) b l
+      bendsCost p ta (axisOf c b) (if axisOf c b = a then k else k + 1) b l
 
-theorem bends_eq (p : Int) (ta : Axis) : ∀ a k c l, bends p ta a k c l = sumTc p k (turns ta a c l) := by
+theorem bendsCost_eq (p : Int) (ta : Axis) : ∀ a k c l, bendsCost p ta a k c l = sumTc p k (bends ta a c l) := by
   intro a k c l
   induction l generalizing a k c with
-  | nil => simp only [bends, turns]; split <;> simp [sumTc]
+  | nil => simp only [bendsCost, bends]; split <;> simp [sumTc]
   | cons b l ih =>
-    simp only [bends, turns]
+    simp only [bendsCost, bends]
     by_cases hv : axisOf c b = a
     · simp only [hv, ↓reduceIte, Int.zero_add, Nat.zero_add]; rw [ih]
     · simp only [hv, ↓reduceIte]
-      rw [ih, show 1 + turns ta (axisOf c b) b l = turns ta (axisOf c b) b l + 1 by omega, sumTc]
+      rw [ih, show 1 + bends ta (axisOf c b) b l = bends ta (axisOf c b) b l + 1 by omega, sumTc]
 
-theorem turns_parity (ta : Axis) : ∀ a c l, turns ta a c l % 2 = if a = ta then 0 else 1 := by
+theorem bends_parity (ta : Axis) : ∀ a c l, bends ta a c l % 2 = if a = ta then 0 else 1 := by
   intro a c l
   induction l generalizing a c with
-  | nil => simp only [turns]; split <;> simp
+  | nil => simp only [bends]; split <;> simp
   | cons b l ih =>
-    simp only [turns]
+    simp only [bends]
     rw [Nat.add_mod, ih]
     generalize axisOf c b = v
     cases a <;> cases v <;> cases ta <;> simp
 
-theorem turns_zero (ta : Axis) : ∀ a c l, turns ta a c l = 0 → a = ta ∧ Straight a c l := by
+theorem bends_zero (ta : Axis) : ∀ a c l, bends ta a c l = 0 → a = ta ∧ Straight a c l := by
   intro a c l
   induction l generalizing a c with
-  | nil => simp only [turns]; split <;> simp_all [Straight]
+  | nil => simp only [bends]; split <;> simp_all [Straight]
   | cons b l ih =>
     intro h
-    simp only [turns] at h
+    simp only [bends] at h
     have h1 : axisOf c b = a := by
       by_cases hv : axisOf c b = a
       · exact hv
@@ -351,7 +351,7 @@ theorem straight_towards {X Y : Nat → Int} (hX : ∀ i j, i < j → X i < X j)
       have := hY d.y e.y (by omega)
       right; omega
 
-/-- Where a way with one turn turns: straight along `a`, then into the end. -/
+/-- Where a way with one bend bends: straight along `a`, then into the end. -/
 def corner (a : Axis) (c d : Cell) : Cell := if a then ⟨c.x, d.y⟩ else ⟨d.x, c.y⟩
 
 theorem corner_self (a : Axis) (c : Cell) : corner a c c = c := by cases a <;> rfl
@@ -360,8 +360,8 @@ theorem corner_step {a : Axis} {c b : Cell} (d : Cell) (h : across a b = across 
     corner a c d = corner a b d := by
   cases a <;> simp only [corner, across, Bool.false_eq_true, ↓reduceIte] at * <;> simp [h]
 
-/-- A way that turns at its first cell is straight along the other axis, so
-turns there. -/
+/-- A way that bends at its first cell is straight along the other axis, so
+bends there. -/
 theorem corner_of_straight {a ta : Axis} (hne : a ≠ ta) {c : Cell} {l : List Cell} (hw : IsWalk c l)
     (hs : Straight ta c l) : corner a c (last c l) = c := by
   have hacl := (straight_run (fun _ _ _ => 0) ta c l hw hs).1
@@ -370,9 +370,9 @@ theorem corner_of_straight {a ta : Axis} (hne : a ≠ ta) {c : Cell} {l : List C
 theorem other_axis {a ta v : Axis} (hne : a ≠ ta) (hv : ¬v = a) : v = ta := by
   cases a <;> cases ta <;> cases v <;> simp_all
 
-/-- A way with one turn takes every edge of the two runs through the corner. -/
-theorem one_turn_runs (w : Weights) (ta : Axis) : ∀ (a : Axis) (c : Cell) (l : List Cell), a ≠ ta →
-    IsWalk c l → turns ta a c l = 1 →
+/-- A way with one bend takes every link of the two runs through the corner. -/
+theorem one_bend_runs (w : Weights) (ta : Axis) : ∀ (a : Axis) (c : Cell) (l : List Cell), a ≠ ta →
+    IsWalk c l → bends ta a c l = 1 →
     absI (run w a c (corner a c (last c l))) + absI (run w ta (corner a c (last c l)) (last c l)) ≤
       walkW w c l := by
   intro a c l
@@ -382,7 +382,7 @@ theorem one_turn_runs (w : Weights) (ta : Axis) : ∀ (a : Axis) (c : Cell) (l :
     intro hne hw ht
     have hw' := hw
     simp only [IsWalk] at hw
-    simp only [turns] at ht
+    simp only [bends] at ht
     by_cases hv : axisOf c b = a
     · rw [ite_eq_left hv, hv] at ht
       have ih' := ih b hne hw.2 (by omega)
@@ -395,17 +395,17 @@ theorem one_turn_runs (w : Weights) (ta : Axis) : ∀ (a : Axis) (c : Cell) (l :
     · rw [ite_eq_right hv] at ht
       have hta := other_axis hne hv
       rw [hta] at ht
-      have hs : Straight ta c (b :: l) := ⟨hta, (turns_zero ta ta b l (by omega)).2⟩
+      have hs : Straight ta c (b :: l) := ⟨hta, (bends_zero ta ta b l (by omega)).2⟩
       rw [corner_of_straight hne hw' hs, run_self]
       have := (straight_run w ta c (b :: l) hw' hs).2
       simp only [absI] at this ⊢
       omega
 
-/-- A way with one turn that does not arrive backwards does not run its last
+/-- A way with one bend that does not arrive backwards does not run its last
 leg away from the port. -/
-theorem one_turn_towards {X Y : Nat → Int} (hX : ∀ i j, i < j → X i < X j) (hY : ∀ i j, i < j → Y i < Y j)
+theorem one_bend_towards {X Y : Nat → Int} (hX : ∀ i j, i < j → X i < X j) (hY : ∀ i j, i < j → Y i < Y j)
     (px py : Int) (ta : Axis) : ∀ (a : Axis) (c : Cell) (l : List Cell), a ≠ ta → IsWalk c l →
-    turns ta a c l = 1 → Avoids (last c l) c l → l ≠ [] →
+    bends ta a c l = 1 → Avoids (last c l) c l → l ≠ [] →
     0 ≤ towards X Y px py (prevOf c l) (last c l) →
     0 ≤ towards X Y px py (corner a c (last c l)) (last c l) := by
   intro a c l
@@ -415,7 +415,7 @@ theorem one_turn_towards {X Y : Nat → Int} (hX : ∀ i j, i < j → X i < X j)
     intro hne hw ht hav _ hb
     have hw' := hw
     simp only [IsWalk] at hw
-    simp only [turns] at ht
+    simp only [bends] at ht
     by_cases hv : axisOf c b = a
     · rw [ite_eq_left hv, hv] at ht
       obtain ⟨hacross, _⟩ := step_along hw.1 hv
@@ -429,7 +429,7 @@ theorem one_turn_towards {X Y : Nat → Int} (hX : ∀ i j, i < j → X i < X j)
     · rw [ite_eq_right hv] at ht
       have hta := other_axis hne hv
       rw [hta] at ht
-      have hs : Straight ta c (b :: l) := ⟨hta, (turns_zero ta ta b l (by omega)).2⟩
+      have hs : Straight ta c (b :: l) := ⟨hta, (bends_zero ta ta b l (by omega)).2⟩
       rw [corner_of_straight hne hw' hs]
       simp only [Avoids] at hav
       exact straight_towards hX hY px py ta c (b :: l) hw' hs (by simp only [Avoids]; exact hav) hav.1 hb
@@ -452,9 +452,9 @@ structure Search where
   Y : Nat → Int
   blocked : Weights
   crossing : Weights
-  /-- `bend_penalty` -/
+  /-- `bend_cost` -/
   bend : Int
-  /-- `CROSSING_PENALTY` -/
+  /-- `CROSSING_COST` -/
   crossingCost : Int
 
 def len (s : Search) : Cell → List Cell → Int
@@ -475,9 +475,9 @@ theorem manhattan_le_len (s : Search) : ∀ (c : Cell) (l : List Cell),
     rw [show s.Y (last b l).y - s.Y b.y + (s.Y b.y - s.Y c.y) = s.Y (last b l).y - s.Y c.y by omega] at hy
     omega
 
-/-- The least a way left from axis `a`, `k` turns in, can cost to end `t`. -/
+/-- The least a way left from axis `a`, `k` bends in, can cost to end `t`. -/
 def lowCost (s : Search) (t : Terminal) (a : Axis) (k : Nat) (c : Cell) (l : List Cell) : Int :=
-  t.cost + len s c l + bends s.bend t.axis a k c l + walkW s.crossing c l * s.crossingCost
+  t.cost + len s c l + bendsCost s.bend t.axis a k c l + walkW s.crossing c l * s.crossingCost
 
 /-- `on_line` -/
 def OnLine (s : Search) (a : Axis) (c : Cell) (t : Terminal) : Prop :=
@@ -486,18 +486,18 @@ def OnLine (s : Search) (a : Axis) (c : Cell) (t : Terminal) : Prop :=
 instance (s : Search) (a : Axis) (c : Cell) (t : Terminal) : Decidable (OnLine s a c t) := by
   unfold OnLine; cases a <;> infer_instance
 
-/-- `fewest_turns` -/
+/-- `fewest_bends` -/
 def fewest (s : Search) (a : Axis) (c : Cell) (t : Terminal) : Nat :=
   if a ≠ t.axis then 1
   else if OnLine s a c t ∧ 0 ≤ towards s.X s.Y t.px t.py c t.cell then 0
   else 2
 
-/-- The counts `run_counts` gives on the way with the fewest turns. -/
+/-- The counts `run_counts` gives on the way with the fewest bends. -/
 def runs (w : Weights) (a : Axis) (c : Cell) (t : Terminal) : Nat → Int
   | 0 => absI (run w a c t.cell)
   | _ => absI (run w a c (corner a c t.cell)) + absI (run w t.axis (corner a c t.cell) t.cell)
 
-/-- `backwards`, counted with the blocked edges. -/
+/-- `backwards`, counted with the blocked links. -/
 def back (s : Search) (a : Axis) (c : Cell) (t : Terminal) : Int :=
   if fewest s a c t = 1 ∧ towards s.X s.Y t.px t.py (corner a c t.cell) t.cell < 0 then 1 else 0
 
@@ -509,7 +509,7 @@ def detour (s : Search) (a : Axis) (k : Nat) (c : Cell) (t : Terminal) : Int :=
     else min (sumTc s.bend (k + fewest s a c t) 2) (runs s.crossing a c t (fewest s a c t) * s.crossingCost)
   else 0
 
-/-- `cost` in the estimate's loop: the stub, the distance and the turns. -/
+/-- `cost` in the estimate's loop: the stub, the distance and the bends. -/
 def cheap (s : Search) (a : Axis) (k : Nat) (c : Cell) (t : Terminal) : Int :=
   t.cost + absI (s.X t.x - s.X c.x) + absI (s.Y t.y - s.Y c.y) + sumTc s.bend k (fewest s a c t)
 
@@ -551,7 +551,7 @@ theorem cheap_le_estimateFor (s : Search) (hp : 0 ≤ s.bend) (hC : 0 ≤ s.cros
   have := detour_nonneg s hp hC a k c t
   unfold estimateFor; omega
 
-/-- With no edge blocked on the runs and the last leg running towards the
+/-- With no link blocked on the runs and the last leg running towards the
 port, the detour is at most the crossings on the runs. -/
 theorem detour_le_crossings (s : Search) (a : Axis) (k : Nat) (c : Cell) (t : Terminal)
     (hf : fewest s a c t ≤ 1) (hz : runs s.blocked a c t (fewest s a c t) = 0)
@@ -599,18 +599,18 @@ theorem estimateFor_le (s : Search) (hX : ∀ i j, i < j → s.X i < s.X j) (hY 
   rw [hl] at hman
   simp only [Terminal.cell] at hman
   have hne : l ≠ [] := by rintro rfl; exact hc hl
-  have hpar := turns_parity t.axis a c l
+  have hpar := bends_parity t.axis a c l
   have hdn := detour_nonneg s hp hC a k c t
   have hW := Int.mul_nonneg (Int.natCast_nonneg (walkW s.crossing c l)) hC
   have hcrC : ∀ r : Int, r ≤ walkW s.crossing c l → r * s.crossingCost ≤ walkW s.crossing c l * s.crossingCost :=
     fun r hr => Int.mul_le_mul_of_nonneg_right hr hC
   unfold estimateFor cheap lowCost
-  rw [bends_eq]
+  rw [bendsCost_eq]
   by_cases hax : a = t.axis
   · rw [ite_eq_left hax] at hpar
-    by_cases h0 : turns t.axis a c l = 0
+    by_cases h0 : bends t.axis a c l = 0
     · -- Straight in: the way is the straight run, so it is clear and pays its crossings.
-      obtain ⟨_, hs⟩ := turns_zero t.axis a c l h0
+      obtain ⟨_, hs⟩ := bends_zero t.axis a c l h0
       have hf := fewest_of_straight s hX hY t a c l hway' hax hs
       have hbl := (straight_run s.blocked a c l hw hs).2
       have hcx := (straight_run s.crossing a c l hw hs).2
@@ -623,8 +623,8 @@ theorem estimateFor_le (s : Search) (hX : ∀ i j, i < j → s.X i < s.X j) (hY 
       rw [hf, h0] at *
       simp only [sumTc] at *
       omega
-    · -- Two turns or more pay for the two the estimate adds, if it adds them.
-      have hT2 : 2 ≤ turns t.axis a c l := by omega
+    · -- Two bends or more pay for the two the estimate adds, if it adds them.
+      have hT2 : 2 ≤ bends t.axis a c l := by omega
       have h2 := sumTc_mono hp k hT2
       have hf := fewest_le s a c t
       have hf1 : fewest s a c t ≠ 1 := by unfold fewest; rw [ite_eq_right (by simp [hax])]; split <;> simp
@@ -640,14 +640,14 @@ theorem estimateFor_le (s : Search) (hX : ∀ i j, i < j → s.X i < s.X j) (hY 
           omega
       · rw [hf2, hd]
         omega
-  · -- Across the end's axis: one turn or three.
+  · -- Across the end's axis: one bend or three.
     rw [ite_eq_right hax] at hpar
     have hf : fewest s a c t = 1 := by unfold fewest; simp [hax]
-    by_cases h1 : turns t.axis a c l = 1
-    · -- One turn: the way is the run through the corner.
-      have hbl := one_turn_runs s.blocked t.axis a c l hax hw h1
-      have hcx := one_turn_runs s.crossing t.axis a c l hax hw h1
-      have htw := one_turn_towards hX hY t.px t.py t.axis a c l hax hw h1 (by rw [hl]; exact hav) hne
+    by_cases h1 : bends t.axis a c l = 1
+    · -- One bend: the way is the run through the corner.
+      have hbl := one_bend_runs s.blocked t.axis a c l hax hw h1
+      have hcx := one_bend_runs s.crossing t.axis a c l hax hw h1
+      have htw := one_bend_towards hX hY t.px t.py t.axis a c l hax hw h1 (by rw [hl]; exact hav) hne
         (by rw [hl]; exact hb)
       rw [hl, hfree] at hbl
       rw [hl] at hcx htw
@@ -660,8 +660,8 @@ theorem estimateFor_le (s : Search) (hX : ∀ i j, i < j → s.X i < s.X j) (hY 
       rw [hf, h1] at *
       simp only [sumTc] at *
       omega
-    · -- Three turns or more pay for the turn and the two the estimate adds.
-      have h3 : 3 ≤ turns t.axis a c l := by omega
+    · -- Three bends or more pay for the bend and the two the estimate adds.
+      have h3 : 3 ≤ bends t.axis a c l := by omega
       have := sumTc_mono hp k h3
       have := sumTc_add s.bend k 1 2
       simp only [Nat.reduceAdd] at this
@@ -738,9 +738,9 @@ theorem estimate_le (s : Search) (hX : ∀ i j, i < j → s.X i < s.X j) (hY : �
     have hman := manhattan_le_len s c l
     rw [hway.ends] at hman
     simp only [Terminal.cell] at hman
-    have := sumTc_nonneg hp k (turns t.axis a c l)
+    have := sumTc_nonneg hp k (bends t.axis a c l)
     have := Int.mul_nonneg (Int.natCast_nonneg (walkW s.crossing c l)) hC
-    unfold lowCost; rw [bends_eq]
+    unfold lowCost; rw [bendsCost_eq]
     omega
   · have h := (bestOver_le (cheap s a k c) (estimateFor s a k c) (cheap_le_estimateFor s hp hC a k c) top ends).2 t ht
     have := estimateFor_le s hX hY hp hC t a k c l hway

@@ -310,10 +310,10 @@ text(s, size)	A <text> of `size` (14 unless given); `\n` splits
 		`cx`, `right` and one of `top`, `cy`, `bottom`.
 
 A node lies round what its style draws, or round the <rect> or <circle> its
-style marks `data-bounds="true"`. Edges meet that border. nicevg does not
+style marks `data-bounds="true"`. Edges meet that outline. nicevg does not
 check that texts fit inside a node a style draws.
 
-A parent's children keep 12px inside its border, or what its style marks as
+A parent's children keep 12px inside its outline, or what its style marks as
 `data-padding` on the `data-bounds` element.
 
 ------------------------------------------------------------------------------
@@ -337,7 +337,7 @@ strokeDasharray	Its outline's dashes.
 labelPosition	`"top-left"` to write the label at the top left, as a
 		parent's title: `"center"` unless given.
 padding		How far the label, and a parent's children, keep inside
-		its border: 12px unless given.
+		its outline: 12px unless given.
 
 ==============================================================================
 5. Layout engine                                               *nicevg-engine*
@@ -349,7 +349,7 @@ Each issue is a problem nicevg could not repair in a drawn diagram. Fix it
 by changing the layout in the script as below, and draw it again.
 
 viewport-clipping                      *nicevg-engine-issue-viewport-clipping*
-	The drawing runs past the edge of the image.
+	The diagram runs past the edge of the image.
 	Fix: move the nodes near that edge inwards.
 
 text-overflow                              *nicevg-engine-issue-text-overflow*
@@ -391,7 +391,7 @@ connector-overlap                      *nicevg-engine-issue-connector-overlap*
 	Fix: move one of the nodes they join so they leave different sides.
 
 connector-near-miss                  *nicevg-engine-issue-connector-near-miss*
-	Two edges come close where one turns.
+	Two edges come close where one bends.
 	Fix: move one of the nodes they join a little.
 
 connector-slanted                      *nicevg-engine-issue-connector-slanted*
@@ -400,11 +400,11 @@ connector-slanted                      *nicevg-engine-issue-connector-slanted*
 
 connector-endpoint-inside      *nicevg-engine-issue-connector-endpoint-inside*
 	An edge ends inside its node.
-	Fix: leave out the edge's `points`, or end them on the node's border.
+	Fix: leave out the edge's `points`, or end them on the node's outline.
 
 connector-endpoint-detached  *nicevg-engine-issue-connector-endpoint-detached*
 	An edge ends more than 16px away from its node.
-	Fix: leave out the edge's `points`, or end them on the node's border.
+	Fix: leave out the edge's `points`, or end them on the node's outline.
 
 connector-end-along-side        *nicevg-engine-issue-connector-end-along-side*
 	An edge's last segment runs along a side of its node.

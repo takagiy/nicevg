@@ -7,7 +7,7 @@ use serde_json::json;
 use support::*;
 
 /// Given a diagram whose marks fit inside the viewBox with 20px padding
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the report is valid and contains the measured drawing bounds
 #[test]
 fn accepts_a_diagram_whose_drawing_fits_inside_the_safe_viewport() {
@@ -20,15 +20,15 @@ fn accepts_a_diagram_whose_drawing_fits_inside_the_safe_viewport() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert!(report.valid);
     assert!(report.issues.is_empty());
-    assert_eq!(report.drawing_bounds, Some(bounds(20.0, 20.0, 120.0, 56.0)));
+    assert_eq!(report.diagram_bounds, Some(bounds(20.0, 20.0, 120.0, 56.0)));
 }
 
 /// Given a node whose right edge plus safety padding exceeds the viewBox
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then a viewport clipping issue identifies the right side and required viewBox
 #[test]
 fn reports_the_side_and_required_bounds_when_the_viewbox_clips_content() {
@@ -41,7 +41,7 @@ fn reports_the_side_and_required_bounds_when_the_viewbox_clips_content() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert!(!report.valid);
     assert_eq!(
@@ -59,7 +59,7 @@ fn reports_the_side_and_required_bounds_when_the_viewbox_clips_content() {
 }
 
 /// Given a label wider than its node's inner area
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then a text overflow issue reports the minimum box dimensions
 #[test]
 fn reports_the_required_box_size_when_a_label_violates_node_padding() {
@@ -72,7 +72,7 @@ fn reports_the_required_box_size_when_a_label_violates_node_padding() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert_eq!(
         issues_json(&report),
@@ -86,7 +86,7 @@ fn reports_the_required_box_size_when_a_label_violates_node_padding() {
 }
 
 /// Given two nodes with intersecting rectangles and no containment relation
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the overlapping pair and intersection bounds are reported
 #[test]
 fn reports_overlap_between_unrelated_nodes() {
@@ -103,7 +103,7 @@ fn reports_overlap_between_unrelated_nodes() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
         "code": "node-overlap",
@@ -114,7 +114,7 @@ fn reports_overlap_between_unrelated_nodes() {
 }
 
 /// Given two horizontally adjacent nodes with only a 10px gap
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the report identifies the missing distance to the required 20px gap
 #[test]
 fn reports_insufficient_spacing_between_nodes_in_the_same_row() {
@@ -131,7 +131,7 @@ fn reports_insufficient_spacing_between_nodes_in_the_same_row() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
         "code": "node-gap",
@@ -141,7 +141,7 @@ fn reports_insufficient_spacing_between_nodes_in_the_same_row() {
     })));
 }
 
-/// A row of two nodes 40px apart, joined by a connector whose label is
+/// A row of two nodes 40px apart, joined by a edge whose label is
 /// much wider than the gap.
 const LONG_LABEL_ROW: &str = r#"
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 500 300">
@@ -158,12 +158,12 @@ const LONG_LABEL_ROW: &str = r#"
   </svg>
 "#;
 
-/// Given two nodes in a row joined by a connector whose label is wider than their gap
-/// When the diagram is analyzed
+/// Given two nodes in a row joined by a edge whose label is wider than their gap
+/// When the diagram is inspected
 /// Then the gap the label needs, its width and 8px on each side, is reported as required
 #[test]
-fn reports_the_gap_a_connector_label_between_nodes_needs() {
-    let report = analyze(LONG_LABEL_ROW);
+fn reports_the_gap_a_edge_label_between_nodes_needs() {
+    let report = inspect(LONG_LABEL_ROW);
     let label = label_bounds(&report, "flow");
 
     let issue = report
@@ -178,11 +178,11 @@ fn reports_the_gap_a_connector_label_between_nodes_needs() {
     assert!((details["requiredGap"].as_f64().unwrap() - (label.width + 16.0)).abs() < 0.01);
 }
 
-/// Given a connector whose segment passes through a third node
-/// When the diagram is analyzed
-/// Then the connector and obstructing node are reported
+/// Given a edge whose segment passes through a third node
+/// When the diagram is inspected
+/// Then the edge and obstructing node are reported
 #[test]
-fn reports_a_connector_crossing_an_unrelated_node() {
+fn reports_a_edge_crossing_an_unrelated_node() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
         <g data-node="source">
@@ -202,7 +202,7 @@ fn reports_a_connector_crossing_an_unrelated_node() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
         "code": "connector-node-crossing",
@@ -211,13 +211,13 @@ fn reports_a_connector_crossing_an_unrelated_node() {
     })));
 }
 
-/// Given two nodes inside a cluster container, a connector between them and
+/// Given two nodes inside a cluster parent, a edge between them and
 ///   another from inside the cluster to a node outside it
-/// When the diagram is analyzed
-/// Then neither connector is reported as crossing the cluster that contains
+/// When the diagram is inspected
+/// Then neither edge is reported as crossing the cluster that contains
 ///   its ends
 #[test]
-fn does_not_report_crossing_a_container_that_holds_the_connector_ends() {
+fn does_not_report_crossing_a_parent_that_holds_the_edge_ends() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 260">
         <g data-node="cluster">
@@ -241,14 +241,14 @@ fn does_not_report_crossing_a_container_that_holds_the_connector_ends() {
       </svg>
     "#;
 
-    assert!(!has_issue(&analyze(svg), "connector-node-crossing"));
+    assert!(!has_issue(&inspect(svg), "connector-node-crossing"));
 }
 
-/// Given a connector that passes 5px below an edge label
-/// When the diagram is analyzed
-/// Then the connector-label clearance violation is reported
+/// Given a edge that passes 5px below an edge label
+/// When the diagram is inspected
+/// Then the edge-label clearance violation is reported
 #[test]
-fn reports_a_connector_passing_within_8px_of_a_free_label() {
+fn reports_a_edge_passing_within_8px_of_a_free_label() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
         <g data-node="source">
@@ -266,7 +266,7 @@ fn reports_a_connector_passing_within_8px_of_a_free_label() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
         "code": "connector-label-clearance",
@@ -276,11 +276,11 @@ fn reports_a_connector_passing_within_8px_of_a_free_label() {
     })));
 }
 
-/// Given a connector whose endpoints stop inside the source and target
-/// When the diagram is analyzed
-/// Then each endpoint is reported instead of being accepted as edge-to-edge
+/// Given a edge whose ends stop inside the source and target
+/// When the diagram is inspected
+/// Then each end is reported instead of being accepted as edge-to-edge
 #[test]
-fn reports_connector_endpoints_placed_inside_their_nodes() {
+fn reports_edge_ends_placed_inside_their_nodes() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
         <g data-node="source">
@@ -296,14 +296,14 @@ fn reports_connector_endpoints_placed_inside_their_nodes() {
       </svg>
     "#;
 
-    let report = analyze(svg);
-    let endpoints: Vec<serde_json::Value> = issues_json(&report)
+    let report = inspect(svg);
+    let ends: Vec<serde_json::Value> = issues_json(&report)
         .into_iter()
         .filter(|issue| issue["code"] == "connector-endpoint-inside")
         .collect();
 
     assert_eq!(
-        endpoints,
+        ends,
         [
             json!({
                 "code": "connector-endpoint-inside",
@@ -321,13 +321,13 @@ fn reports_connector_endpoints_placed_inside_their_nodes() {
     );
 }
 
-/// Given a connector whose ends stop 40px short of the source and the
+/// Given a edge whose ends stop 40px short of the source and the
 ///   target, and one stopping 8px short of them, as an arrowhead may
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then each end of the first is reported as detached from its node, and
 ///   the second is not
 #[test]
-fn reports_connector_endpoints_away_from_their_nodes() {
+fn reports_edge_ends_away_from_their_nodes() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
         <g data-node="source">
@@ -345,7 +345,7 @@ fn reports_connector_endpoints_away_from_their_nodes() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
     let detached: Vec<serde_json::Value> = issues_json(&report)
         .into_iter()
         .filter(|issue| issue["code"] == "connector-endpoint-detached")
@@ -371,7 +371,7 @@ fn reports_connector_endpoints_away_from_their_nodes() {
 }
 
 /// Given overlapping peer nodes where one declares intentional overlap
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then no overlap issue is reported for that pair
 #[test]
 fn allows_overlap_explicitly_marked_as_intentional() {
@@ -388,11 +388,11 @@ fn allows_overlap_explicitly_marked_as_intentional() {
       </svg>
     "#;
 
-    assert!(!has_issue(&analyze(svg), "node-overlap"));
+    assert!(!has_issue(&inspect(svg), "node-overlap"));
 }
 
 /// Given two free labels whose estimated bounding boxes intersect
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the overlapping label pair is reported
 #[test]
 fn reports_overlapping_free_labels() {
@@ -403,7 +403,7 @@ fn reports_overlapping_free_labels() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
         "code": "label-overlap",
@@ -414,7 +414,7 @@ fn reports_overlapping_free_labels() {
 
 /// Given a free label lying across a rectangular node and another across a
 ///   circular node
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then each label is reported together with the node it covers
 #[test]
 fn reports_labels_that_cover_nodes() {
@@ -433,7 +433,7 @@ fn reports_labels_that_cover_nodes() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert_eq!(
         issues_json(&report)
@@ -455,12 +455,12 @@ fn reports_labels_that_cover_nodes() {
     );
 }
 
-/// Given a container holding a child node, with one label in the container's
+/// Given a parent holding a child node, with one label in the parent's
 ///   free space and another lying across the child
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then only the label covering the child is reported
 #[test]
-fn ignores_labels_inside_a_container_unless_they_cover_a_child() {
+fn ignores_labels_inside_a_parent_unless_they_cover_a_child() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
         <g data-node="cluster">
@@ -476,7 +476,7 @@ fn ignores_labels_inside_a_container_unless_they_cover_a_child() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert_eq!(
         issues_with_code(&report, "label-node-overlap"),
@@ -485,7 +485,7 @@ fn ignores_labels_inside_a_container_unless_they_cover_a_child() {
 }
 
 /// Given a free label that extends beyond the viewBox safety area
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then viewport clipping is reported even when no nodes exist
 #[test]
 fn includes_free_labels_when_checking_the_safe_viewbox() {
@@ -495,7 +495,7 @@ fn includes_free_labels_when_checking_the_safe_viewbox() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
         "code": "viewport-clipping",
@@ -509,10 +509,10 @@ fn includes_free_labels_when_checking_the_safe_viewbox() {
 }
 
 /// Given a request and a reply drawn on the same horizontal line
-/// When the diagram is analyzed
-/// Then the pair of overlapping connectors is reported
+/// When the diagram is inspected
+/// Then the pair of overlapping edges is reported
 #[test]
-fn reports_connectors_that_run_along_the_same_segment() {
+fn reports_edges_that_run_along_the_same_segment() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
         <g data-node="client">
@@ -530,7 +530,7 @@ fn reports_connectors_that_run_along_the_same_segment() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
         "code": "connector-overlap",
@@ -539,11 +539,11 @@ fn reports_connectors_that_run_along_the_same_segment() {
     })));
 }
 
-/// Given a horizontal and a vertical connector that cross at one point
-/// When the diagram is analyzed
-/// Then no connector overlap is reported
+/// Given a horizontal and a vertical edge that cross at one point
+/// When the diagram is inspected
+/// Then no edge overlap is reported
 #[test]
-fn does_not_report_connectors_that_only_cross_each_other() {
+fn does_not_report_edges_that_only_cross_each_other() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
         <g data-node="west">
@@ -569,18 +569,18 @@ fn does_not_report_connectors_that_only_cross_each_other() {
       </svg>
     "#;
 
-    assert!(!has_issue(&analyze(svg), "connector-overlap"));
+    assert!(!has_issue(&inspect(svg), "connector-overlap"));
 }
 
-/// Given a connector that turns 1px beside where another turns, so the two
-///   read as one line turning
-/// When the diagram is analyzed
+/// Given a edge that bends 1px beside where another bends, so the two
+///   read as one line bending
+/// When the diagram is inspected
 /// Then the pair is reported as a near miss
 #[test]
-fn reports_a_connector_turning_just_beside_another() {
+fn reports_a_edge_bending_just_beside_another() {
     let svg = near_miss_svg(960.0, 379.0);
 
-    let report = analyze(&svg);
+    let report = inspect(&svg);
 
     assert!(issues_json(&report).contains(&json!({
         "code": "connector-near-miss",
@@ -589,19 +589,19 @@ fn reports_a_connector_turning_just_beside_another() {
     })));
 }
 
-/// Given the same two connectors turning a lane (10px) apart
-/// When the diagram is analyzed
+/// Given the same two edges bending a lane (10px) apart
+/// When the diagram is inspected
 /// Then no near miss is reported
 #[test]
-fn does_not_report_connectors_turning_a_lane_apart() {
+fn does_not_report_edges_bending_a_lane_apart() {
     let svg = near_miss_svg(969.0, 370.0);
 
-    assert!(!has_issue(&analyze(&svg), "connector-near-miss"));
+    assert!(!has_issue(&inspect(&svg), "connector-near-miss"));
 }
 
-/// Two connectors entering the left of "assess": "score" comes down from
-/// above and turns at (380, 959); "model" leaves the store at `model_y`
-/// and turns down at `model_x`.
+/// Two edges entering the left of "assess": "score" comes down from
+/// above and bends at (380, 959); "model" leaves the store at `model_y`
+/// and bends down at `model_x`.
 fn near_miss_svg(model_y: f64, model_x: f64) -> String {
     format!(
         r#"
@@ -639,28 +639,28 @@ fn tied_label(label_y: u32) -> String {
     )
 }
 
-/// Given a label tied to a connector by data-label-for, 45px above it
-/// When the diagram is analyzed
-/// Then the label is reported as detached from that connector
+/// Given a label tied to a edge by data-label-for, 45px above it
+/// When the diagram is inspected
+/// Then the label is reported as detached from that edge
 #[test]
-fn reports_a_tied_label_that_sits_away_from_its_connector() {
-    let report = analyze(&tied_label(0));
+fn reports_a_tied_label_that_sits_away_from_its_edge() {
+    let report = inspect(&tied_label(0));
 
     assert_eq!(issues_with_code(&report, "label-detached"), [["retry", "flow"]]);
 }
 
-/// Given a label tied to a connector, keeping 9px above it
-/// When the diagram is analyzed
+/// Given a label tied to a edge, keeping 9px above it
+/// When the diagram is inspected
 /// Then no detached label is reported
 #[test]
-fn accepts_a_tied_label_right_beside_its_connector() {
-    assert!(!has_issue(&analyze(&tied_label(36)), "label-detached"));
+fn accepts_a_tied_label_right_beside_its_edge() {
+    assert!(!has_issue(&inspect(&tied_label(36)), "label-detached"));
 }
 
 /// Given two circular nodes: one whose two-line label fits its bounding
 ///   box with padding but reaches within 12px of the circle, and one with
 ///   a short label near its centre
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then only the first is reported as overflowing
 #[test]
 fn reports_a_label_that_cuts_into_a_circular_node_s_padding() {
@@ -678,16 +678,16 @@ fn reports_a_label_that_cuts_into_a_circular_node_s_padding() {
       </svg>
     "#;
 
-    assert_eq!(issues_with_code(&analyze(svg), "text-overflow"), [["crowded"]]);
+    assert_eq!(issues_with_code(&inspect(svg), "text-overflow"), [["crowded"]]);
 }
 
-/// Given a circular node, an L-shaped connector that turns inside a corner
+/// Given a circular node, an L-shaped edge that bends inside a corner
 ///   of the circle's bounding box without touching the circle, and a
-///   straight connector through the circle's centre
-/// When the diagram is analyzed
-/// Then only the straight connector is reported as crossing the node
+///   straight edge through the circle's centre
+/// When the diagram is inspected
+/// Then only the straight edge is reported as crossing the node
 #[test]
-fn reports_connectors_through_a_circle_but_not_past_its_bounding_corners() {
+fn reports_edges_through_a_circle_but_not_past_its_bounding_corners() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -100 400 280">
         <g data-node="stop">
@@ -718,17 +718,17 @@ fn reports_connectors_through_a_circle_but_not_past_its_bounding_corners() {
     "#;
 
     assert_eq!(
-        issues_with_code(&analyze(svg), "connector-node-crossing"),
+        issues_with_code(&inspect(svg), "connector-node-crossing"),
         [["through", "stop"]]
     );
 }
 
-/// Given a circular node with one connector starting on its circle, at a
+/// Given a circular node with one edge starting on its circle, at a
 ///   point inside the bounding box, and another starting inside the circle
-/// When the diagram is analyzed
-/// Then only the connector starting inside the circle is reported
+/// When the diagram is inspected
+/// Then only the edge starting inside the circle is reported
 #[test]
-fn accepts_endpoints_on_a_circle_and_reports_ones_inside_it() {
+fn accepts_ends_on_a_circle_and_reports_ones_inside_it() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -60 420 220">
         <g data-node="hub">
@@ -747,18 +747,18 @@ fn accepts_endpoints_on_a_circle_and_reports_ones_inside_it() {
     "#;
 
     assert_eq!(
-        issues_with_code(&analyze(svg), "connector-endpoint-inside"),
+        issues_with_code(&inspect(svg), "connector-endpoint-inside"),
         [["inside", "hub"]]
     );
 }
 
-/// Given a connector that comes straight down onto the middle of a box's
-///   left side, its last stretch lying on that side
-/// When the diagram is analyzed
+/// Given a edge that comes straight down onto the middle of a box's
+///   left side, its last segment lying on that side
+/// When the diagram is inspected
 /// Then the end is reported as running along the side, while an end that
 ///   meets a side at a right angle is not
 #[test]
-fn reports_a_connector_end_running_along_the_side_it_ends_on() {
+fn reports_a_edge_end_running_along_the_side_it_ends_on() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
         <g data-node="checkout"><circle cx="100" cy="70" r="50"/><text x="100" y="75" text-anchor="middle" font-size="13">Check out</text></g>
@@ -769,7 +769,7 @@ fn reports_a_connector_end_running_along_the_side_it_ends_on() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert_eq!(
         issues_with_code(&report, "connector-end-along-side"),
@@ -779,7 +779,7 @@ fn reports_a_connector_end_running_along_the_side_it_ends_on() {
 
 /// Two tables, `article` with a port "author" on each side at its middle
 /// row and `user` with a port "id" on each side at its top row, and a
-/// connector between them drawn as `d`.
+/// edge between them drawn as `d`.
 fn tables_joined_by(d: &str, to_port: &str) -> String {
     format!(
         r#"
@@ -805,8 +805,8 @@ fn tables_joined_by(d: &str, to_port: &str) -> String {
 }
 
 /// Given `article` whose port "author" is a pin 20px outside its right
-///   side, and a connector from that pin to the left side of `user`
-/// When the diagram is analyzed
+///   side, and a edge from that pin to the left side of `user`
+/// When the diagram is inspected
 /// Then the end at the pin is not reported as detached from `article`
 #[test]
 fn accepts_an_end_at_a_port_outside_its_node() {
@@ -825,20 +825,20 @@ fn accepts_an_end_at_a_port_outside_its_node() {
     "#;
 
     assert_eq!(
-        issues_with_code(&analyze(svg), "connector-endpoint-detached"),
+        issues_with_code(&inspect(svg), "connector-endpoint-detached"),
         Vec::<Vec<String>>::new()
     );
 }
 
-/// Given a connector leaving its port "author" but reaching the side of
+/// Given a edge leaving its port "author" but reaching the side of
 ///   `user` below its port "id"
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the end is reported as off its port, and the start is not
 #[test]
-fn reports_a_connector_end_off_the_port_it_names() {
+fn reports_a_edge_end_off_the_port_it_names() {
     let svg = tables_joined_by("M 140 82 L 300 82", "id");
 
-    let report = analyze(svg.as_str());
+    let report = inspect(svg.as_str());
 
     assert_eq!(
         issues_json(&report)
@@ -854,14 +854,14 @@ fn reports_a_connector_end_off_the_port_it_names() {
     );
 }
 
-/// Given a connector naming a port "email" that `user` does not declare
-/// When the diagram is analyzed
+/// Given a edge naming a port "email" that `user` does not declare
+/// When the diagram is inspected
 /// Then the end is reported as naming an unknown port, not as off it
 #[test]
-fn reports_a_connector_end_naming_a_port_its_node_lacks() {
+fn reports_a_edge_end_naming_a_port_its_node_lacks() {
     let svg = tables_joined_by("M 140 82 L 220 82 L 220 58 L 300 58", "email");
 
-    let report = analyze(svg.as_str());
+    let report = inspect(svg.as_str());
 
     assert_eq!(
         issues_json(&report)
@@ -878,7 +878,7 @@ fn reports_a_connector_end_naming_a_port_its_node_lacks() {
 }
 
 /// `article` and `comment` joined to the port "id" of `user`, the two
-/// connectors meeting 40px before it and running on together into it.
+/// edges meeting 40px before it and running on together into it.
 const MERGING_INTO_ONE_PORT: &str = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 280">
         <g data-node="article" data-custom="true">
@@ -906,15 +906,15 @@ const MERGING_INTO_ONE_PORT: &str = r#"
       </svg>
     "#;
 
-/// Given two connectors from `article` and `comment` to the port "id" of
+/// Given two edges from `article` and `comment` to the port "id" of
 ///   `user`, joining 40px before it and running on together into it
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then their shared run is not reported as an overlap
 #[test]
-fn does_not_report_connectors_merging_into_one_port_as_overlapping() {
+fn does_not_report_edges_merging_into_one_port_as_overlapping() {
     let svg = MERGING_INTO_ONE_PORT;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert_eq!(
         issues_with_code(&report, "connector-overlap"),
@@ -922,13 +922,13 @@ fn does_not_report_connectors_merging_into_one_port_as_overlapping() {
     );
 }
 
-/// Given two connectors joining 40px before the port "id" of `user`, one
-///   turning onto the other there
-/// When the diagram is analyzed
-/// Then the turn where they join is not reported as a near miss
+/// Given two edges joining 40px before the port "id" of `user`, one
+///   bending onto the other there
+/// When the diagram is inspected
+/// Then the bend where they join is not reported as a near miss
 #[test]
-fn does_not_report_the_turn_where_connectors_merge_into_a_port_as_a_near_miss() {
-    let report = analyze(MERGING_INTO_ONE_PORT);
+fn does_not_report_the_bend_where_edges_merge_into_a_port_as_a_near_miss() {
+    let report = inspect(MERGING_INTO_ONE_PORT);
 
     assert_eq!(
         issues_with_code(&report, "connector-near-miss"),
@@ -936,7 +936,7 @@ fn does_not_report_the_turn_where_connectors_merge_into_a_port_as_a_near_miss() 
     );
 }
 
-/// Source, and a target lower to the right, joined by a connector drawn as
+/// Source, and a target lower to the right, joined by a edge drawn as
 /// `d`.
 fn source_and_lower_target(d: &str) -> String {
     format!(
@@ -956,39 +956,39 @@ fn source_and_lower_target(d: &str) -> String {
     )
 }
 
-/// Given a connector drawn straight across to a node lower down
-/// When the diagram is analyzed
-/// Then the connector is reported as slanted
+/// Given a edge drawn straight across to a node lower down
+/// When the diagram is inspected
+/// Then the edge is reported as slanted
 #[test]
-fn reports_a_slanted_connector() {
+fn reports_a_slanted_edge() {
     let svg = source_and_lower_target("M 120 48 L 260 168");
 
     assert_eq!(
-        issues_with_code(&analyze(&svg), "connector-slanted"),
+        issues_with_code(&inspect(&svg), "connector-slanted"),
         vec![vec!["flow".to_owned()]]
     );
 }
 
-/// Given a connector of horizontal and vertical segments only
-/// When the diagram is analyzed
+/// Given a edge of horizontal and vertical segments only
+/// When the diagram is inspected
 /// Then it is not reported as slanted
 #[test]
-fn does_not_report_an_orthogonal_connector_as_slanted() {
+fn does_not_report_an_orthogonal_edge_as_slanted() {
     let svg = source_and_lower_target("M 120 48 L 190 48 L 190 168 L 260 168");
 
     assert_eq!(
-        issues_with_code(&analyze(&svg), "connector-slanted"),
+        issues_with_code(&inspect(&svg), "connector-slanted"),
         Vec::<Vec<String>>::new()
     );
 }
 
-/// Given a connector from `a` to "ghost", which no node is, and a connector
+/// Given a edge from `a` to "ghost", which no node is, and a edge
 ///   between `a` and `b`, which both are
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the first is reported as ending at a node the diagram does not have,
 ///   and the second is not
 #[test]
-fn reports_a_connector_end_naming_a_node_the_diagram_lacks() {
+fn reports_a_edge_end_naming_a_node_the_diagram_lacks() {
     let svg = r#"
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
         <g data-node="a"><rect x="20" y="20" width="100" height="50" /></g>
@@ -998,7 +998,7 @@ fn reports_a_connector_end_naming_a_node_the_diagram_lacks() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert_eq!(
         issues_json(&report)
@@ -1015,7 +1015,7 @@ fn reports_a_connector_end_naming_a_node_the_diagram_lacks() {
 }
 
 /// Given two nodes both named `a`, and a node `b`
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the id `a` is reported once as used by two nodes
 #[test]
 fn reports_an_id_two_nodes_share() {
@@ -1027,7 +1027,7 @@ fn reports_an_id_two_nodes_share() {
       </svg>
     "#;
 
-    let report = analyze(svg);
+    let report = inspect(svg);
 
     assert_eq!(
         issues_json(&report)
@@ -1043,13 +1043,13 @@ fn reports_an_id_two_nodes_share() {
     );
 }
 
-/// Given a gateway outside a VPC lying across the top border of a cluster in
-/// it, and a connector from a queue in the VPC entering the gateway's left
+/// Given a gateway outside a VPC lying across the top outline of a cluster in
+/// it, and a edge from a queue in the VPC entering the gateway's left
 /// side through the top of the cluster
-/// When the diagram is analyzed
-/// Then the connector is not reported crossing the cluster
+/// When the diagram is inspected
+/// Then the edge is not reported crossing the cluster
 #[test]
-fn does_not_report_a_connector_crossing_a_container_its_end_lies_across() {
+fn does_not_report_a_edge_crossing_a_parent_its_end_lies_across() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500">
         <g data-node="vpc">
@@ -1075,18 +1075,18 @@ fn does_not_report_a_connector_crossing_a_container_its_end_lies_across() {
     "#;
 
     assert_eq!(
-        issues_with_code(&analyze(svg), "connector-node-crossing"),
+        issues_with_code(&inspect(svg), "connector-node-crossing"),
         Vec::<Vec<String>>::new()
     );
 }
 
 /// Given a parent with a child poking 10px out of its right side, one 4px
 ///   from its left side and one 12px or more from every side
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the first two are reported as node-outside-parent with their parent,
 ///   and the third is not
 #[test]
-fn reports_a_child_out_of_its_parent_or_nearer_its_border_than_12px() {
+fn reports_a_child_out_of_its_parent_or_nearer_its_outline_than_12px() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
         <g data-node="group">
@@ -1099,7 +1099,7 @@ fn reports_a_child_out_of_its_parent_or_nearer_its_border_than_12px() {
     "#;
 
     assert_eq!(
-        issues_with_code(&analyze(svg), "node-outside-parent"),
+        issues_with_code(&inspect(svg), "node-outside-parent"),
         [["near", "group"], ["out", "group"]]
     );
 }
@@ -1107,7 +1107,7 @@ fn reports_a_child_out_of_its_parent_or_nearer_its_border_than_12px() {
 /// Given a child 16px inside a parent whose group says data-padding 20, one
 ///   6px inside a parent whose rect says data-padding 4, and one 6px inside a
 ///   parent whose group says 20 and whose rect says 4
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the first and the last are reported: a parent's padding is its
 ///   group's, else its frame's
 #[test]
@@ -1130,14 +1130,14 @@ fn takes_a_parent_s_padding_from_its_group_else_its_frame() {
     "#;
 
     assert_eq!(
-        issues_with_code(&analyze(svg), "node-outside-parent"),
+        issues_with_code(&inspect(svg), "node-outside-parent"),
         [["first", "wide"], ["third", "both"]]
     );
 }
 
 /// Given a parent titled at its top left, with one child lying on the title
 ///   and one clear of it
-/// When the diagram is analyzed
+/// When the diagram is inspected
 /// Then the child on the title is reported as parent-text-overlap with its
 ///   parent, and the other is not
 #[test]
@@ -1154,7 +1154,7 @@ fn reports_a_child_lying_on_its_parent_s_text() {
     "#;
 
     assert_eq!(
-        issues_with_code(&analyze(svg), "parent-text-overlap"),
+        issues_with_code(&inspect(svg), "parent-text-overlap"),
         [["under", "group"]]
     );
 }

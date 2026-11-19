@@ -6,29 +6,29 @@ mod support;
 
 use support::*;
 
-/// An SVG with boxes `(id, x, y, width, height)` and connectors
+/// An SVG with boxes `(id, x, y, width, height)` and edges
 /// `(id, from, to, path data)`.
-fn diagram(nodes: &[(&str, f64, f64, f64, f64)], connectors: &[(&str, &str, &str, &str)]) -> String {
+fn diagram(nodes: &[(&str, f64, f64, f64, f64)], edges: &[(&str, &str, &str, &str)]) -> String {
     let nodes: String = nodes
         .iter()
         .map(|(id, x, y, width, height)| {
             format!(r#"<g data-node="{id}"><rect x="{x}" y="{y}" width="{width}" height="{height}"/></g>"#)
         })
         .collect();
-    let connectors: String = connectors
+    let edges: String = edges
         .iter()
         .map(|(id, from, to, d)| format!(r#"<path id="{id}" data-from="{from}" data-to="{to}" d="{d}"/>"#))
         .collect();
-    format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400">{nodes}{connectors}</svg>"#)
+    format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400">{nodes}{edges}</svg>"#)
 }
 
 fn quality(svg: &str) -> Quality {
-    quality_of(&analyze(svg))
+    quality_of(&inspect(svg))
 }
 
 const TWO_BOXES: [(&str, f64, f64, f64, f64); 2] = [("a", 20.0, 20.0, 80.0, 40.0), ("b", 400.0, 20.0, 80.0, 40.0)];
 
-/// Given a connector that steps sideways by 5px between two runs heading the same way
+/// Given a edge that steps sideways by 5px between two runs heading the same way
 /// When its quality is measured
 /// Then it has one jog, falling 15px short of a clear 20px step
 #[test]
@@ -40,7 +40,7 @@ fn measures_how_far_a_jog_falls_short_of_a_clear_step() {
     assert_eq!((quality.jogs, quality.jog_shortfall), (1, 15.0));
 }
 
-/// Given one connector with a 10px jog, and the same connector with a second 10px jog
+/// Given one edge with a 10px jog, and the same edge with a second 10px jog
 /// When their qualities are measured
 /// Then the second jog adds to the shortfall instead of lowering any average
 #[test]
@@ -57,11 +57,11 @@ fn counts_each_further_jog_as_worse() {
     assert!(two.jog_shortfall > one.jog_shortfall);
 }
 
-/// Given a connector whose short middle segment turns back, a U and not a step
+/// Given a edge whose short middle segment bends back, a U and not a step
 /// When its quality is measured
 /// Then it has no jog
 #[test]
-fn does_not_count_a_short_turn_back_as_a_jog() {
+fn does_not_count_a_short_bend_back_as_a_jog() {
     let svg = diagram(
         &[("a", 20.0, 20.0, 80.0, 40.0), ("b", 20.0, 80.0, 80.0, 40.0)],
         &[("f", "a", "b", "M 100 40 L 140 40 L 140 50 L 100 50 L 100 100")],
@@ -72,7 +72,7 @@ fn does_not_count_a_short_turn_back_as_a_jog() {
     assert_eq!((quality.jogs, quality.jog_shortfall), (0, 0.0));
 }
 
-/// Given two connectors that cross once in the open, far from their ends
+/// Given two edges that cross once in the open, far from their ends
 /// When their quality is measured
 /// Then there is one crossing and none near an end
 #[test]
@@ -95,7 +95,7 @@ fn counts_a_crossing_away_from_the_ends() {
     assert_eq!((quality.crossings, quality.crossings_near_ends), (1, 0));
 }
 
-/// Given two connectors that cross 10px from where one leaves its node
+/// Given two edges that cross 10px from where one leaves its node
 /// When their quality is measured
 /// Then the crossing also counts as one near an end
 #[test]
@@ -118,7 +118,7 @@ fn counts_a_crossing_beside_a_node_as_near_an_end() {
     assert_eq!((quality.crossings, quality.crossings_near_ends), (1, 1));
 }
 
-/// Given a connector that ends on a node lying on another connector's line, touching it without passing over
+/// Given a edge that ends on a node lying on another edge's line, touching it without passing over
 /// When their quality is measured
 /// Then they do not cross
 #[test]
@@ -139,7 +139,7 @@ fn does_not_count_routes_that_only_touch_as_crossing() {
     assert_eq!(quality(&svg).crossings, 0);
 }
 
-/// Given a connector that turns 12px after leaving its node
+/// Given a edge that bends 12px after leaving its node
 /// When its quality is measured
 /// Then that end is short, 8px short of a clear 20px
 #[test]
@@ -154,11 +154,11 @@ fn measures_how_far_a_short_end_falls_short() {
     assert_eq!((quality.short_ends, quality.short_end_shortfall), (1, 8.0));
 }
 
-/// Given a straight connector between two nodes 12px apart
+/// Given a straight edge between two nodes 12px apart
 /// When its quality is measured
-/// Then its ends are not short, as nothing turns near them
+/// Then its ends are not short, as nothing bends near them
 #[test]
-fn does_not_count_a_short_straight_connector_as_short_ends() {
+fn does_not_count_a_short_straight_edge_as_short_ends() {
     let svg = diagram(
         &[("a", 20.0, 20.0, 80.0, 40.0), ("b", 112.0, 20.0, 80.0, 40.0)],
         &[("f", "a", "b", "M 100 40 L 112 40")],
@@ -167,7 +167,7 @@ fn does_not_count_a_short_straight_connector_as_short_ends() {
     assert_eq!(quality(&svg).short_ends, 0);
 }
 
-/// Given the only connector on its 40px box sides, leaving and arriving 2px from a corner
+/// Given the only edge on its 40px box sides, leaving and arriving 2px from a corner
 /// When its quality is measured
 /// Then each end falls 8px short of half the even gap (40 / 2 / 2 = 10px), and a centred one does not
 #[test]
@@ -179,7 +179,7 @@ fn measures_how_far_an_end_crowds_its_side_s_corner() {
     assert_eq!(quality(&centred).corner_shortfall, 0.0);
 }
 
-/// Given a connector that goes 60px out of its way and back
+/// Given a edge that goes 60px out of its way and back
 /// When its quality is measured
 /// Then its detour is the 120px it runs beyond the shortest orthogonal route
 #[test]
@@ -192,11 +192,11 @@ fn measures_a_detour_beyond_the_shortest_orthogonal_route() {
     assert_eq!(quality(&svg).detour, 120.0);
 }
 
-/// Given one straight connector and one that bends three times
+/// Given one straight edge and one that bends three times
 /// When their quality is measured
-/// Then one connector is bent, however many times it bends
+/// Then one edge is bent, however many times it bends
 #[test]
-fn counts_each_bent_connector_once() {
+fn counts_each_bent_edge_once() {
     let svg = diagram(
         &[
             ("a", 20.0, 20.0, 80.0, 40.0),
@@ -209,14 +209,14 @@ fn counts_each_bent_connector_once() {
         ],
     );
 
-    assert_eq!(quality(&svg).bent_connectors, 1);
+    assert_eq!(quality(&svg).bent_edges, 1);
 }
 
-/// Given two connectors that run 10px apart for a stretch and then cross, and two that only cross
+/// Given two edges that run 10px apart for a segment and then cross, and two that only cross
 /// When their quality is measured
 /// Then only the first crossing is tangled with a run alongside
 #[test]
-fn counts_a_crossing_between_connectors_running_alongside_as_tangled() {
+fn counts_a_crossing_between_edges_running_alongside_as_tangled() {
     let nodes = [
         ("a", 20.0, 140.0, 80.0, 40.0),
         ("b", 400.0, 140.0, 80.0, 40.0),
@@ -244,7 +244,7 @@ fn counts_a_crossing_between_connectors_running_alongside_as_tangled() {
     assert_eq!((plain.crossings, plain.tangled_crossings), (1, 0));
 }
 
-/// Given a straight connector that gains a 10px jog, and the same connector detouring 60px around nothing
+/// Given a straight edge that gains a 10px jog, and the same edge detouring 60px around nothing
 /// When their quality is measured
 /// Then the jog reads worse, as people judged the paired comparisons
 #[test]
@@ -258,7 +258,7 @@ fn rates_a_small_jog_worse_than_a_detour_around_nothing() {
     assert!(quality(&jogged).badness > quality(&detoured).badness);
 }
 
-/// Given a straight connector crossing another, and the same straight connector clear of it
+/// Given a straight edge crossing another, and the same straight edge clear of it
 /// When their quality is measured
 /// Then the crossing raises the badness
 #[test]
@@ -280,11 +280,11 @@ fn counts_a_crossing_in_the_badness() {
     assert!(crossing.badness > clear.badness);
 }
 
-/// Given a connector turning twice, and one reaching the same ends with four turns at the same length
+/// Given a edge bending twice, and one reaching the same ends with four bends at the same length
 /// When their quality is measured
-/// Then the turns past the second raise the badness
+/// Then the bends past the second raise the badness
 #[test]
-fn rates_turns_past_the_second_worse() {
+fn rates_bends_past_the_second_worse() {
     let nodes = [("a", 20.0, 20.0, 80.0, 40.0), ("b", 400.0, 120.0, 80.0, 40.0)];
     let twice = diagram(&nodes, &[("f", "a", "b", "M 100 40 L 250 40 L 250 140 L 400 140")]);
     let four = diagram(
@@ -295,7 +295,7 @@ fn rates_turns_past_the_second_worse() {
     assert!(quality(&four).badness > quality(&twice).badness);
 }
 
-/// Given one connector with a 10px jog, and the same connector with a second 10px jog
+/// Given one edge with a 10px jog, and the same edge with a second 10px jog
 /// When their quality is measured
 /// Then the second jog raises the badness
 #[test]

@@ -10,34 +10,35 @@ use crate::geometry::{
     Bounds, Point, distance_to_route, distance_to_segment, enclosing, hypot, intersection, point, round,
     route_is_clear, routes_overlap, segment_intersects_interior, segment_length, segments, without_redundant_points,
 };
+use crate::inspect::EDGE_LABEL_CLEARANCE;
 
-pub const BEND_PENALTY: f64 = 40.0;
+pub const BEND_COST: f64 = 40.0;
 /// The most end terminals a search is given: three stubs on each of the
 /// four sides.
 const MAX_ENDS: usize = 12;
-/// A route's first two turns cost the bend penalty; each later one costs
-/// this many times as much, so a route turns twice rather than four times
+/// A route's first two bends cost the bend cost; each later one costs
+/// this many times as much, so a route bends twice rather than four times
 /// when it can.
-const LATE_TURN_FACTOR: f64 = 3.0;
-const EASY_TURNS: usize = 2;
+const LATE_BEND_FACTOR: f64 = 3.0;
+const EASY_BENDS: usize = 2;
 /// Choosing sides weighs bends more than routing does: a side that saves a
 /// bend wins even when the route to it runs a little longer.
-const SIDE_BEND_PENALTY: f64 = 80.0;
+const SIDE_BEND_COST: f64 = 80.0;
 /// Below one unit of length: changing a side only wins when it saves length
 /// or bends, never on a tie.
 pub const SIDE_CHANGE_COST: f64 = 0.5;
-/// Cost of each connector already attached to a side; below two bends, so
+/// Cost of each edge already attached to a side; below two bends, so
 /// one neighbour never forces an extra bend but a bundle can.
 pub const CROWDING_COST: f64 = 30.0;
 pub const LANE_SPACING: f64 = 10.0;
 /// Grid lines this close or closer add vertices without giving a route any
 /// real choice, so they are merged or left out.
 const LINE_MERGE: f64 = 4.0;
-/// Running alongside another connector closer than a lane costs this
+/// Running alongside another edge closer than a lane costs this
 /// much, once however long the two run together: closely packed lines read
 /// as one band. Half as much 12px apart and nothing from 16px, where the
 /// lines already read as two.
-pub(crate) const CLOSE_RUN: Fade = Fade {
+pub(crate) const PARALLEL_RUN: Fade = Fade {
     start: 8.0,
     reach: 16.0,
     full: 120.0,
@@ -56,14 +57,15 @@ const BRUSHING: Fade = Fade {
     reach: 20.0,
     full: 1.0,
 };
-/// Crossing another connector costs as much as a detour of 300px: a route
+/// Crossing another edge costs as much as a detour of 300px: a route
 /// goes the long way round rather than cross when it can.
-pub(crate) const CROSSING_PENALTY: f64 = 300.0;
-/// Turning on or just beside another connector, or running past its turn,
-/// makes the two read as one line turning: worse than a crossing.
-const NEAR_MISS_PENALTY: f64 = 2.0 * CROSSING_PENALTY;
-pub const CLEARANCE: f64 = 8.0;
-/// A box a route may push aside, such as another connector's label, and
+pub(crate) const CROSSING_COST: f64 = 300.0;
+/// Bending on or just beside another edge, or running past its bend,
+/// makes the two read as one line bending: worse than a crossing.
+const NEAR_MISS_COST: f64 = 2.0 * CROSSING_COST;
+/// Space a route keeps from the nodes and other boxes it passes.
+pub const ROUTE_CLEARANCE: f64 = 8.0;
+/// A box a route may push aside, such as another edge's label, and
 /// what pushing it costs, worked out only once a route reaches it: `None`
 /// when it cannot move.
 pub type Pushable<'a> = (Bounds, &'a dyn Fn() -> Option<f64>);
@@ -73,11 +75,11 @@ const NO_BOX: u16 = u16::MAX;
 /// longest first. An arrowhead is about 10px long, so the clearance alone
 /// leaves the last bend under it; shorter stubs are the fallbacks when
 /// another node is in the way.
-pub const END_STUBS: [f64; 3] = [24.0, 16.0, CLEARANCE];
+pub const END_STUBS: [f64; 3] = [24.0, 16.0, ROUTE_CLEARANCE];
 /// An end segment shorter than this, or a crossing nearer the node than
-/// this, makes it hard to see the connector arrive.
+/// this, makes it hard to see the edge arrive.
 pub(crate) const SHORT_END: f64 = 20.0;
-/// What a route searched or a diagram arranged pays for an end segment
+/// What a route searched or a diagram laid out pays for an end segment
 /// that short: in full up to the shorter stub, half at a short end, nothing
 /// from the full stub on.
 pub(crate) const SHORT_END_FADE: Fade = Fade {
@@ -139,7 +141,7 @@ pub struct Sides {
 }
 
 /// Ports facing along the dominant axis between two boxes.
-pub fn connector_ports(source: &Bounds, target: &Bounds) -> Ports {
+pub fn edge_ports(source: &Bounds, target: &Bounds) -> Ports {
     let (from, to) = (source.centre(), target.centre());
     if (to.x - from.x).abs() >= (to.y - from.y).abs() {
         let right = to.x >= from.x;
@@ -219,7 +221,7 @@ pub struct Terminal {
 }
 
 fn terminal_at(port: Point, bounds: &Bounds, cost: f64) -> Terminal {
-    stub_terminal(port, bounds, CLEARANCE, cost)
+    stub_terminal(port, bounds, ROUTE_CLEARANCE, cost)
 }
 
 fn stub_terminal(port: Point, bounds: &Bounds, length: f64, cost: f64) -> Terminal {
@@ -239,7 +241,8 @@ fn end_terminals(port: Point, target: &Bounds, obstacles: &[Bounds]) -> Vec<Term
     END_STUBS
         .iter()
         .filter(|length| {
-            **length == CLEARANCE || route_is_clear(&[port, outward(port, side_of(port, target), **length)], obstacles)
+            **length == ROUTE_CLEARANCE
+                || route_is_clear(&[port, outward(port, side_of(port, target), **length)], obstacles)
         })
         .map(|length| {
             let short = SHORT_END_FADE.cost(*length);
@@ -406,9 +409,9 @@ impl Drop for Grid {
                 &mut self.pushable_cell,
                 &mut self.crossing_horizontal,
                 &mut self.crossing_vertical,
-                &mut self.turn_beside,
-                &mut self.past_turn_horizontal,
-                &mut self.past_turn_vertical,
+                &mut self.bend_beside,
+                &mut self.past_bend_horizontal,
+                &mut self.past_bend_vertical,
             ] {
                 spare.push(std::mem::take(bools));
             }
@@ -438,31 +441,31 @@ struct Grid {
     ys: Vec<f64>,
     /// Points inside an obstacle.
     blocked_cell: Vec<bool>,
-    /// Steps entering an obstacle or running on another connector.
+    /// Steps entering an obstacle or running on another edge.
     blocked_horizontal: Vec<bool>,
     blocked_vertical: Vec<bool>,
     /// Steps on an obstacle's clearance outline.
     outline_horizontal: Vec<bool>,
     outline_vertical: Vec<bool>,
     /// Points inside a box the route may push aside, such as another
-    /// connector's label, and the box each step enters, if any.
+    /// edge's label, and the box each step enters, if any.
     pushable_cell: Vec<bool>,
     pushable_horizontal: Vec<u16>,
     pushable_vertical: Vec<u16>,
-    /// What running alongside another connector costs on each step, as an
+    /// What running alongside another edge costs on each step, as an
     /// index into `near_costs`: a grid has few distinct costs, and small
     /// indices keep the grid small enough to stay in the cache.
     near_horizontal: Vec<u16>,
     near_vertical: Vec<u16>,
     near_costs: Vec<f64>,
-    /// Steps crossing another connector.
+    /// Steps crossing another edge.
     crossing_horizontal: Vec<bool>,
     crossing_vertical: Vec<bool>,
-    /// Points within the near-miss distance of another connector.
-    turn_beside: Vec<bool>,
-    /// Steps passing within the near-miss distance of another's turn.
-    past_turn_horizontal: Vec<bool>,
-    past_turn_vertical: Vec<bool>,
+    /// Points within the near-miss distance of another edge.
+    bend_beside: Vec<bool>,
+    /// Steps passing within the near-miss distance of another's bend.
+    past_bend_horizontal: Vec<bool>,
+    past_bend_vertical: Vec<bool>,
     /// Running counts of blocked and crossing steps, at each point's index:
     /// of the steps before it along its row, and above it in its column.
     row_blocked: Vec<u16>,
@@ -488,14 +491,14 @@ fn cost_level(costs: &mut Vec<f64>, cost: f64) -> u16 {
 enum Lines {
     /// Every line.
     All,
-    /// No lines along the connectors and rails or through the middle of
+    /// No lines along the edges and rails or through the middle of
     /// channels.
     Coarse,
     /// Only the lines inside an area.
     Inside(Bounds),
 }
 
-/// Builds the grid for a search from the obstacles, the connectors already
+/// Builds the grid for a search from the obstacles, the edges already
 /// drawn, the rails and the terminals, drawing the `lines` asked for.
 fn grid(
     starts: &[Terminal],
@@ -513,7 +516,7 @@ fn grid(
         Lines::All | Lines::Coarse => None,
     };
     // Inside an area, only the obstacles' parts within it count, kept one
-    // unit past its edges so the edge lines stay inside what they cut.
+    // unit past its sides so the side lines stay inside what they cut.
     let area = area.map(|area| area.inflate(1.0));
     let clip = |b: &Bounds| -> Option<Bounds> {
         let Some(area) = area else { return Some(*b) };
@@ -554,7 +557,7 @@ fn grid(
             .map(|terminal| pick(&terminal.point))
             .chain(bounds_of_area.into_iter().flat_map(|(from, to)| [from, to]))
             .collect();
-        // Connectors (and rails) running along this axis' lines; a coarse
+        // Edges (and rails) running along this axis' lines; a coarse
         // grid leaves them out.
         let along: Vec<f64> = occupied_segments
             .iter()
@@ -562,7 +565,7 @@ fn grid(
             .map(|(from, _)| pick(from))
             .collect();
         let (lines, spans) = axis_lines(&spans, &terminals, &along, &along, !coarse);
-        // Obstacles pushed out past the area stop at its edges, which are lines.
+        // Obstacles pushed out past the area stop at its sides, which are lines.
         let spans = match bounds_of_area {
             Some((from, to)) => spans
                 .into_iter()
@@ -595,12 +598,12 @@ fn grid(
     let key = |xi: usize, yi: usize| yi * width + xi;
 
     let phase = tracing::info_span!("search_obstacles").entered();
-    // Grid lines include every obstacle edge, so an edge between neighbouring
+    // Grid lines include every obstacle side, so a link between neighbouring
     // grid points enters an obstacle exactly when its midpoint is inside it.
     let mut blocked_cell = bools(cells);
     let mut blocked_horizontal = bools(cells);
     let mut blocked_vertical = bools(cells);
-    // Edges on an obstacle's clearance outline carry a tiny extra cost that
+    // Links on an obstacle's clearance outline carry a tiny extra cost that
     // only breaks ties, so equal detours run mid-channel instead of skirting
     // a node.
     let mut outline_horizontal = bools(cells);
@@ -657,7 +660,7 @@ fn grid(
     }
     drop(phase);
     let phase = tracing::info_span!("search_taken").entered();
-    // Grid edges that share any length with another connector's segment are
+    // Grid links that share any length with another edge's segment are
     // taken, including segments shorter than one grid step.
     for (from, to) in &occupied_segments {
         if from.y == to.y {
@@ -675,19 +678,19 @@ fn grid(
 
     drop(phase);
     let phase = tracing::info_span!("search_near_runs").entered();
-    // Grid edges running parallel to another connector's segment, closer
+    // Grid links running parallel to another edge's segment, closer
     // than two lanes, run alongside it: a route pays for that once, as it
     // starts running alongside.
     let mut near_horizontal = u16s(cells, 0);
     let mut near_vertical = u16s(cells, 0);
     let mut near_costs = vec![0.0f64];
     // Only lines closer than the reach of running alongside cost anything.
-    let reach = CLOSE_RUN.reach;
+    let reach = PARALLEL_RUN.reach;
     for (from, to) in &occupied_segments {
         if from.y == to.y {
             let steps = steps_covering(&xs, from.x, to.x);
             for yi in lines_inside(&ys, from.y - reach, from.y + reach) {
-                let extra = close_run_cost((ys[yi] - from.y).abs());
+                let extra = parallel_run_cost((ys[yi] - from.y).abs());
                 let level = cost_level(&mut near_costs, extra);
                 for xi in steps.clone() {
                     let index = key(xi, yi);
@@ -699,7 +702,7 @@ fn grid(
         } else if from.x == to.x {
             let steps = steps_covering(&ys, from.y, to.y);
             for xi in lines_inside(&xs, from.x - reach, from.x + reach) {
-                let extra = close_run_cost((xs[xi] - from.x).abs());
+                let extra = parallel_run_cost((xs[xi] - from.x).abs());
                 let level = cost_level(&mut near_costs, extra);
                 for yi in steps.clone() {
                     let index = key(xi, yi);
@@ -713,8 +716,8 @@ fn grid(
 
     drop(phase);
     let phase = tracing::info_span!("search_crossings").entered();
-    // Grid edges that cross another connector's segment, or reach a point
-    // inside it, cost a crossing. An edge ending on the segment counts, the
+    // Grid links that cross another edge's segment, or reach a point
+    // inside it, cost a crossing. An link ending on the segment counts, the
     // one leaving it does not, so passing straight through counts once.
     let mut crossing_horizontal = bools(cells);
     let mut crossing_vertical = bools(cells);
@@ -740,74 +743,74 @@ fn grid(
     drop(phase);
     let phase = tracing::info_span!("search_near_misses").entered();
     let rows = ys.len();
-    // Grid points within the near-miss distance of another connector cost
-    // extra to turn at, and grid edges passing that close to another
-    // connector's turn cost extra to take.
+    // Grid points within the near-miss distance of another edge cost
+    // extra to bend at, and grid links passing that close to another
+    // edge's bend cost extra to take.
     let reach = crate::inspect::NEAR_MISS_DISTANCE;
     let lines_near = |lines: &[f64], low: f64, high: f64| {
         lines.partition_point(|line| *line <= low - reach)..lines.partition_point(|line| *line < high + reach)
     };
-    let mut turn_beside = bools(cells);
+    let mut bend_beside = bools(cells);
     for (from, to) in &crossed_segments {
         for yi in lines_near(&ys, from.y.min(to.y), from.y.max(to.y)) {
             for xi in lines_near(&xs, from.x.min(to.x), from.x.max(to.x)) {
                 if distance_to_segment(point(xs[xi], ys[yi]), *from, *to) < reach {
-                    turn_beside[key(xi, yi)] = true;
+                    bend_beside[key(xi, yi)] = true;
                 }
             }
         }
     }
-    let mut past_turn_horizontal = bools(cells);
-    let mut past_turn_vertical = bools(cells);
+    let mut past_bend_horizontal = bools(cells);
+    let mut past_bend_vertical = bools(cells);
     for corner in occupied
         .iter()
         .flat_map(|route| route.iter().skip(1).take(route.len().saturating_sub(2)))
     {
         let (columns, rows_near) = (lines_near(&xs, corner.x, corner.x), lines_near(&ys, corner.y, corner.y));
-        // Edges along the rows near the turn, from the line before it.
+        // Links along the rows near the bend, from the line before it.
         for yi in rows_near.clone() {
             for xi in columns.start.saturating_sub(1)..columns.end.min(width.saturating_sub(1)) {
                 if distance_to_segment(*corner, point(xs[xi], ys[yi]), point(xs[xi + 1], ys[yi])) < reach {
-                    past_turn_horizontal[key(xi, yi)] = true;
+                    past_bend_horizontal[key(xi, yi)] = true;
                 }
             }
         }
         for xi in columns {
             for yi in rows_near.start.saturating_sub(1)..rows_near.end.min(rows.saturating_sub(1)) {
                 if distance_to_segment(*corner, point(xs[xi], ys[yi]), point(xs[xi], ys[yi + 1])) < reach {
-                    past_turn_vertical[key(xi, yi)] = true;
+                    past_bend_vertical[key(xi, yi)] = true;
                 }
             }
         }
     }
-    // Running counts along each row of the horizontal edges (and down each
+    // Running counts along each row of the horizontal links (and down each
     // column of the vertical ones) that cannot be taken or that cross a
-    // connector, so a straight run's count is a difference of two. Both
+    // edge, so a straight run's count is a difference of two. Both
     // are laid out like the grid points: the count up to point (xi, yi) is
     // at its index, and a column's counts are summed a whole row at a time.
-    let along_rows = |edges: &[bool]| {
+    let along_rows = |links: &[bool]| {
         let mut counts = u16s(cells, 0);
         // (An empty grid has no rows to sum.)
-        for (counts, edges) in counts
+        for (counts, links) in counts
             .chunks_exact_mut(width.max(1))
-            .zip(edges.chunks_exact(width.max(1)))
+            .zip(links.chunks_exact(width.max(1)))
         {
             let mut sum = 0;
-            for (count, edge) in counts[1..].iter_mut().zip(edges) {
-                sum += u16::from(*edge);
+            for (count, link) in counts[1..].iter_mut().zip(links) {
+                sum += u16::from(*link);
                 *count = sum;
             }
         }
         counts
     };
-    let down_columns = |edges: &[bool]| {
+    let down_columns = |links: &[bool]| {
         let mut counts = u16s(cells, 0);
         for yi in 1..rows {
             let (above, row) = counts.split_at_mut(yi * width);
             let above = &above[(yi - 1) * width..];
-            let edges = &edges[(yi - 1) * width..yi * width];
-            for ((count, above), edge) in row[..width].iter_mut().zip(above).zip(edges) {
-                *count = above + u16::from(*edge);
+            let links = &links[(yi - 1) * width..yi * width];
+            for ((count, above), link) in row[..width].iter_mut().zip(above).zip(links) {
+                *count = above + u16::from(*link);
             }
         }
         counts
@@ -835,9 +838,9 @@ fn grid(
         near_costs,
         crossing_horizontal,
         crossing_vertical,
-        turn_beside,
-        past_turn_horizontal,
-        past_turn_vertical,
+        bend_beside,
+        past_bend_horizontal,
+        past_bend_vertical,
         row_blocked,
         row_crossing,
         column_blocked,
@@ -845,13 +848,13 @@ fn grid(
     }
 }
 
-/// A* over a sparse orthogonal grid built from obstacle edges, the channels
-/// between them, lanes beside drawn connectors and the terminals. Starts
+/// A* over a sparse orthogonal grid built from obstacle sides, the channels
+/// between them, lanes beside drawn edges and the terminals. Starts
 /// from whichever start terminal and stops at whichever end terminal is
 /// cheapest overall.
 /// `rails` are lines a route may cross but should not run along, such as
-/// the borders of containers around its ends: running on one is ruled
-/// out and running close beside one costs like running beside a connector.
+/// the outlines of parents around its ends: running on one is ruled
+/// out and running close beside one costs like running beside a edge.
 #[tracing::instrument(skip_all, fields(columns = tracing::field::Empty, rows = tracing::field::Empty, occupied = occupied.len(), obstacles = obstacles.len()))]
 pub fn search(
     starts: &[Terminal],
@@ -860,17 +863,17 @@ pub fn search(
     pushable: &[Pushable<'_>],
     occupied: &[Vec<Point>],
     rails: &[(Point, Point)],
-    bend_penalty: f64,
+    bend_cost: f64,
 ) -> Option<Found> {
     let grid = grid(starts, ends, obstacles, pushable, occupied, rails, Lines::All);
     tracing::Span::current()
         .record("columns", grid.xs.len())
         .record("rows", grid.ys.len());
-    astar(&grid, starts, ends, bend_penalty, None, pushable)
+    astar(&grid, starts, ends, bend_cost, None, pushable)
 }
 
 /// Like `search`, but quicker and not always the cheapest: a coarse grid,
-/// without the lines along other connectors or through the middle of
+/// without the lines along other edges or through the middle of
 /// channels, finds the way round, and the fine grid is built and searched
 /// only along the channels that way passes. Picking node sides needs only
 /// where the route ends.
@@ -882,10 +885,10 @@ fn search_along_rough_route(
     pushable: &[Pushable<'_>],
     occupied: &[Vec<Point>],
     rails: &[(Point, Point)],
-    bend_penalty: f64,
+    bend_cost: f64,
 ) -> Option<Found> {
     let coarse = grid(starts, ends, obstacles, pushable, occupied, rails, Lines::Coarse);
-    let corridor = astar(&coarse, starts, ends, bend_penalty, None, pushable)
+    let corridor = astar(&coarse, starts, ends, bend_cost, None, pushable)
         .map(|rough| corridor(&rough.path, &coarse.xs, &coarse.ys));
     corridor
         .and_then(|corridor| {
@@ -898,9 +901,9 @@ fn search_along_rough_route(
                 rails,
                 enclosing(&corridor).map_or(Lines::All, Lines::Inside),
             );
-            astar(&fine, starts, ends, bend_penalty, Some(&corridor), pushable)
+            astar(&fine, starts, ends, bend_cost, Some(&corridor), pushable)
         })
-        .or_else(|| search(starts, ends, obstacles, pushable, occupied, rails, bend_penalty))
+        .or_else(|| search(starts, ends, obstacles, pushable, occupied, rails, bend_cost))
 }
 
 /// The channels a route on a grid runs along: each segment widened to the
@@ -930,7 +933,7 @@ fn astar(
     grid: &Grid,
     starts: &[Terminal],
     ends: &[Terminal],
-    bend_penalty: f64,
+    bend_cost: f64,
     corridor: Option<&[Bounds]>,
     pushable: &[Pushable<'_>],
 ) -> Option<Found> {
@@ -950,9 +953,9 @@ fn astar(
         near_costs,
         crossing_horizontal,
         crossing_vertical,
-        turn_beside,
-        past_turn_horizontal,
-        past_turn_vertical,
+        bend_beside,
+        past_bend_horizontal,
+        past_bend_vertical,
         row_blocked,
         row_crossing,
         column_blocked,
@@ -962,7 +965,7 @@ fn astar(
     let cells = width * rows;
     let key = |xi: usize, yi: usize| yi * width + xi;
     let phase = tracing::info_span!("search_heuristic").entered();
-    // Edges taken and crossings on the straight run between two grid points
+    // Links taken and crossings on the straight run between two grid points
     // on one row or one column.
     let run_counts = |from: (usize, usize), to: (usize, usize)| -> (u32, u32) {
         let ((blocked, crossing), low, high) = if from.1 == to.1 {
@@ -1005,26 +1008,26 @@ fn astar(
     let end_at = |cell: usize| if is_end[cell] { end_cells.get(&cell) } else { None };
     let point_of = |cell: usize| point(xs[cell % width], ys[cell / width]);
     // A state is a cell, the axis the route arrived along (0: horizontally,
-    // 1: vertically) and how many times it has turned, counting up to the
-    // turns that cost the same.
-    let levels = EASY_TURNS + 1;
-    let state_of = |cell: usize, axis: usize, turned: usize| (cell * 2 + axis) * levels + turned.min(EASY_TURNS);
+    // 1: vertically) and how many times it has bent, counting up to the
+    // bends that cost the same.
+    let levels = EASY_BENDS + 1;
+    let state_of = |cell: usize, axis: usize, bent: usize| (cell * 2 + axis) * levels + bent.min(EASY_BENDS);
     let cell_of_state = |state: usize| state / levels / 2;
     let axis_of = |state: usize| state / levels % 2;
-    let turned_of = |state: usize| state % levels;
+    let bent_of = |state: usize| state % levels;
     // A*: a lower bound on what is left to pay, so the cheapest route is
-    // still found. Every edge costs at least its length and the turns the
+    // still found. Every link costs at least its length and the bends the
     // route cannot avoid cost at least their price, so the end stub's own
-    // cost, the Manhattan distance and those turns are one. When the fewest
-    // turns leave a single way in, the route also pays either for what
-    // blocks or crosses that way or for two more turns to leave it.
+    // cost, the Manhattan distance and those bends are one. When the fewest
+    // bends leave a single way in, the route also pays either for what
+    // blocks or crosses that way or for two more bends to leave it.
     let estimate = |state: usize, xi: usize, yi: usize| {
-        // An end reached is paid for in full, its stub and any turn onto it.
+        // An end reached is paid for in full, its stub and any bend onto it.
         if is_end[key(xi, yi)] {
             return 0.0;
         }
         let here = point(xs[xi], ys[yi]);
-        let (axis, turned) = (axis_of(state), turned_of(state));
+        let (axis, bent) = (axis_of(state), bent_of(state));
         if ends.len() > MAX_ENDS {
             return ends
                 .iter()
@@ -1036,15 +1039,15 @@ fn astar(
         // total so far cannot lower it, so its way in is not looked at.
         let mut best = f64::INFINITY;
         for (index, terminal) in ends.iter().enumerate() {
-            let fewest = fewest_turns(here, axis, terminal);
-            let turns: f64 = (0..fewest).map(|turn| turn_cost(turned + turn, bend_penalty)).sum();
-            let cost = terminal.cost + (terminal.point.x - here.x).abs() + (terminal.point.y - here.y).abs() + turns;
+            let fewest = fewest_bends(here, axis, terminal);
+            let bends: f64 = (0..fewest).map(|bend| bends_cost(bent + bend, bend_cost)).sum();
+            let cost = terminal.cost + (terminal.point.x - here.x).abs() + (terminal.point.y - here.y).abs() + bends;
             if cost >= best {
                 continue;
             }
-            // With no turn or one to spare, the route has one way in: straight
+            // With no bend or one to spare, the route has one way in: straight
             // on, or straight to the corner and then straight in. Leaving it,
-            // the route turns twice more; keeping to it, it crosses what lies
+            // the route bends twice more; keeping to it, it crosses what lies
             // across it.
             let detour = match (fewest, end_indices[index]) {
                 (0 | 1, Some((end_x, end_y))) => {
@@ -1053,7 +1056,7 @@ fn astar(
                     } else {
                         let corner = if axis == 1 { (xi, end_y) } else { (end_x, yi) };
                         let corner_point = point(xs[corner.0], ys[corner.1]);
-                        // The last leg has to run towards the port.
+                        // The last segment has to run towards the port.
                         let backwards = (terminal.point.x - corner_point.x) * (terminal.port.x - terminal.point.x)
                             + (terminal.point.y - corner_point.y) * (terminal.port.y - terminal.point.y)
                             < 0.0;
@@ -1065,12 +1068,12 @@ fn astar(
                         )
                     };
                     let two_more: f64 = (fewest..fewest + 2)
-                        .map(|turn| turn_cost(turned + turn, bend_penalty))
+                        .map(|bend| bends_cost(bent + bend, bend_cost))
                         .sum();
                     if blocked > 0 {
                         two_more
                     } else {
-                        two_more.min(f64::from(crossed) * CROSSING_PENALTY)
+                        two_more.min(f64::from(crossed) * CROSSING_COST)
                     }
                 }
                 _ => 0.0,
@@ -1099,26 +1102,26 @@ fn astar(
         queue.push(entry(terminal.cost + estimate(state, xi, yi), state, queued));
     }
     // How close the step that brought a route to a state ran alongside
-    // another connector.
+    // another edge.
     let near_into = |visits: &Visits, state: usize| {
         visits.previous(state).map_or(0.0, |before| {
             let (cell, before) = (cell_of_state(state), cell_of_state(before));
-            let edge = key((cell % width).min(before % width), (cell / width).min(before / width));
+            let link = key((cell % width).min(before % width), (cell / width).min(before / width));
             near_costs[usize::from(if axis_of(state) == 1 {
-                near_vertical[edge]
+                near_vertical[link]
             } else {
-                near_horizontal[edge]
+                near_horizontal[link]
             })]
         })
     };
-    // A state at the same point and axis with fewer turns, reached for less
-    // by more than this one's last step ran closer alongside a connector,
+    // A state at the same point and axis with fewer bends, reached for less
+    // by more than this one's last step ran closer alongside a edge,
     // makes every way on cheaper: this one lies on no cheapest route, so it
     // is neither queued nor looked at (proofs/NicevgProofs/Dominance.lean).
     let dominated = |visits: &Visits, state: usize, cost: f64, near: f64| {
-        let turned = turned_of(state);
-        (0..turned).any(|fewer| {
-            let other = state - turned + fewer;
+        let bent = bent_of(state);
+        (0..bent).any(|fewer| {
+            let other = state - bent + fewer;
             let reached = visits.distance(other);
             reached < cost && reached + (near - near_into(visits, other)).max(0.0) < cost
         })
@@ -1141,7 +1144,7 @@ fn astar(
         let (xi, yi) = (cell % width, cell / width);
         let here = point(xs[xi], ys[yi]);
         // How close the step that brought the route here ran alongside
-        // another connector.
+        // another edge.
         let near_here = near_into(&visits, state);
         if dominated(&visits, state, cost, near_here) {
             continue;
@@ -1179,32 +1182,29 @@ fn astar(
                 continue;
             }
             let vertical = usize::from(nxi == xi);
-            let edge = key(xi.min(nxi), yi.min(nyi));
+            let link = key(xi.min(nxi), yi.min(nyi));
             let blocked = if vertical == 1 {
                 &blocked_vertical
             } else {
                 &blocked_horizontal
             };
-            if blocked[edge] {
+            if blocked[link] {
                 continue;
             }
             // The path continues straight out of the start stub and straight
-            // into the end stub, so turning onto or off them counts as a bend.
-            let turned = turned_of(state);
-            let turns = usize::from(axis_of(state) != vertical);
-            let bend = if turns == 1 {
-                turn_cost(turned, bend_penalty)
-            } else {
-                0.0
-            } + end.map_or(0.0, |(_, terminal)| {
-                terminal.cost
-                    + if vertical != terminal.axis {
-                        turn_cost(turned + turns, bend_penalty)
-                    } else {
-                        0.0
-                    }
-            });
-            let next_state = state_of(next_cell, vertical, turned + turns);
+            // into the end stub, so bending onto or off them counts as a bend.
+            let bent = bent_of(state);
+            let bends = usize::from(axis_of(state) != vertical);
+            let bend = if bends == 1 { bends_cost(bent, bend_cost) } else { 0.0 }
+                + end.map_or(0.0, |(_, terminal)| {
+                    terminal.cost
+                        + if vertical != terminal.axis {
+                            bends_cost(bent + bends, bend_cost)
+                        } else {
+                            0.0
+                        }
+                });
+            let next_state = state_of(next_cell, vertical, bent + bends);
             let length = (next.x - here.x).abs() + (next.y - here.y).abs();
             let outline = if vertical == 1 {
                 &outline_vertical
@@ -1212,32 +1212,32 @@ fn astar(
                 &outline_horizontal
             };
             let near = near_costs[usize::from(if vertical == 1 {
-                near_vertical[edge]
+                near_vertical[link]
             } else {
-                near_horizontal[edge]
+                near_horizontal[link]
             })];
             let crossing = if vertical == 1 {
-                crossing_vertical[edge]
+                crossing_vertical[link]
             } else {
-                crossing_horizontal[edge]
+                crossing_horizontal[link]
             };
-            // Turning here, or onto the end stub there, beside another
-            // connector, or running past another's turn.
-            let beside = (turns == 1 && turn_beside[cell])
-                || end.is_some_and(|(_, terminal)| vertical != terminal.axis && turn_beside[next_cell]);
+            // Bending here, or onto the end stub there, beside another
+            // edge, or running past another's bend.
+            let beside = (bends == 1 && bend_beside[cell])
+                || end.is_some_and(|(_, terminal)| vertical != terminal.axis && bend_beside[next_cell]);
             let past = if vertical == 1 {
-                past_turn_vertical[edge]
+                past_bend_vertical[link]
             } else {
-                past_turn_horizontal[edge]
+                past_bend_horizontal[link]
             };
-            // Running alongside another connector is paid once, on the step
+            // Running alongside another edge is paid once, on the step
             // that starts it (or brings the route closer), not again on each
             // step that keeps it going straight on.
-            let near_before = if turns == 0 { near_here } else { 0.0 };
+            let near_before = if bends == 0 { near_here } else { 0.0 };
             let entered = if vertical == 1 {
-                pushable_vertical[edge]
+                pushable_vertical[link]
             } else {
-                pushable_horizontal[edge]
+                pushable_horizontal[link]
             };
             let pushes = if pushable_cell[cell] || entered == NO_BOX {
                 0.0
@@ -1249,11 +1249,11 @@ fn astar(
             };
             let next_cost = cost
                 + pushes
-                + length * if outline[edge] { 1.01 } else { 1.0 }
+                + length * if outline[link] { 1.01 } else { 1.0 }
                 + (near - near_before).max(0.0)
                 + bend
-                + if crossing { CROSSING_PENALTY } else { 0.0 }
-                + if beside || past { NEAR_MISS_PENALTY } else { 0.0 };
+                + if crossing { CROSSING_COST } else { 0.0 }
+                + if beside || past { NEAR_MISS_COST } else { 0.0 };
             if next_cost >= visits.distance(next_state) {
                 continue;
             }
@@ -1288,11 +1288,11 @@ fn astar(
 }
 
 /// The grid lines along one axis, and the obstacles' `spans` along it with
-/// edges lying within the merge distance of each other pushed outwards onto
-/// one shared line. Lines run on every obstacle edge, on `terminals` and on
-/// `occupied` connectors (both kept where they are, never crossed by a push),
-/// through the middle of each gap wide enough between edges and terminals,
-/// and one and two lanes beside the connectors at `lanes_beside`, where
+/// limits lying within the merge distance of each other pushed outwards onto
+/// one shared line. Lines run on every obstacle side, on `terminals` and on
+/// `occupied` edges (both kept where they are, never crossed by a push),
+/// through the middle of each gap wide enough between limits and terminals,
+/// and one and two lanes beside the edges at `lanes_beside`, where
 /// clear of the other lines.
 fn axis_lines(
     spans: &[(f64, f64)],
@@ -1313,32 +1313,32 @@ fn axis_lines(
             }
         })
     };
-    // Edges as (position, whether it is the high edge, obstacle), in order.
-    let mut edges: Vec<(f64, bool, usize)> = spans
+    // Limits as (position, whether it is the high limit, obstacle), in order.
+    let mut limits: Vec<(f64, bool, usize)> = spans
         .iter()
         .enumerate()
         .flat_map(|(index, (low, high))| [(*low, false, index), (*high, true, index)])
         .collect();
-    edges.sort_by(|a, b| a.0.total_cmp(&b.0));
+    limits.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut snapped: Vec<(f64, f64)> = spans.to_vec();
     let mut start = 0;
-    while start < edges.len() {
+    while start < limits.len() {
         let mut end = start + 1;
-        while end < edges.len() && edges[end].0 - edges[start].0 <= LINE_MERGE {
+        while end < limits.len() && limits[end].0 - limits[start].0 <= LINE_MERGE {
             end += 1;
         }
-        let cluster = &edges[start..end];
+        let cluster = &limits[start..end];
         let lowest_low = cluster
             .iter()
-            .filter(|edge| !edge.1)
-            .map(|edge| edge.0)
+            .filter(|limit| !limit.1)
+            .map(|limit| limit.0)
             .fold(f64::INFINITY, f64::min);
         let highest_high = cluster
             .iter()
-            .filter(|edge| edge.1)
-            .map(|edge| edge.0)
+            .filter(|limit| limit.1)
+            .map(|limit| limit.0)
             .fold(f64::NEG_INFINITY, f64::max);
-        // One line serves all when every high edge lies below every low one:
+        // One line serves all when every high limit lies below every low one:
         // a fixed line between them if there is one, else the middle.
         let shared = (highest_high <= lowest_low).then(|| {
             fixed
@@ -1369,14 +1369,14 @@ fn axis_lines(
             .flat_map(|(low, high)| [*low, *high])
             .chain(terminals.iter().copied()),
     );
-    // Midlines of the gaps between edges wide enough to hold one clear of
+    // Midlines of the gaps between limits wide enough to hold one clear of
     // both, rounded to whole units.
     let channels = base
         .windows(2)
         .filter(|pair| midlines && pair[1] - pair[0] > 2.0 * LINE_MERGE)
         .map(|pair| round((pair[0] + pair[1]) / 2.0));
     let mut lines = sorted_distinct(base.iter().copied().chain(channels).chain(occupied.iter().copied()));
-    // Lanes one and two lanes beside connectors already drawn let new routes
+    // Lanes one and two lanes beside edges already drawn let new routes
     // run alongside them when every other line through a channel is taken.
     let lanes = sorted_distinct(lanes_beside.iter().flat_map(|at| {
         [
@@ -1400,11 +1400,11 @@ fn axis_lines(
     (lines, snapped)
 }
 
-/// The fewest turns a route arriving at `here` along `axis` can still make
-/// to reach `terminal`. Each turn swaps the axis, so their number is even
+/// The fewest bends a route arriving at `here` along `axis` can still make
+/// to reach `terminal`. Each bend swaps the axis, so their number is even
 /// when the axes match and odd when they differ; none only when the
 /// terminal lies straight ahead, reached from the side away from its port.
-fn fewest_turns(here: Point, axis: usize, terminal: &Terminal) -> usize {
+fn fewest_bends(here: Point, axis: usize, terminal: &Terminal) -> usize {
     if axis != terminal.axis {
         return 1;
     }
@@ -1438,10 +1438,14 @@ impl Fade {
     }
 }
 
-/// What running alongside another connector `distance` away costs. Running
+/// What running alongside another edge `distance` away costs. Running
 /// on it is an overlap, ruled out elsewhere.
-fn close_run_cost(distance: f64) -> f64 {
-    if distance <= 0.0 { 0.0 } else { CLOSE_RUN.cost(distance) }
+fn parallel_run_cost(distance: f64) -> f64 {
+    if distance <= 0.0 {
+        0.0
+    } else {
+        PARALLEL_RUN.cost(distance)
+    }
 }
 
 /// What a drawn route costs on its own, priced as the search prices it:
@@ -1451,15 +1455,12 @@ pub(crate) fn route_cost(route: &[Point]) -> f64 {
         .iter()
         .map(|(a, b)| (a.x - b.x).abs() + (a.y - b.y).abs())
         .sum();
-    length
-        + (0..turns(route))
-            .map(|turned| turn_cost(turned, BEND_PENALTY))
-            .sum::<f64>()
+    length + (0..bends(route)).map(|bent| bends_cost(bent, BEND_COST)).sum::<f64>()
 }
 
 /// What two drawn routes cost each other, priced as the search prices a
-/// route against those already drawn: each crossing, each stretch running
-/// alongside within two lanes, and each turn just beside the other route.
+/// route against those already drawn: each crossing, each segment running
+/// alongside within two lanes, and each bend just beside the other route.
 /// Crossing a route that also runs alongside costs more, up to 2.6 times as
 /// much the nearer they run, as the two are then hard to tell apart.
 pub(crate) fn routes_cost(first: &[Point], second: &[Point]) -> f64 {
@@ -1481,21 +1482,21 @@ pub(crate) fn routes_cost(first: &[Point], second: &[Point]) -> f64 {
             let overlap = overlap((*a, *b), (*c, *d));
             if overlap > 0.0 {
                 let shared = 1.0 - BRUSHING.cost(overlap);
-                cost += close_run_cost(distance) * shared;
+                cost += parallel_run_cost(distance) * shared;
                 if distance > 0.0 {
                     closest = closest.max(TANGLED.cost(distance) * shared);
                 }
             }
         }
     }
-    cost + crossed as f64 * CROSSING_PENALTY * (1.0 + closest)
-        + (crate::inspect::turns_beside(first, &second_segments)
-            + crate::inspect::turns_beside(second, &first_segments)) as f64
-            * NEAR_MISS_PENALTY
+    cost + crossed as f64 * CROSSING_COST * (1.0 + closest)
+        + (crate::inspect::bends_beside(first, &second_segments)
+            + crate::inspect::bends_beside(second, &first_segments)) as f64
+            * NEAR_MISS_COST
 }
 
 /// How far two parallel segments run alongside each other: the length of
-/// the stretch they share along their direction, zero or less when they
+/// the segment they share along their direction, zero or less when they
 /// share none.
 pub(crate) fn overlap((a, b): (Point, Point), (c, d): (Point, Point)) -> f64 {
     let span = |p: f64, q: f64| (p.min(q), p.max(q));
@@ -1507,12 +1508,12 @@ pub(crate) fn overlap((a, b): (Point, Point), (c, d): (Point, Point)) -> f64 {
     high.min(other_high) - low.max(other_low)
 }
 
-/// The cost of a route's next turn after it has turned `turned` times.
-fn turn_cost(turned: usize, penalty: f64) -> f64 {
-    if turned >= EASY_TURNS {
-        penalty * LATE_TURN_FACTOR
+/// The cost of a route's next bend after it has bent `bent` times.
+fn bends_cost(bent: usize, cost: f64) -> f64 {
+    if bent >= EASY_BENDS {
+        cost * LATE_BEND_FACTOR
     } else {
-        penalty
+        cost
     }
 }
 
@@ -1520,7 +1521,7 @@ fn turn_cost(turned: usize, penalty: f64) -> f64 {
 /// is in the way, otherwise the cheapest detour leaving and entering the
 /// node sides at right angles.
 #[tracing::instrument(skip_all)]
-pub fn route_connector(
+pub fn route_edge(
     source: &Bounds,
     target: &Bounds,
     raw_obstacles: &[Bounds],
@@ -1529,10 +1530,13 @@ pub fn route_connector(
     occupied: &[Vec<Point>],
     rails: &[(Point, Point)],
 ) -> Vec<Point> {
-    let obstacles: Vec<Bounds> = raw_obstacles.iter().map(|bounds| bounds.inflate(CLEARANCE)).collect();
+    let obstacles: Vec<Bounds> = raw_obstacles
+        .iter()
+        .map(|bounds| bounds.inflate(ROUTE_CLEARANCE))
+        .collect();
     let pushable: Vec<Pushable<'_>> = raw_pushable
         .iter()
-        .map(|(bounds, cost)| (bounds.inflate(CLEARANCE), *cost))
+        .map(|(bounds, cost)| (bounds.inflate(ROUTE_CLEARANCE), *cost))
         .collect();
     let direct = vec![ports.start, ports.end];
     // A straight line has to meet both sides at a right angle: a vertical
@@ -1554,7 +1558,7 @@ pub fn route_connector(
     let all_obstacles: Vec<Bounds> = obstacles
         .iter()
         .copied()
-        .chain([source.inflate(CLEARANCE), target.inflate(CLEARANCE)])
+        .chain([source.inflate(ROUTE_CLEARANCE), target.inflate(ROUTE_CLEARANCE)])
         .collect();
     match search(
         &[terminal_at(ports.start, source, 0.0)],
@@ -1565,14 +1569,14 @@ pub fn route_connector(
             &obstacles
                 .iter()
                 .copied()
-                .chain((source != target).then(|| source.inflate(CLEARANCE)))
+                .chain((source != target).then(|| source.inflate(ROUTE_CLEARANCE)))
                 .collect::<Vec<_>>(),
         ),
         &all_obstacles,
         &pushable,
         occupied,
         rails,
-        BEND_PENALTY,
+        BEND_COST,
     ) {
         Some(found) => without_redundant_points(
             &std::iter::once(ports.start)
@@ -1585,9 +1589,9 @@ pub fn route_connector(
 }
 
 /// Picks the pair of node sides whose route needs the fewest bends, trying
-/// every side of both ends from its midpoint. Each connector already on a
+/// every side of both ends from its midpoint. Each edge already on a
 /// side makes that side cost more, so bends are not saved by bunching
-/// connectors together. The sides facing along the dominant axis win ties.
+/// edges together. The sides facing along the dominant axis win ties.
 #[tracing::instrument(skip_all)]
 pub fn choose_sides(
     source: &Bounds,
@@ -1598,7 +1602,7 @@ pub fn choose_sides(
     rails: &[(Point, Point)],
     load: &dyn Fn(&Bounds, Side) -> f64,
 ) -> Sides {
-    let preferred = connector_ports(source, target);
+    let preferred = edge_ports(source, target);
     let fallback = Sides {
         start: side_of(preferred.start, source),
         end: side_of(preferred.end, target),
@@ -1614,12 +1618,12 @@ pub fn choose_sides(
     };
     let obstacles: Vec<Bounds> = raw_obstacles
         .iter()
-        .map(|bounds| bounds.inflate(CLEARANCE))
-        .chain([source.inflate(CLEARANCE), target.inflate(CLEARANCE)])
+        .map(|bounds| bounds.inflate(ROUTE_CLEARANCE))
+        .chain([source.inflate(ROUTE_CLEARANCE), target.inflate(ROUTE_CLEARANCE)])
         .collect();
     let pushable: Vec<Pushable<'_>> = raw_pushable
         .iter()
-        .map(|(bounds, cost)| (bounds.inflate(CLEARANCE), *cost))
+        .map(|(bounds, cost)| (bounds.inflate(ROUTE_CLEARANCE), *cost))
         .collect();
     let found = search_along_rough_route(
         &terminals(source, fallback.start),
@@ -1628,7 +1632,7 @@ pub fn choose_sides(
         &pushable,
         occupied,
         rails,
-        SIDE_BEND_PENALTY,
+        SIDE_BEND_COST,
     );
     match found.and_then(|found| Some((Side::ALL.get(found.start?)?, Side::ALL.get(found.end?)?))) {
         Some((start, end)) => Sides {
@@ -1639,7 +1643,7 @@ pub fn choose_sides(
     }
 }
 
-/// A rerouted connector's ends and the node sides they attach to.
+/// A rerouted edge's ends and the node sides they attach to.
 #[derive(Clone, Debug)]
 pub struct PortRequest {
     pub id: String,
@@ -1648,7 +1652,7 @@ pub struct PortRequest {
     pub source: Bounds,
     pub target: Bounds,
     /// Whether each end's node is round: its ports end on the circle, so
-    /// one near a corner of its box is no nearer the edge of the node.
+    /// one near a corner of its box is no nearer the side of the node.
     pub source_round: bool,
     pub target_round: bool,
     pub sides: Sides,
@@ -1687,9 +1691,9 @@ fn set(ports: Ports, end: End, value: Point) -> Ports {
 
 /// Spreads the ports of the requests evenly along each side they share,
 /// ordered by the position of the node at the other end, so parallel
-/// connectors do not collapse onto one line, counting the ports already on
+/// edges do not collapse onto one line, counting the ports already on
 /// that side (`fixed`, keyed like the sides and given along it) as taking
-/// the even slots nearest them; then straightens connectors between facing
+/// the even slots nearest them; then straightens edges between facing
 /// sides.
 #[tracing::instrument(skip_all, fields(requests = requests.len()))]
 pub fn spread_ports(requests: &[PortRequest], fixed: &HashMap<String, Vec<f64>>) -> HashMap<String, Ports> {
@@ -1702,7 +1706,7 @@ pub fn spread_ports(requests: &[PortRequest], fixed: &HashMap<String, Vec<f64>>)
         })
         .collect();
     // Ends pinned to a port hold their place on the side, as the ports of
-    // the connectors that stay do.
+    // the edges that stay do.
     let fixed = requests
         .iter()
         .flat_map(|request| {
@@ -1727,10 +1731,10 @@ pub fn spread_ports(requests: &[PortRequest], fixed: &HashMap<String, Vec<f64>>)
     align_facing_ports(requests, untangle_pairs(requests, spread))
 }
 
-/// Connectors joining the same two node sides tie when ordered by the node
+/// Edges joining the same two node sides tie when ordered by the node
 /// at their other end, so both sides get the same order: right for facing
 /// sides, but around a corner or in a U shape the routes cross. Wherever
-/// two such connectors would cross, their ports on one node trade places so
+/// two such edges would cross, their ports on one node trade places so
 /// the routes nest instead.
 fn untangle_pairs(requests: &[PortRequest], ports: HashMap<String, Ports>) -> HashMap<String, Ports> {
     requests
@@ -1759,7 +1763,7 @@ fn untangle_pairs(requests: &[PortRequest], ports: HashMap<String, Ports>) -> Ha
             let (Some(one), Some(other)) = (ports.get(&first.id).copied(), ports.get(&second.id).copied()) else {
                 return ports;
             };
-            // The other connector's ports on the first one's source and target.
+            // The other edge's ports on the first one's source and target.
             let (other_start, other_end) = if reversed {
                 (other.end, other.start)
             } else {
@@ -1807,7 +1811,7 @@ pub(crate) fn crossings(first: &[Point], second: &[Point]) -> usize {
 }
 
 /// How many times a route changes direction.
-pub(crate) fn turns(route: &[Point]) -> usize {
+pub(crate) fn bends(route: &[Point]) -> usize {
     route
         .windows(3)
         .filter(|w| {
@@ -1819,11 +1823,11 @@ pub(crate) fn turns(route: &[Point]) -> usize {
 
 /// Whether two straight segments pass through each other.
 pub(crate) fn chords_cross(a: Point, b: Point, c: Point, d: Point) -> bool {
-    let turn = |p: Point, q: Point, r: Point| ((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)).signum();
-    turn(a, b, c) * turn(a, b, d) < 0.0 && turn(c, d, a) * turn(c, d, b) < 0.0
+    let bend = |p: Point, q: Point, r: Point| ((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)).signum();
+    bend(a, b, c) * bend(a, b, d) < 0.0 && bend(c, d, a) * bend(c, d, b) < 0.0
 }
 
-/// An endpoint attached to a node side, with the node at the other end.
+/// An end attached to a node side, with the node at the other end.
 struct SideUser {
     id: String,
     end: End,
@@ -1831,7 +1835,7 @@ struct SideUser {
     other: Bounds,
 }
 
-/// Endpoints grouped by the node side they attach to, in first-use order.
+/// Ends grouped by the node side they attach to, in first-use order.
 fn sides_in_use(requests: &[PortRequest], ports: &HashMap<String, Ports>) -> Vec<(String, Vec<SideUser>)> {
     requests
         .iter()
@@ -1865,9 +1869,9 @@ fn sides_in_use(requests: &[PortRequest], ports: &HashMap<String, Ports>) -> Vec
         })
 }
 
-/// Places the endpoints on one side at even fractions along it, ordered by
+/// Places the ends on one side at even fractions along it, ordered by
 /// the position of the node at their other end. Ports already there take
-/// the fractions nearest them; the endpoints get the rest.
+/// the fractions nearest them; the ends get the rest.
 fn spread_side(ports: HashMap<String, Ports>, key: &str, users: &[SideUser], fixed: &[f64]) -> HashMap<String, Ports> {
     let along_x = key.ends_with(":top") || key.ends_with(":bottom");
     let centre = |bounds: &Bounds| {
@@ -1930,7 +1934,7 @@ fn spread_side(ports: HashMap<String, Ports>, key: &str, users: &[SideUser], fix
         })
 }
 
-/// Straightens connectors between facing sides: when one end's coordinate
+/// Straightens edges between facing sides: when one end's coordinate
 /// also fits on the other end's side, in the middle half of a box's side or
 /// away from a circle's corners, and at least a lane away from other ports
 /// there, both ends share it.
@@ -2066,7 +2070,7 @@ pub fn end_on_shapes(route: Vec<Point>, source: &DiagramNode, target: &DiagramNo
 
 pub struct Placement {
     /// The `text-anchor` that keeps the label's lines against the side
-    /// facing its connector.
+    /// facing its edge.
     pub anchor: &'static str,
     pub bounds: Bounds,
 }
@@ -2085,7 +2089,7 @@ fn crossing_point(a: Point, b: Point, c: Point, d: Point) -> Point {
     point(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y))
 }
 
-/// Where a connector is crossed by others, turns and ends: a label reads
+/// Where a edge is crossed by others, bends and ends: a label reads
 /// best well away from these, sorted so two sets compare equal when the
 /// same.
 pub fn label_landmarks(route: &[Point], routes: &[Vec<Point>]) -> Vec<Point> {
@@ -2109,18 +2113,18 @@ pub fn label_landmarks(route: &[Point], routes: &[Vec<Point>]) -> Vec<Point> {
     landmarks
 }
 
-/// How far a label keeps from other connectors when it can: twice its gap
+/// How far a label keeps from other edges when it can: twice its gap
 /// to its own line, so it reads as belonging to its own.
-pub const LABEL_CLEAR_OF_OTHERS: f64 = 2.0 * (CLEARANCE + 1.0);
-/// Other connectors nearer a label than this still make it a little less
+pub const LABEL_CLEAR_OF_OTHERS: f64 = 2.0 * (EDGE_LABEL_CLEARANCE + 1.0);
+/// Other edges nearer a label than this still make it a little less
 /// clear: each pixel nearer weighs like this many pixels nearer one of its
-/// connector's crossings, bends or ends.
+/// edge's crossings, bends or ends.
 const LABEL_COMFORT: f64 = 30.0;
 const CROWDED_LABEL_WEIGHT: f64 = 3.0;
 
 /// Whether `other` runs parallel to `beside`, the segment a label sits
 /// beside, on its far side: the label's own line then lies between them,
-/// so the other connector leaves no doubt which one the label belongs to.
+/// so the other edge leaves no doubt which one the label belongs to.
 pub fn runs_across((from, to): (Point, Point), label: &Bounds, (c, d): (Point, Point)) -> bool {
     let centre = point(label.x + label.width / 2.0, label.y + label.height / 2.0);
     if from.y == to.y && c.y == d.y {
@@ -2136,20 +2140,20 @@ pub fn runs_across((from, to): (Point, Point), label: &Bounds, (c, d): (Point, P
 /// ones before it, and a better spot always wins over a worse one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LabelSpot {
-    /// At least a label clearance from every connector but its own, and
-    /// inside or outside each container.
+    /// At least a label clearance from every edge but its own, and
+    /// inside or outside each parent.
     Clear,
-    /// Inside or outside each container.
+    /// Inside or outside each parent.
     Within,
-    /// Across a container's border too.
+    /// Across a parent's outline too.
     Across,
 }
 
 /// A spot for a label beside one of `route`'s segments, no worse than
 /// `worst`, trying the longest segment first and fanning out from its
-/// midpoint. The label keeps the connector clearance from every route and
-/// stays at least 4px away from other labels and nodes. `containers` are
-/// the boxes around the connector's ends: the label sits inside or outside
+/// midpoint. The label keeps the edge clearance from every route and
+/// stays at least 4px away from other labels and nodes. `parents` are
+/// the boxes around the edge's ends: the label sits inside or outside
 /// each when it can.
 #[tracing::instrument(skip_all, fields(routes = routes.len(), blocked = blocked.len()))]
 pub fn place_label(
@@ -2158,10 +2162,10 @@ pub fn place_label(
     route: &[Point],
     routes: &[Vec<Point>],
     blocked: &[Bounds],
-    containers: &[Bounds],
+    parents: &[Bounds],
     worst: LabelSpot,
 ) -> Option<Placement> {
-    let gap = CLEARANCE + 1.0;
+    let gap = EDGE_LABEL_CLEARANCE + 1.0;
     let mut ordered: Vec<(usize, (Point, Point))> = segments(route).into_iter().enumerate().collect();
     ordered.sort_by(|(first_index, first), (second_index, second)| {
         let difference = segment_length(second) - segment_length(first);
@@ -2173,7 +2177,7 @@ pub fn place_label(
     });
     let route_segments: Vec<(Point, Point)> = routes.iter().flat_map(|other| segments(other)).collect();
     let fits = |bounds: &Bounds| {
-        let inflated = bounds.inflate(CLEARANCE);
+        let inflated = bounds.inflate(EDGE_LABEL_CLEARANCE);
         route_segments
             .iter()
             .all(|(from, to)| !segment_intersects_interior(*from, *to, &inflated))
@@ -2182,15 +2186,15 @@ pub fn place_label(
                 .all(|other| intersection(bounds, &other.inflate(4.0)).is_none())
     };
     let within = |bounds: &Bounds| {
-        containers.iter().all(|container| {
-            let inside = bounds.x >= container.x + 4.0
-                && bounds.y >= container.y + 4.0
-                && bounds.right() <= container.right() - 4.0
-                && bounds.bottom() <= container.bottom() - 4.0;
-            inside || intersection(bounds, &container.inflate(4.0)).is_none()
+        parents.iter().all(|parent| {
+            let inside = bounds.x >= parent.x + 4.0
+                && bounds.y >= parent.y + 4.0
+                && bounds.right() <= parent.right() - 4.0
+                && bounds.bottom() <= parent.bottom() - 4.0;
+            inside || intersection(bounds, &parent.inflate(4.0)).is_none()
         })
     };
-    // Other connectors passing close make it unclear which one a label
+    // Other edges passing close make it unclear which one a label
     // belongs to: a spot clear of them is preferred when there is one, and
     // among those, one further from them.
     let own = segments(route);
@@ -2204,7 +2208,7 @@ pub fn place_label(
         })
         .filter(|other| !other.is_empty())
         .collect();
-    // How near each other connector comes to a label beside `beside`.
+    // How near each other edge comes to a label beside `beside`.
     let distances = |bounds: &Bounds, beside: (Point, Point)| {
         others
             .iter()
@@ -2242,7 +2246,7 @@ pub fn place_label(
     };
     // Every spot that fits, in order of preference: the longest segment
     // first, from its middle outwards. The one furthest from the nearest
-    // crossing, bend or end wins, less for other connectors near it; ties
+    // crossing, bend or end wins, less for other edges near it; ties
     // keep that order.
     let find = |fits: &dyn Fn(&Bounds, (Point, Point)) -> bool| {
         ordered
@@ -2285,7 +2289,7 @@ pub fn place_label(
                 })
             })
             .fold(None, |best: Option<(f64, Placement)>, (bounds, anchor, beside)| {
-                // Other connectors only take from a spot's clearance, so one
+                // Other edges only take from a spot's clearance, so one
                 // no clearer than the best so far cannot win: it is left out
                 // before the costly check that it fits
                 // (proofs/NicevgProofs/Ceiling.lean).
@@ -2318,7 +2322,7 @@ pub fn place_label(
 mod tests {
     use super::*;
 
-    /// Given two obstacles whose facing edges lie 4px apart
+    /// Given two obstacles whose facing sides lie 4px apart
     /// When the grid lines along that axis are drawn
     /// Then the two edges share one line between them, each obstacle
     ///   pushed outwards onto it, and no line runs within the merge
@@ -2358,7 +2362,7 @@ mod tests {
         assert_eq!(spans[1].0, 142.0);
     }
 
-    /// Given a gap of 5px between two obstacles, and a connector whose lane
+    /// Given a gap of 5px between two obstacles, and a edge whose lane
     ///   would fall 1px from an obstacle edge
     /// When the grid lines are drawn
     /// Then the narrow gap gets no channel midline, the lane next to the
@@ -2405,9 +2409,9 @@ mod tests {
     /// Given a port on a box's left side with room for every stub
     /// When the ends a route may arrive at are offered
     /// Then every stub shorter than a short end costs, on top of the length
-    ///   it gives up, what arranging charges for an end that short
+    ///   it gives up, what layout charges for an end that short
     #[test]
-    fn costs_a_stub_too_short_to_see_the_arrival_like_arranging_does() {
+    fn costs_a_stub_too_short_to_see_the_arrival_like_laying_out_does() {
         let target = Bounds {
             x: 100.0,
             y: 0.0,
@@ -2451,19 +2455,19 @@ mod tests {
             route_cost(&[point(0.0, 0.0), point(150.0, 0.0), point(300.0, 0.0)]),
             300.0
         );
-        assert_eq!(route_cost(&one_bend), 300.0 + BEND_PENALTY);
+        assert_eq!(route_cost(&one_bend), 300.0 + BEND_COST);
         assert_eq!(
             route_cost(&stairs),
-            300.0 + 2.0 * BEND_PENALTY + 2.0 * BEND_PENALTY * LATE_TURN_FACTOR
+            300.0 + 2.0 * BEND_COST + 2.0 * BEND_COST * LATE_BEND_FACTOR
         );
     }
 
     /// Given a pair of routes crossing once, pairs running alongside 5px
     ///   apart for 100px and for 400px, a pair alongside for only 5px, a
-    ///   pair alongside 14px apart, a pair where one turns 3px beside the
+    ///   pair alongside 14px apart, a pair where one bends 3px beside the
     ///   other, and a pair far apart
     /// When each pair is costed
-    /// Then a crossing and a turn beside cost what the search charges for
+    /// Then a crossing and a bend beside cost what the search charges for
     ///   them, running alongside costs the same however long it lasts, less
     ///   for a mere touch of overlap and less further apart, and the pair far
     ///   apart costs nothing
@@ -2476,15 +2480,15 @@ mod tests {
         let long_beside = [point(0.0, 5.0), point(400.0, 5.0)];
         let touching = [point(95.0, 5.0), point(200.0, 5.0)];
         let wider = [point(0.0, 14.0), point(100.0, 14.0)];
-        let turning = [point(30.0, 30.0), point(30.0, 3.0), point(90.0, 3.0)];
+        let bending = [point(30.0, 30.0), point(30.0, 3.0), point(90.0, 3.0)];
         let far = [point(0.0, 200.0), point(100.0, 200.0)];
 
-        assert_eq!(routes_cost(&along, &across), CROSSING_PENALTY);
-        assert_eq!(routes_cost(&along, &beside), CLOSE_RUN.full);
-        assert_eq!(routes_cost(&long_along, &long_beside), CLOSE_RUN.full);
-        assert!(routes_cost(&along, &touching) > 0.0 && routes_cost(&along, &touching) < CLOSE_RUN.full / 2.0);
-        assert!(routes_cost(&along, &wider) > 0.0 && routes_cost(&along, &wider) < CLOSE_RUN.full / 2.0);
-        assert!(routes_cost(&along, &turning) >= NEAR_MISS_PENALTY);
+        assert_eq!(routes_cost(&along, &across), CROSSING_COST);
+        assert_eq!(routes_cost(&along, &beside), PARALLEL_RUN.full);
+        assert_eq!(routes_cost(&long_along, &long_beside), PARALLEL_RUN.full);
+        assert!(routes_cost(&along, &touching) > 0.0 && routes_cost(&along, &touching) < PARALLEL_RUN.full / 2.0);
+        assert!(routes_cost(&along, &wider) > 0.0 && routes_cost(&along, &wider) < PARALLEL_RUN.full / 2.0);
+        assert!(routes_cost(&along, &bending) >= NEAR_MISS_COST);
         assert_eq!(routes_cost(&along, &far), 0.0);
         assert_eq!(routes_cost(&across, &along), routes_cost(&along, &across));
     }
@@ -2513,13 +2517,13 @@ mod tests {
 
         assert_eq!(
             routes_cost(&along, &after_running_at(8.0)),
-            CLOSE_RUN.full + 2.6 * CROSSING_PENALTY
+            PARALLEL_RUN.full + 2.6 * CROSSING_COST
         );
-        assert!(wider > CROSSING_PENALTY && wider < 2.6 * CROSSING_PENALTY, "{wider}");
-        assert_eq!(routes_cost(&along, &apart), CROSSING_PENALTY);
+        assert!(wider > CROSSING_COST && wider < 2.6 * CROSSING_COST, "{wider}");
+        assert_eq!(routes_cost(&along, &apart), CROSSING_COST);
     }
 
-    /// Given a connector leaving a box's bottom 20px in from the left end of the
+    /// Given a edge leaving a box's bottom 20px in from the left end of the
     ///   box below's top side, once with a box below and once with a circle
     /// When the ports of facing sides are lined up
     /// Then the box keeps its port in the middle of its side and the line
@@ -2614,12 +2618,12 @@ mod tests {
         assert!(inside.iter().all(|xi| built.blocked_cell[row * built.xs.len() + xi]));
     }
 
-    /// Given a connector drawn along y = 0 and terminals on y = 6
+    /// Given a edge drawn along y = 0 and terminals on y = 6
     /// When the grid for a search is built
-    /// Then the steps on y = 6 beside the connector cost running alongside
+    /// Then the steps on y = 6 beside the edge cost running alongside
     ///   it in full, and those on the lane at y = 20 cost nothing
     #[test]
-    fn marks_the_steps_running_alongside_a_drawn_connector() {
+    fn marks_the_steps_running_alongside_a_drawn_edge() {
         let terminal = |x: f64| Terminal {
             point: point(x, 6.0),
             axis: 0,
@@ -2639,19 +2643,19 @@ mod tests {
             built.near_costs[usize::from(built.near_horizontal[index_of(&built.ys, y).unwrap() * built.xs.len()])]
         };
 
-        assert_eq!(step(6.0), CLOSE_RUN.full);
+        assert_eq!(step(6.0), PARALLEL_RUN.full);
         assert_eq!(step(20.0), 0.0);
     }
 
-    /// Given a connector drawn along y = 0 and a route to find straight
+    /// Given a edge drawn along y = 0 and a route to find straight
     ///   along y = 6, with a row of far-off boxes splitting that line into
     ///   many grid steps
     /// When the route is searched
-    /// Then it runs straight alongside the connector, paying for running
+    /// Then it runs straight alongside the edge, paying for running
     ///   alongside once rather than on every step, which would make
     ///   stepping away and back with four bends cheaper
     #[test]
-    fn pays_once_for_running_alongside_a_connector_however_many_steps() {
+    fn pays_once_for_running_alongside_a_edge_however_many_steps() {
         let terminal = |x: f64, port: f64| Terminal {
             point: point(x, 6.0),
             axis: 0,
@@ -2675,7 +2679,7 @@ mod tests {
             &[],
             &drawn,
             &[],
-            BEND_PENALTY,
+            BEND_COST,
         )
         .unwrap();
 
@@ -2685,12 +2689,12 @@ mod tests {
     /// Given an end stub 24px above its port, entered moving down, and a
     ///   route moving down straight above it, moving down off to its left,
     ///   moving across off to its left, and moving down past the stub's end
-    /// When the fewest turns left to reach the stub are counted
+    /// When the fewest bends left to reach the stub are counted
     /// Then straight above it needs none, off to the side two moving the same
     ///   way and one moving across, and past the stub's end two, as it has to
     ///   come back round to enter from above
     #[test]
-    fn counts_the_turns_a_route_cannot_avoid() {
+    fn counts_the_bends_a_route_cannot_avoid() {
         // A stub ending 24px above a port at (100, 100), arrived at moving down.
         let terminal = Terminal {
             point: point(100.0, 76.0),
@@ -2699,19 +2703,19 @@ mod tests {
             cost: 0.0,
         };
 
-        assert_eq!(fewest_turns(point(100.0, 20.0), 1, &terminal), 0);
-        assert_eq!(fewest_turns(point(40.0, 20.0), 1, &terminal), 2);
-        assert_eq!(fewest_turns(point(40.0, 20.0), 0, &terminal), 1);
-        assert_eq!(fewest_turns(point(100.0, 90.0), 1, &terminal), 2);
+        assert_eq!(fewest_bends(point(100.0, 20.0), 1, &terminal), 0);
+        assert_eq!(fewest_bends(point(40.0, 20.0), 1, &terminal), 2);
+        assert_eq!(fewest_bends(point(40.0, 20.0), 0, &terminal), 1);
+        assert_eq!(fewest_bends(point(100.0, 90.0), 1, &terminal), 2);
     }
 
-    /// Given a route that has turned zero to four times
-    /// When its next turn is costed
-    /// Then a third or later turn costs more than the first two
+    /// Given a route that has bent zero to four times
+    /// When its next bend is costed
+    /// Then a third or later bend costs more than the first two
     #[test]
-    fn costs_a_route_s_third_and_later_turns_more() {
-        assert_eq!(turn_cost(0, BEND_PENALTY), turn_cost(1, BEND_PENALTY));
-        assert!(turn_cost(2, BEND_PENALTY) > turn_cost(1, BEND_PENALTY));
-        assert_eq!(turn_cost(3, BEND_PENALTY), turn_cost(2, BEND_PENALTY));
+    fn costs_a_route_s_third_and_later_bends_more() {
+        assert_eq!(bends_cost(0, BEND_COST), bends_cost(1, BEND_COST));
+        assert!(bends_cost(2, BEND_COST) > bends_cost(1, BEND_COST));
+        assert_eq!(bends_cost(3, BEND_COST), bends_cost(2, BEND_COST));
     }
 }

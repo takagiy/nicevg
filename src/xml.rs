@@ -348,7 +348,7 @@ fn element_of(start: &quick_xml::events::BytesStart) -> Result<Element, ParseErr
     })
 }
 
-/// Resolves references in an attribute value and turns literal whitespace
+/// Resolves references in an attribute value and bends literal whitespace
 /// characters into spaces, as attribute-value normalization requires.
 fn decode_attribute(raw: &str) -> Result<String, String> {
     let mut out = String::with_capacity(raw.len());

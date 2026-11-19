@@ -1,9 +1,9 @@
 /-!
-A lower bound on the arrange score that needs no fix run.
+A lower bound on the lay out score that needs no fix run.
 
-`score` (src/arrange.rs) adds the movement, each connector's `route_cost`
-(its length plus its turn costs) and terms that are never negative. A
-connector runs from a point in one node's box to a point in another's, so
+`score` (src/layout.rs) adds the movement, each edge's `route_cost`
+(its length plus its bend costs) and terms that are never negative. A
+edge runs from a point in one node's box to a point in another's, so
 its length is at least the gap between the two boxes. Hence
 
   movement + Σ boxGap(from, to) ≤ score
@@ -94,8 +94,8 @@ theorem boxGap_le_dist {a b : Box} {p q : Point} (hp : a.contains p) (hq : b.con
   unfold boxGap dist
   omega
 
-/-- A drawn connector: its route starts in `src`'s box and ends in `dst`'s. -/
-structure Connector where
+/-- A drawn edge: its route starts in `src`'s box and ends in `dst`'s. -/
+structure Edge where
   src : Box
   dst : Box
   start : Point
@@ -103,18 +103,18 @@ structure Connector where
   starts : src.contains start
   ends : dst.contains (lastOr start rest)
 
-theorem boxGap_le_length (c : Connector) : boxGap c.src c.dst ≤ length (c.start :: c.rest) :=
+theorem boxGap_le_length (c : Edge) : boxGap c.src c.dst ≤ length (c.start :: c.rest) :=
   Int.le_trans (boxGap_le_dist c.starts c.ends) (dist_le_length c.start c.rest)
 
-def sumGap : List Connector → Int
+def sumGap : List Edge → Int
   | [] => 0
   | c :: cs => boxGap c.src c.dst + sumGap cs
 
-def sumLength : List Connector → Int
+def sumLength : List Edge → Int
   | [] => 0
   | c :: cs => length (c.start :: c.rest) + sumLength cs
 
-theorem sumGap_le_sumLength : ∀ cs : List Connector, sumGap cs ≤ sumLength cs
+theorem sumGap_le_sumLength : ∀ cs : List Edge, sumGap cs ≤ sumLength cs
   | [] => by simp [sumGap, sumLength]
   | c :: cs => by
     have h1 := boxGap_le_length c
@@ -122,9 +122,9 @@ theorem sumGap_le_sumLength : ∀ cs : List Connector, sumGap cs ≤ sumLength c
     simp only [sumGap, sumLength]
     omega
 
-/-- `rest` stands for every other term of `score`: issues, turns, crossings,
+/-- `rest` stands for every other term of `score`: issues, bends, crossings,
 alignment and so on. Each is a count or a cost that is never negative. -/
-theorem lowerBound_le_score (movement rest : Int) (cs : List Connector) (h : 0 ≤ rest) :
+theorem lowerBound_le_score (movement rest : Int) (cs : List Edge) (h : 0 ≤ rest) :
     movement + sumGap cs ≤ movement + sumLength cs + rest := by
   have := sumGap_le_sumLength cs
   omega

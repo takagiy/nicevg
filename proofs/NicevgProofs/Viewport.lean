@@ -7,7 +7,7 @@ src/fix.rs). The diagram read from the document is the same after that, and
 of all the checks only the one that the drawing fits the viewBox reads the
 viewBox (`inspect`, src/inspect.rs). So the grown draft's report is built
 from the one before it: that check is made again and the other issues are
-kept (`AnalysisReport::with_view_box`), where the whole document used to
+kept (`InspectionReport::with_view_box`), where the whole document used to
 be read and checked again.
 
 `inspect_again` proves the issues come out the same: the checks are the
@@ -16,7 +16,7 @@ viewBox check's issues out of a report and putting the new ones in front
 gives the report under the new viewBox.
 
 Checked in the Rust code (2026-11-19): reading a diagram takes nodes from
-groups, connectors from elements naming their ends and labels from texts,
+groups, edges from elements naming their ends and labels from texts,
 and from the root only the properties texts inherit and its children's
 names; it reads neither the viewBox, the root's width and height, nor the
 place and size of a rect drawn on the root. No check but `viewport` gives a
