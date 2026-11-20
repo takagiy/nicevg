@@ -10,7 +10,7 @@ const table = ({ port }: { port: string }) => svg`
   <circle data-port="${port}" cx="0" cy="62" r="0"/>
   <circle data-port="${port}" cx="120" cy="62" r="0"/>`;
 
-const connector = (image: ReturnType<typeof render>) => image.report.diagram.connectors[0]!;
+const edge = (image: ReturnType<typeof render>) => image.report.diagram.edges[0]!;
 
 describe("edges to ports", () => {
   /**
@@ -28,7 +28,7 @@ describe("edges to ports", () => {
       style: { table },
     });
 
-    const { from, fromPort, to, toPort } = connector(image);
+    const { from, fromPort, to, toPort } = edge(image);
     expect({ from, fromPort, to, toPort }).toEqual({ from: "article", fromPort: "author", to: "user", toPort: "id" });
   });
 
@@ -47,7 +47,7 @@ describe("edges to ports", () => {
       style: { table },
     });
 
-    const { from, fromPort } = connector(image);
+    const { from, fromPort } = edge(image);
     expect({ from, fromPort }).toEqual({ from: "blog.article", fromPort: "author" });
   });
 
@@ -66,7 +66,7 @@ describe("edges to ports", () => {
       style: { table },
     });
 
-    const { from, fromPort } = connector(image);
+    const { from, fromPort } = edge(image);
     expect({ from, fromPort }).toEqual({ from: "blog.article", fromPort: undefined });
   });
 });

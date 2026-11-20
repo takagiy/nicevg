@@ -436,7 +436,7 @@ fn reads_points_of_the_same_name_as_places_of_one_port() {
     );
 }
 
-/// Given a edge naming the port it leaves and the port it reaches
+/// Given an edge naming the port it leaves and the port it reaches
 /// When the SVG is inspected
 /// Then the report's edge carries both as fromPort and toPort
 #[test]
@@ -462,6 +462,6 @@ fn reports_the_ports_a_edge_names() {
 
     let report = serde_json::to_value(inspect(svg)).expect("serializes");
 
-    let edge = &report["diagram"]["connectors"][0];
+    let edge = &report["diagram"]["edges"][0];
     assert_eq!((&edge["fromPort"], &edge["toPort"]), (&"author".into(), &"id".into()));
 }

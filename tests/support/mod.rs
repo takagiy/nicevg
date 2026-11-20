@@ -300,7 +300,7 @@ pub fn shortest_end_segment(report: &InspectionReport, node: &str) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
-/// The nearest point to a node, along a edge's end segment there, where
+/// The nearest point to a node, along an edge's end segment there, where
 /// another edge crosses that segment.
 pub fn nearest_crossing_at_end(report: &InspectionReport, node: &str) -> f64 {
     let edges = &report.diagram.edges;
@@ -439,7 +439,7 @@ pub fn distance_from_circle(target: Point, box_: &Bounds) -> f64 {
 }
 
 /// The length below which a step between two runs is a jog, an end
-/// segment before a bend is short, and a crossing is near a edge's
+/// segment before a bend is short, and a crossing is near an edge's
 /// end: shorter reads as a mistake rather than a choice.
 pub const CLEAR_LENGTH: f64 = 20.0;
 

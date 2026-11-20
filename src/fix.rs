@@ -394,7 +394,7 @@ fn grow_round(document: &Document, parent: &DiagramNode, child: &DiagramNode) ->
 
 /// Pushes the right node of each overlapping or too-close pair rightwards,
 /// one pair at a time, until the row keeps the gaps its issues require:
-/// 20px, or room for the label of a edge between the two.
+/// 20px, or room for the label of an edge between the two.
 #[tracing::instrument(skip_all)]
 fn separate_nodes(draft: Draft) -> Draft {
     fn step(draft: Draft, attempt: usize) -> Draft {
@@ -549,7 +549,7 @@ fn settled_ports(
         })
 }
 
-/// The node side a edge meets at its `end`, coming from `inner`, and
+/// The node side an edge meets at its `end`, coming from `inner`, and
 /// the port there on the node's box: on a box, the side the end lies on;
 /// on a circle, the side the edge arrives at along its last segment.
 fn end_port(end: Point, inner: Point, bounds: &Bounds) -> (Side, Point) {
@@ -571,7 +571,7 @@ fn end_port(end: Point, inner: Point, bounds: &Bounds) -> (Side, Point) {
     (side, port)
 }
 
-/// The node and side each end of a edge meets with these ports.
+/// The node and side each end of an edge meets with these ports.
 fn meets<'a>(reroute: &Reroute<'a>, ports: &Ports) -> [(&'a str, Side); 2] {
     [
         (reroute.source.id.as_str(), side_of(ports.start, &reroute.source.bounds)),
@@ -602,7 +602,7 @@ impl<'a> Reroute<'a> {
         ]
     }
 
-    /// A edge to reroute between its nodes, each end pinned to the
+    /// An edge to reroute between its nodes, each end pinned to the
     /// place of its port nearest where it ends now.
     fn new(edge: &'a DiagramEdge, source: &'a DiagramNode, target: &'a DiagramNode) -> Self {
         let mut reroute = Reroute {
@@ -797,7 +797,7 @@ fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_ro
             Routing {
                 draft: state
                     .draft
-                    .changed_beside_nodes(updated, "route-connector", message, &[&edge.id], &edited),
+                    .changed_beside_nodes(updated, "route-edge", message, &[&edge.id], &edited),
                 routes,
             }
         })
@@ -834,7 +834,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
         .filter(|edge| !rerouted_ids.contains(edge.id.as_str()))
         .map(|edge| edge.points.clone())
         .collect();
-    // The outlines of the parents around a edge's ends: it crosses
+    // The outlines of the parents around an edge's ends: it crosses
     // them to reach its ends but should not run along them.
     let rails_for = |edge: &DiagramEdge| -> Vec<(Point, Point)> {
         diagram
@@ -857,7 +857,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             })
             .collect()
     };
-    // A edge's own label moves beside its new route, and so may the
+    // An edge's own label moves beside its new route, and so may the
     // labels of the edges that stay: a route can push one aside to
     // another spot beside its edge, for free when that spot is clear
     // of every other edge and for what crowding them there costs when
@@ -1211,7 +1211,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             ([occupied, vec![route.clone()]].concat(), [routes, vec![route]].concat())
         },
     );
-    // A edge that stays but crosses another, rerouted or not, where
+    // An edge that stays but crosses another, rerouted or not, where
     // both meet the same node side may trade ports with it, and is rerouted
     // too if so.
     let staying_ends: Vec<(Reroute, Ports)> = diagram
@@ -1373,7 +1373,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
     (placed, stuck)
 }
 
-/// Once the layout is settled, moves a middle segment of a edge that
+/// Once the layout is settled, moves a middle segment of an edge that
 /// runs closer than two lanes beside another away from it, onto the line
 /// where running alongside costs nothing, wherever the routes then cost
 /// less and stay clear of the nodes and labels around them; then places
@@ -1582,7 +1582,7 @@ fn edge_landmarks(diagram: &Diagram) -> HashMap<String, Vec<Point>> {
 }
 
 /// Places edge labels again where they may no longer be the best
-/// spot: beside a edge whose crossings, bends or ends have changed
+/// spot: beside an edge whose crossings, bends or ends have changed
 /// since `before`, wherever the label came from, and within a label
 /// clearance of another edge, where it could be taken for that
 /// one's label, when a spot clear of the others exists.
@@ -1677,7 +1677,7 @@ fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
     settled
 }
 
-/// Node boxes a edge's label keeps clear of: every node except the
+/// Node boxes an edge's label keeps clear of: every node except the
 /// parents around the edge's ends, inside which the label may sit.
 fn label_blockers(diagram: &Diagram, edge_id: &str) -> Vec<Bounds> {
     let parents = end_parent_ids(diagram, edge_id);
@@ -1689,7 +1689,7 @@ fn label_blockers(diagram: &Diagram, edge_id: &str) -> Vec<Bounds> {
         .collect()
 }
 
-/// The parents around a edge's ends, which its label may sit in
+/// The parents around an edge's ends, which its label may sit in
 /// but not across.
 fn label_parents(diagram: &Diagram, edge_id: &str) -> Vec<Bounds> {
     let parents = end_parent_ids(diagram, edge_id);
@@ -1714,7 +1714,7 @@ fn end_parent_ids<'a>(diagram: &'a Diagram, edge_id: &str) -> Vec<&'a str> {
         .unwrap_or_default()
 }
 
-/// Routes a edge with the given ports around the routes occupying the
+/// Routes an edge with the given ports around the routes occupying the
 /// diagram.
 type RouteWith<'a> = dyn Fn(&Reroute, Ports, &[Vec<Point>]) -> Vec<Point> + 'a;
 
@@ -1726,7 +1726,7 @@ fn orthogonal(route: &[Point]) -> bool {
 
 /// Port changes that spreading ports evenly cannot see, tried once routes
 /// are drawn: two edges on the same node side whose routes cross
-/// trade their ports there (a edge running straight takes its other
+/// trade their ports there (an edge running straight takes its other
 /// end along), and an end that steps aside just before its node slides
 /// along the side to the line it arrives on. A change stays when the
 /// edges it reroutes stay orthogonal and cross less without bending
@@ -1810,7 +1810,7 @@ fn improve_ports(
             (ports, routes)
         }
     };
-    // The node at one end of a edge (0 for its start, 1 for its end)
+    // The node at one end of an edge (0 for its start, 1 for its end)
     // and that end's port.
     let node_at = |index: usize, end: usize| {
         if end == 0 {
@@ -1877,7 +1877,7 @@ fn improve_ports(
             point(value, port.y)
         }
     };
-    // A edge running straight between facing sides takes its other
+    // An edge running straight between facing sides takes its other
     // end along when one end moves, so it stays straight, if that end is
     // free to move.
     let carried = |ports: &[Ports], index: usize, end: usize, new: Point| {
@@ -2032,7 +2032,7 @@ fn stepped_end(route: &[Point]) -> Option<f64> {
     }
 }
 
-/// Replaces or appends a edge's route, keeping the original order.
+/// Replaces or appends an edge's route, keeping the original order.
 fn with_route(routes: Vec<(String, Vec<Point>)>, id: &str, route: Vec<Point>) -> Vec<(String, Vec<Point>)> {
     if routes.iter().any(|(existing, _)| existing == id) {
         routes
@@ -2339,7 +2339,7 @@ mod tests {
         );
     }
 
-    /// Given `posts` with a edge from its port "reply_to_id" round to
+    /// Given `posts` with an edge from its port "reply_to_id" round to
     ///   its port "id", both on its left, bending 8px out, and a straight
     ///   edge running down 12px further left
     /// When their close parallel runs are spread once the layout is settled

@@ -194,7 +194,7 @@ fn node_overlaps(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
 }
 
 /// Nodes side by side in a row closer than they may be: 20px, or wider
-/// when a edge joining the two has a label, which must fit between
+/// when an edge joining the two has a label, which must fit between
 /// them beside the straight edge, a clearance off each node.
 fn node_gaps(diagram: &Diagram) -> Vec<DiagramIssue> {
     comparable_pairs(&diagram.nodes)
@@ -233,7 +233,7 @@ fn node_gaps(diagram: &Diagram) -> Vec<DiagramIssue> {
         .collect()
 }
 
-/// The gap two nodes need: the widest label of a edge joining them,
+/// The gap two nodes need: the widest label of an edge joining them,
 /// a clearance off each, or the node gap when that is wider.
 fn label_gap(diagram: &Diagram, first: &str, second: &str) -> f64 {
     let joins =
@@ -381,7 +381,7 @@ pub fn point_is_inside_node(target: Point, node: &DiagramNode) -> bool {
     }
 }
 
-/// How far short of its node a edge may stop, for an arrowhead drawn
+/// How far short of its node an edge may stop, for an arrowhead drawn
 /// in the gap.
 pub const END_GAP: f64 = 16.0;
 
@@ -438,7 +438,7 @@ fn edge_ends(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> 
                         "edge-overlaps-node",
                         format!("Edge \"{}\" {verb} inside node \"{}\".", edge.id, owner.id),
                         &[&edge.id, &owner.id],
-                        Some(json!({ "endpoint": which })),
+                        Some(json!({ "end": which })),
                     ));
                 }
                 // An end at a port may lie outside the node, where the port
@@ -454,7 +454,7 @@ fn edge_ends(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> 
                             owner.id
                         ),
                         &[&edge.id, &owner.id],
-                        Some(json!({ "endpoint": which, "distance": json_number(distance) })),
+                        Some(json!({ "end": which, "distance": json_number(distance) })),
                     )
                 })
             })
@@ -465,7 +465,7 @@ fn edge_ends(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> 
 /// How far an end may lie from its port's point and still meet it.
 pub const PORT_TOLERANCE: f64 = 0.5;
 
-/// Each end of a edge, as (its point, the node it meets, the port it
+/// Each end of an edge, as (its point, the node it meets, the port it
 /// names, its verb, which end), for the ends that name a port.
 fn port_ends<'a>(
     nodes: &'a [DiagramNode],
@@ -547,7 +547,7 @@ fn children_on_parent_texts(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
         .collect()
 }
 
-/// Ids more than one node has, once each: a edge naming one meets only
+/// Ids more than one node has, once each: an edge naming one meets only
 /// the first of them.
 fn duplicate_node_ids(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
     let mut counts: HashMap<&str, usize> = HashMap::new();
@@ -587,7 +587,7 @@ fn edge_unknown_nodes(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<Diagr
                             edge.id
                         ),
                         &[&edge.id],
-                        Some(json!({ "endpoint": which, "node": id })),
+                        Some(json!({ "end": which, "node": id })),
                     )
                 })
         })
@@ -604,7 +604,7 @@ fn edge_ends_off_ports(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<Diag
                     .filter(|place| place.name == port)
                     .map(|place| place.point)
                     .collect();
-                let details = Some(json!({ "endpoint": which, "port": port }));
+                let details = Some(json!({ "end": which, "port": port }));
                 let elements: [&str; 2] = [&edge.id, &owner.id];
                 if places.is_empty() {
                     return Some(issue(
@@ -673,7 +673,7 @@ fn edge_ends_along_sides(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<Di
                             edge.id, owner.id
                         ),
                         &[&edge.id, &owner.id],
-                        Some(json!({ "endpoint": which })),
+                        Some(json!({ "end": which })),
                     )
                 })
             })
@@ -681,7 +681,7 @@ fn edge_ends_along_sides(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<Di
         .collect()
 }
 
-/// A edge's ends as (node, port, point, whether it is the last point).
+/// An edge's ends as (node, port, point, whether it is the last point).
 fn named_ends(edge: &DiagramEdge) -> [(&str, Option<&str>, Option<&Point>, bool); 2] {
     [
         (
@@ -778,7 +778,7 @@ fn edge_overlaps(edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
         .collect()
 }
 
-/// How close a edge may bend to another before the two read as one
+/// How close an edge may bend to another before the two read as one
 /// line bending.
 pub const NEAR_MISS_DISTANCE: f64 = 5.0;
 

@@ -1,6 +1,6 @@
 /**
  * nicevg for TypeScript on Bun and Node: renders diagrams given as shapes
- * (or as SVG text) into SVG, repairing their layout and arranging their
+ * (or as SVG text) into SVG, fixing their issues and laying out their
  * nodes, by calling the native library through Bun's FFI or through koffi.
  *
  * ```ts
@@ -16,10 +16,10 @@
  *   style: { box },
  * });
  * await svg.write("diagram.svg");
- * svg.report.diagram.connectors; // where the routes ended up, in the order given
+ * svg.report.diagram.edges; // where the routes ended up, in the order given
  * ```
  *
- * Rendering runs on the calling thread and blocks it until done; arranging
+ * Rendering runs on the calling thread and blocks it until done; laying out
  * a large diagram takes a second or two, using every core.
  */
 
@@ -45,12 +45,12 @@ export interface Bounds {
 }
 
 /**
- * A connector from one node to another, along `points` when given. Without
+ * An edge from one node to another, along `points` when given. Without
  * them it runs between the nodes' centres, which rendering reroutes from
- * side to side. Connectors have no id: in the rendered diagram, tell them
+ * side to side. Edges have no id: in the rendered diagram, tell them
  * apart by their `from` and `to`.
  */
-export interface SketchConnector {
+export interface SketchEdge {
   /** The node it leaves, or `"node.port"` for a port its style marks `data-port`. */
   from: string;
   /** The node it reaches, or `"node.port"`. */
@@ -104,12 +104,10 @@ export type Styles<Node extends SketchNode> = {
   [Class in Node["class"]]: Style<Extract<Node, { class: Class }>>;
 };
 
-/** A diagram as nodes and the edges (connectors) between them. */
+/** A diagram as nodes and the edges between them. */
 export interface Sketch<Node extends SketchNode = SketchNode> {
   nodes: readonly Node[];
-  edges?: SketchConnector[];
-  /** The same as `edges`, its name before; pass one or the other. */
-  connectors?: SketchConnector[];
+  edges?: SketchEdge[];
   /** How to draw the nodes of each class. */
   style?: Styles<NoInfer<Node>>;
   /**
@@ -135,8 +133,8 @@ export interface DiagramNode {
   ports?: { name: string; point: Point; side: "top" | "right" | "bottom" | "left" }[];
 }
 
-export interface DiagramConnector {
-  /** Its id in an SVG; a sketch's connectors get one for their labels to refer to. */
+export interface DiagramEdge {
+  /** Its id in an SVG; a sketch's edges get one for their labels to refer to. */
   id: string;
   from: string;
   to: string;
@@ -150,13 +148,13 @@ export interface DiagramConnector {
 export interface DiagramLabel {
   id: string;
   bounds: Bounds;
-  /** The id of the connector it describes. */
-  connector?: string;
+  /** The id of the edge it describes. */
+  edge?: string;
 }
 
 export interface Diagram {
   nodes: DiagramNode[];
-  connectors: DiagramConnector[];
+  edges: DiagramEdge[];
   labels: DiagramLabel[];
   unsupportedElements: { id: string; tagName: string }[];
 }
@@ -168,10 +166,10 @@ export interface Issue {
   details?: Record<string, unknown>;
 }
 
-export interface AnalysisReport {
+export interface InspectionReport {
   valid: boolean;
   issues: Issue[];
-  drawingBounds: Bounds | null;
+  diagramBounds: Bounds | null;
   diagram: Diagram;
 }
 
@@ -187,10 +185,10 @@ export class Svg {
 
   constructor(
     text: string,
-    /** What fixing and arranging changed, in order. */
+    /** What fixing and laying out changed, in order. */
     readonly changes: Change[],
     /** The diagram read back: where its nodes, routes and labels ended up, and any issue left. */
-    readonly report: AnalysisReport,
+    readonly report: InspectionReport,
   ) {
     this.#text = text;
   }
@@ -208,11 +206,11 @@ export class Svg {
 
 /**
  * Renders a diagram into SVG: repairs its layout errors (overlapping nodes,
- * routes through nodes, stray labels and more), routes the connectors given
+ * routes through nodes, stray labels and more), routes the edges given
  * no points, and moves nodes a little where that reads better.
  */
 export function render<const Node extends SketchNode>(input: Input<Node>): Svg {
-  type Result = { svg: string; changes: Change[]; report: AnalysisReport };
+  type Result = { svg: string; changes: Change[]; report: InspectionReport };
   const call = (request: unknown) => JSON.parse(native(new TextEncoder().encode(JSON.stringify(request))));
   if (input instanceof Svg || "svg" in input) {
     const reply = call(input instanceof Svg ? { svg: input.toString() } : input);

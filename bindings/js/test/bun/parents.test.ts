@@ -167,7 +167,7 @@ describe("parents a style draws", () => {
     });
 
     const port = image.report.diagram.nodes.find((node) => node.id === "group")!.ports![0]!;
-    const edge = image.report.diagram.connectors[0]!;
+    const edge = image.report.diagram.edges[0]!;
     expect(edge.points.at(-1)).toEqual(port.point);
     expect(image.report.issues).toEqual([]);
   });

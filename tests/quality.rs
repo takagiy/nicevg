@@ -28,7 +28,7 @@ fn quality(svg: &str) -> Quality {
 
 const TWO_BOXES: [(&str, f64, f64, f64, f64); 2] = [("a", 20.0, 20.0, 80.0, 40.0), ("b", 400.0, 20.0, 80.0, 40.0)];
 
-/// Given a edge that steps sideways by 5px between two runs heading the same way
+/// Given an edge that steps sideways by 5px between two runs heading the same way
 /// When its quality is measured
 /// Then it has one jog, falling 15px short of a clear 20px step
 #[test]
@@ -57,7 +57,7 @@ fn counts_each_further_jog_as_worse() {
     assert!(two.jog_shortfall > one.jog_shortfall);
 }
 
-/// Given a edge whose short middle segment bends back, a U and not a step
+/// Given an edge whose short middle segment bends back, a U and not a step
 /// When its quality is measured
 /// Then it has no jog
 #[test]
@@ -118,7 +118,7 @@ fn counts_a_crossing_beside_a_node_as_near_an_end() {
     assert_eq!((quality.crossings, quality.crossings_near_ends), (1, 1));
 }
 
-/// Given a edge that ends on a node lying on another edge's line, touching it without passing over
+/// Given an edge that ends on a node lying on another edge's line, touching it without passing over
 /// When their quality is measured
 /// Then they do not cross
 #[test]
@@ -139,7 +139,7 @@ fn does_not_count_routes_that_only_touch_as_crossing() {
     assert_eq!(quality(&svg).crossings, 0);
 }
 
-/// Given a edge that bends 12px after leaving its node
+/// Given an edge that bends 12px after leaving its node
 /// When its quality is measured
 /// Then that end is short, 8px short of a clear 20px
 #[test]
@@ -179,7 +179,7 @@ fn measures_how_far_an_end_crowds_its_side_s_corner() {
     assert_eq!(quality(&centred).corner_shortfall, 0.0);
 }
 
-/// Given a edge that goes 60px out of its way and back
+/// Given an edge that goes 60px out of its way and back
 /// When its quality is measured
 /// Then its detour is the 120px it runs beyond the shortest orthogonal route
 #[test]
@@ -280,7 +280,7 @@ fn counts_a_crossing_in_the_badness() {
     assert!(crossing.badness > clear.badness);
 }
 
-/// Given a edge bending twice, and one reaching the same ends with four bends at the same length
+/// Given an edge bending twice, and one reaching the same ends with four bends at the same length
 /// When their quality is measured
 /// Then the bends past the second raise the badness
 #[test]

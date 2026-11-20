@@ -75,13 +75,13 @@ fn assert_layout_kept(svg: &str, result: &FixResult) {
     assert!(result.report.issues.len() <= fixed.issues.len());
     assert!(
         crowded_pairs(&result.report, 10.0) <= crowded_pairs(&fixed, 10.0),
-        "connectors run closer than 10px"
+        "edges run closer than 10px"
     );
     assert!(!result.svg.contains("translate(0 0)"), "{}", result.svg);
 }
 
 /// Given two boxes side by side that overlap vertically by only 8px, too
-///   little to run a edge straight between their facing sides, so the
+///   little to run an edge straight between their facing sides, so the
 ///   edge between them has to bend twice
 /// When the diagram is laid out
 /// Then one box moves up or down so the edge runs straight, and the
@@ -228,7 +228,7 @@ fn untangles_crossing_edges() {
 }
 
 /// Given a service inside a cluster drawn as a custom node with its title
-///   in the picture, pulled up by a edge to an external system 30px
+///   in the picture, pulled up by an edge to an external system 30px
 ///   higher that is held in place
 /// When the diagram is laid out
 /// Then the service stays 4px clear of the title, as it does of a built-in
@@ -466,7 +466,7 @@ fn lays_out_the_storefront_architecture_without_denting_a_row() {
     // The gateway's call to the cart bends into the cart from below once
     // the services around it have settled.
     assert!(bend_count(&edge_points(&result.report, "f10")) <= 2);
-    // A inner misalignment: the neighbours still line up but the node between them
+    // An inner misalignment: the neighbours still line up but the node between them
     // does not.
     let misaligned = centre_y("auth") == centre_y("cart") && centre_y("catalog") != centre_y("auth");
     assert!(!misaligned, "catalog is misaligned inside the row");
@@ -783,7 +783,7 @@ fn leaves_a_diagram_with_nothing_to_improve_unchanged() {
     let result = layout(svg);
 
     assert_eq!(result.svg, fix(svg).svg);
-    assert!(change_codes(&result).iter().all(|code| code != "arrange-node"));
+    assert!(change_codes(&result).iter().all(|code| code != "layout-node"));
 }
 
 /// `article` with the port "author" on its right and `user` to its right
@@ -808,7 +808,7 @@ const PORTS_A_LITTLE_APART: &str = r#"
   </svg>
 "#;
 
-/// Given a edge between two ports 14px apart in height
+/// Given an edge between two ports 14px apart in height
 /// When the diagram is laid out and a node moves
 /// Then the edge still leaves "author" and reaches "id" where they
 ///   are now
@@ -861,7 +861,7 @@ fn leaves_a_edge_between_ports_off_the_middle_of_their_sides_as_it_is() {
     assert_eq!(change_codes(&result), Vec::<String>::new());
 }
 
-/// Given a edge between two facing ports 14px apart in height
+/// Given an edge between two facing ports 14px apart in height
 /// When the diagram is laid out
 /// Then a node moves so the ports line up, and the edge runs straight
 #[test]

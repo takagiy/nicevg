@@ -103,7 +103,7 @@ pub struct DiagramEdge {
 pub struct DiagramLabel {
     pub id: String,
     pub bounds: Bounds,
-    #[serde(rename = "connector", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub edge: Option<String>,
 }
 
@@ -118,7 +118,6 @@ pub struct UnsupportedElement {
 #[serde(rename_all = "camelCase")]
 pub struct Diagram {
     pub nodes: Vec<DiagramNode>,
-    #[serde(rename = "connectors")]
     pub edges: Vec<DiagramEdge>,
     pub labels: Vec<DiagramLabel>,
     pub unsupported_elements: Vec<UnsupportedElement>,

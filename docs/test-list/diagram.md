@@ -268,7 +268,7 @@ Bun からは `bun:ffi`、Node からは koffi で呼ぶ（`bindings/js/test/bun
 - [x] `text` は `.at()` で横（`left`・`cx`・`right`）と縦（`top`・`cy`・`bottom`）の 1 点ずつを指定して置き、どちらかが 1 つでなければ例外になる
 - [x] `text` は `\n` で行を分け、行ごとの `<tspan>` を 1 つの箱として置き、nicevg も同じ大きさに測る
 - [x] `class` を持つノードは `style` の関数が描き、`edges` の辺がそのサイドへつながる（Bun と Node）
-- [x] `style` にないクラスや、`edges` と `connectors` の両方を渡すと例外になる
+- [x] `style` にないクラスや、辺を前の名前の `connectors` で渡すと例外になる
 - [x] `rootAttrs` はルートの `<svg>` に書かれ、数の値も渡せる。nicevg が書く属性を渡すと例外になる
 - [x] `class` のないノードは、どのノードかを示す例外になる
 - [x] 親子のない例の図（融資審査 DFD、注文 DFD、README の例）を、ネイティブライブラリの矩形と円（Rust の Sketch）で描いても `nicevg/style/simple` の `box`・`circle` で描いても、レイアウトの結果（ノードの範囲と形、ラベルの範囲、経路、辺のラベル、残る問題）が同じになる
@@ -325,7 +325,7 @@ Bun からは `bun:ffi`、Node からは koffi で呼ぶ（`bindings/js/test/bun
 ### Sketch と TypeScript
 
 - [x] Sketch の辺の `fromPort`・`toPort` を、`data-from-port`・`data-to-port` として書き出す
-- [x] 端のノードが宣言していないポートを指定した Sketch は、`connectors[i].fromPort`（`toPort`）を示すエラーになる
+- [x] 端のノードが宣言していないポートを指定した Sketch は、`edges[i].fromPort`（`toPort`）を示すエラーになる
 - [x] TypeScript の辺の端 `"node.port"` は、`.` の前をノード、後をポートとする
 - [x] TypeScript の辺の端に `.` が 2 つ以上あるときは、最後の `.` の前をノード、後をポートとする（`"a.b.c"` はノード `a.b` のポート `c`）
 - [x] TypeScript の辺の端に `.` を含むノードの id（`"a.b"`）を書くと、そのノードにポートなしでつなぐ

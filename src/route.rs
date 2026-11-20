@@ -856,7 +856,7 @@ fn grid(
 /// cheapest overall.
 /// `rails` are lines a route may cross but should not run along, such as
 /// the outlines of parents around its ends: running on one is ruled
-/// out and running close beside one costs like running beside a edge.
+/// out and running close beside one costs like running beside an edge.
 #[tracing::instrument(skip_all, fields(columns = tracing::field::Empty, rows = tracing::field::Empty, occupied = occupied.len(), obstacles = obstacles.len()))]
 pub fn search(
     starts: &[Terminal],
@@ -1117,7 +1117,7 @@ fn astar(
         })
     };
     // A state at the same point and axis with fewer bends, reached for less
-    // by more than this one's last step ran closer alongside a edge,
+    // by more than this one's last step ran closer alongside an edge,
     // makes every way on cheaper: this one lies on no cheapest route, so it
     // is neither queued nor looked at (proofs/NicevgProofs/Dominance.lean).
     let dominated = |visits: &Visits, state: usize, cost: f64, near: f64| {
@@ -2091,7 +2091,7 @@ fn crossing_point(a: Point, b: Point, c: Point, d: Point) -> Point {
     point(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y))
 }
 
-/// Where a edge is crossed by others, bends and ends: a label reads
+/// Where an edge is crossed by others, bends and ends: a label reads
 /// best well away from these, sorted so two sets compare equal when the
 /// same.
 pub fn label_landmarks(route: &[Point], routes: &[Vec<Point>]) -> Vec<Point> {
@@ -2364,7 +2364,7 @@ mod tests {
         assert_eq!(spans[1].0, 142.0);
     }
 
-    /// Given a gap of 5px between two obstacles, and a edge whose lane
+    /// Given a gap of 5px between two obstacles, and an edge whose lane
     ///   would fall 1px from an obstacle edge
     /// When the grid lines are drawn
     /// Then the narrow gap gets no channel midline, the lane next to the
@@ -2525,7 +2525,7 @@ mod tests {
         assert_eq!(routes_cost(&along, &apart), CROSSING_COST);
     }
 
-    /// Given a edge leaving a box's bottom 20px in from the left end of the
+    /// Given an edge leaving a box's bottom 20px in from the left end of the
     ///   box below's top side, once with a box below and once with a circle
     /// When the ports of facing sides are lined up
     /// Then the box keeps its port in the middle of its side and the line
@@ -2620,7 +2620,7 @@ mod tests {
         assert!(inside.iter().all(|xi| built.blocked_cell[row * built.xs.len() + xi]));
     }
 
-    /// Given a edge drawn along y = 0 and terminals on y = 6
+    /// Given an edge drawn along y = 0 and terminals on y = 6
     /// When the grid for a search is built
     /// Then the steps on y = 6 beside the edge cost running alongside
     ///   it in full, and those on the lane at y = 20 cost nothing
@@ -2649,7 +2649,7 @@ mod tests {
         assert_eq!(step(20.0), 0.0);
     }
 
-    /// Given a edge drawn along y = 0 and a route to find straight
+    /// Given an edge drawn along y = 0 and a route to find straight
     ///   along y = 6, with a row of far-off boxes splitting that line into
     ///   many grid steps
     /// When the route is searched

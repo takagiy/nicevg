@@ -26,7 +26,6 @@ use crate::{FixResult, InspectionReport};
 pub struct Sketch {
     pub nodes: Vec<SketchNode>,
     #[serde(default)]
-    #[serde(rename = "connectors")]
     pub edges: Vec<SketchEdge>,
     /// Attributes for the root `svg`, such as `font-family`, which its
     /// texts inherit. nicevg writes `xmlns`, `viewBox`, `width` and
@@ -90,7 +89,7 @@ pub enum SketchShape {
     Circle,
 }
 
-/// A edge from one node to another, along `points` when given. Without
+/// An edge from one node to another, along `points` when given. Without
 /// them it runs from centre to centre, its ends inside the nodes, which
 /// inspection reports and fixing reroutes from side to side.
 ///
@@ -127,7 +126,7 @@ pub struct SketchEdge {
     pub stroke_dasharray: Option<String>,
 }
 
-/// The ends of a edge drawn with an arrowhead.
+/// The ends of an edge drawn with an arrowhead.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum SketchArrow {
@@ -565,7 +564,7 @@ fn layout_svg(sketch: &Sketch, steps: Option<(&HashMap<String, Vec<String>>, usi
     for (index, edge) in sketch.edges.iter().enumerate() {
         for (field, end) in [("from", &edge.from), ("to", &edge.to)] {
             if !nodes.contains_key(end.as_str()) {
-                return Err(unknown(format!("connectors[{index}].{field}"), end));
+                return Err(unknown(format!("edges[{index}].{field}"), end));
             }
         }
     }
@@ -641,7 +640,7 @@ fn layout_svg(sketch: &Sketch, steps: Option<(&HashMap<String, Vec<String>>, usi
         ] {
             if let Some(port) = port.as_ref().filter(|port| !ports[end.as_str()].contains(port)) {
                 return Err(SketchError::UnknownPort {
-                    referrer: format!("connectors[{index}].{field}"),
+                    referrer: format!("edges[{index}].{field}"),
                     node: end.clone(),
                     port: port.clone(),
                 });
@@ -737,7 +736,7 @@ fn layout_svg(sketch: &Sketch, steps: Option<(&HashMap<String, Vec<String>>, usi
 const ARROWHEAD_LENGTH: f64 = 10.0;
 const ARROWHEAD_HALF_WIDTH: f64 = 5.0;
 
-/// A edge's line along `route`, stopped short of each end with a arrowhead
+/// An edge's line along `route`, stopped short of each end with an arrowhead
 /// as `shaft_end` says, and the `points` of the arrowheads: a corner of the base,
 /// the tip at the route's end, the other corner.
 fn shaft_and_arrowheads(route: &[Point], arrow: SketchArrow) -> (Vec<Point>, Vec<String>) {

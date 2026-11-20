@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
   * The nicevg command. `nicevg fix-raw` takes an SVG diagram on stdin, fixed
-  * and arranged by the native library, out on stdout. Issues left go to
+  * and laid out by the native library, out on stdout. Issues left go to
   * stderr, one per line; the exit status is 0 with none left, 1 with some,
   * and 2 for bad input.
   */

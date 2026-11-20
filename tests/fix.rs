@@ -317,7 +317,7 @@ fn pushes_overlapping_nodes_apart_while_preserving_their_order() {
     assert_fix_snapshots!(result);
 }
 
-/// Given two nodes in a row joined by a edge whose label is wider than their gap
+/// Given two nodes in a row joined by an edge whose label is wider than their gap
 /// When the diagram is fixed
 /// Then the right node is pushed right, and the label sits beside the
 ///   edge, which stays straight
@@ -471,7 +471,7 @@ fn moves_each_arrowhead_of_edges_ending_at_one_point_with_its_own_edge() {
     }
 }
 
-/// Given a edge drawn inside a group translated by (-10, 5), crossing
+/// Given an edge drawn inside a group translated by (-10, 5), crossing
 ///   an unrelated node
 /// When the diagram is fixed
 /// Then the detour, read back through the translation, clears the node and
@@ -584,7 +584,7 @@ fn turns_a_polygon_arrowhead_round_when_it_enters_from_the_other_side() {
 /// Then the arrowhead moves to the new start and points into the source along
 ///   the first segment
 #[test]
-fn turns_a_polygon_arrowhead_at_the_start_of_its_connector() {
+fn turns_a_polygon_arrowhead_at_the_start_of_its_edge() {
     let svg = &blocked_row("").replace(
         r#"<line id="flow" data-from="source" data-to="target"
       x1="120" y1="48" x2="260" y2="48" />"#,
@@ -603,11 +603,11 @@ fn turns_a_polygon_arrowhead_at_the_start_of_its_connector() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a box with a edge to itself, a path running 10px right from its
+/// Given a box with an edge to itself, a path running 10px right from its
 ///   centre, and nothing else around
 /// When the diagram is fixed
 /// Then the loop comes back into the box along a straight run of at least
-///   16px, as a edge between two nodes does: the box itself does not
+///   16px, as an edge between two nodes does: the box itself does not
 ///   stand in the way of its own run
 #[test]
 fn leaves_a_loop_the_straight_run_into_its_node_other_edges_get() {
@@ -630,7 +630,7 @@ fn leaves_a_loop_the_straight_run_into_its_node_other_edges_get() {
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 }
 
-/// Given a edge from a circle that comes straight down onto the middle
+/// Given an edge from a circle that comes straight down onto the middle
 ///   of a box's left side, its last segment lying on that side
 /// When the diagram is fixed
 /// Then the edge is rerouted to meet the box at a right angle, and
@@ -790,7 +790,7 @@ fn cluster_too_narrow_for_a_label(to: &str) -> String {
 }
 
 /// Given a label wider than the room beside its edge inside the
-///   cluster, on a edge inside the cluster and on one out of it, both
+///   cluster, on an edge inside the cluster and on one out of it, both
 ///   drawn with the label across the line
 /// When the diagram is fixed
 /// Then the label moves beside its edge, across the cluster's outline
@@ -808,7 +808,7 @@ fn places_a_label_across_a_parent_s_outline_when_neither_side_has_room() {
     }
 }
 
-/// Given a edge that must detour around a node between its ends
+/// Given an edge that must detour around a node between its ends
 /// When the diagram is fixed
 /// Then it leaves the source side and enters the target side at right
 ///   angles, and no segment runs along a side of either node
@@ -830,7 +830,7 @@ fn leaves_and_enters_node_sides_perpendicularly_when_detouring() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a edge from inside a circular node to a facing box whose
+/// Given an edge from inside a circular node to a facing box whose
 ///   middle sits so much lower than the circle's centre that the port on
 ///   the circle's side moves down to meet it
 /// When the diagram is fixed
@@ -909,7 +909,7 @@ fn spreads_edges_on_one_side_of_a_circle_each_ending_on_it() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a edge whose ends sit inside two nodes too far apart in
+/// Given an edge whose ends sit inside two nodes too far apart in
 ///   height to share a port coordinate
 /// When the diagram is fixed
 /// Then it becomes an orthogonal path meeting both nodes at right angles
@@ -1143,7 +1143,7 @@ fn keeps_edges_off_crowded_sides_so_every_label_finds_a_slot() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a label tied to a edge by data-label-for, left at the old
+/// Given a label tied to an edge by data-label-for, left at the old
 ///   midpoint after the edge has to detour
 /// When the diagram is fixed
 /// Then the label sits centred above the detour's longest segment
@@ -1198,7 +1198,7 @@ fn brings_a_detached_label_back_beside_its_edge() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a edge drawn as a sound two-bend path whose tied label
+/// Given an edge drawn as a sound two-bend path whose tied label
 ///   floats far from it, with nothing else wrong
 /// When the diagram is fixed
 /// Then the edge keeps its path and only the label moves beside it
@@ -1521,7 +1521,7 @@ fn places_a_label_beside_the_middle_when_a_parallel_edge_is_across_its_own() {
 
     assert_eq!(change_codes(&result), ["move-label"]);
     assert!(distance_to_route(&label, &edge_points(&result.report, "flow")) <= 16.0);
-    assert!(label.y > 100.0, "{label:?} is not below its connector");
+    assert!(label.y > 100.0, "{label:?} is not below its edge");
     assert!(
         (label.x + label.width / 2.0 - middle).abs() <= 40.0,
         "{label:?} is pushed away from the middle"
@@ -1588,7 +1588,7 @@ fn places_a_label_on_the_side_further_from_other_edges() {
     let label = label_bounds(&result.report, "flow-label");
 
     assert!(distance_to_route(&label, &edge_points(&result.report, "flow")) <= 16.0);
-    assert!(label.y > 200.0, "{label:?} is not below its connector");
+    assert!(label.y > 200.0, "{label:?} is not below its edge");
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
     assert_fix_snapshots!(result);
@@ -1714,7 +1714,7 @@ fn reroutes_edges_that_bend_just_beside_each_other() {
 }
 
 /// Given two boxes side by side with two vertical edges standing
-///   between them, and a edge drawn between the boxes that needs
+///   between them, and an edge drawn between the boxes that needs
 ///   rerouting
 /// When the diagram is fixed
 /// Then the edge goes around the vertical ones rather than crossing
@@ -1804,7 +1804,7 @@ fn trades_ports_on_a_side_so_two_edges_leaving_it_do_not_cross() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a edge drawn as a staircase of segments all shorter than its
+/// Given an edge drawn as a staircase of segments all shorter than its
 ///   tied label, which floats far away
 /// When the diagram is fixed
 /// Then the edge is rerouted so the label can sit beside it, and
@@ -2117,7 +2117,7 @@ fn separates_a_request_and_reply_drawn_on_the_same_line() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a 3x3 grid of nodes and a edge between opposite corners
+/// Given a 3x3 grid of nodes and an edge between opposite corners
 /// When the diagram is fixed
 /// Then the edge becomes an orthogonal path that crosses no node
 #[test]
@@ -2232,7 +2232,7 @@ fn tables_with_ports(edge: &str) -> String {
     )
 }
 
-/// Given a edge from the port "author" at the bottom of `article` to
+/// Given an edge from the port "author" at the bottom of `article` to
 ///   the port "id" on the left of `user`, drawn as a straight line between
 ///   their centres
 /// When the diagram is fixed
@@ -2254,7 +2254,7 @@ fn routes_a_edge_from_and_to_the_ports_it_names() {
     assert!(last.y == end.y && last.x < end.x, "{points:?}");
 }
 
-/// Given a edge leaving the port "author" of `article` and drawn into
+/// Given an edge leaving the port "author" of `article` and drawn into
 ///   the left of `user` 12px below its port "id", with no other issue
 /// When the diagram is fixed
 /// Then it is rerouted to reach "id"
@@ -2302,7 +2302,7 @@ fn routes_a_edge_from_a_port_drawn_off_its_node_s_outline() {
 }
 
 /// Given `article` marking its port "author" on its left and then on its
-///   right, and a edge from "author" to `user` to the right, drawn as
+///   right, and an edge from "author" to `user` to the right, drawn as
 ///   a straight line between their centres
 /// When the diagram is fixed
 /// Then it leaves from the right one, which needs no way round `article`
@@ -2371,7 +2371,7 @@ fn spreads_a_free_end_around_one_its_port_holds_on_the_same_side() {
     assert_eq!(edited[edited.len() - 1], Point { x: 300.0, y: 224.0 }, "{edited:?}");
 }
 
-/// Given a edge into a port "email" that `user` does not declare, and
+/// Given an edge into a port "email" that `user` does not declare, and
 ///   the same edge naming no port, both drawn as a straight line
 ///   between centres
 /// When each diagram is fixed
@@ -2422,7 +2422,7 @@ fn reroutes_each_of_two_edges_joining_the_same_nodes() {
     );
 }
 
-/// Given a edge drawn between `source` and `target` whose ends stop
+/// Given an edge drawn between `source` and `target` whose ends stop
 ///   40px short of both
 /// When the diagram is fixed
 /// Then it is rerouted to start on the outline of `source` and end on the
@@ -2450,7 +2450,7 @@ fn reroutes_a_edge_whose_ends_stop_away_from_its_nodes() {
     );
 }
 
-/// Given `ext` 10px to the left of the parent `box`, and a edge
+/// Given `ext` 10px to the left of the parent `box`, and an edge
 ///   from `ext` to `inner`, a node inside `box`, ending on its left side
 /// When the diagram is fixed, moving `box` right to leave a 20px gap
 /// Then the edge is rerouted to end on the outline of `inner` where
@@ -2531,7 +2531,7 @@ fn routes_every_edge_into_a_port_they_share() {
     assert_eq!(issue_codes(&result.report), Vec::<String>::new());
 }
 
-/// Given a edge drawn straight across to a node lower down
+/// Given an edge drawn straight across to a node lower down
 /// When the diagram is fixed
 /// Then it follows an orthogonal path and is no longer slanted
 #[test]

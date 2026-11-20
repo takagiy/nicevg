@@ -20,7 +20,7 @@ fn route(report: &nicevg::InspectionReport, from: &str, to: &str) -> Vec<nicevg:
         .iter()
         .find(|edge| edge.from == from && edge.to == to)
         .map(|edge| edge.points.clone())
-        .expect("a connector between the two")
+        .expect("an edge between the two")
 }
 
 fn two_boxes(edge: serde_json::Value) -> Sketch {
@@ -29,7 +29,7 @@ fn two_boxes(edge: serde_json::Value) -> Sketch {
             {"id": "order", "x": 20, "y": 20, "width": 120, "height": 56, "label": "Order"},
             {"id": "bill", "x": 300, "y": 160, "width": 120, "height": 56, "label": "Bill"}
         ],
-        "connectors": [edge]
+        "edges": [edge]
     }))
 }
 
@@ -72,7 +72,7 @@ fn reads_a_node_with_a_parent_as_inside_it() {
     assert!(report.issues.is_empty(), "{:?}", issue_codes(&report));
 }
 
-/// Given a edge between two boxes with no route given
+/// Given an edge between two boxes with no route given
 /// When the sketch is fixed
 /// Then it runs orthogonally from a side of one box to a side of the other
 #[test]
@@ -88,7 +88,7 @@ fn routes_a_edge_without_points_orthogonally_between_its_nodes() {
     assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
 }
 
-/// Given a edge with its route given
+/// Given an edge with its route given
 /// When the sketch is inspected
 /// Then the edge runs along that route
 #[test]
@@ -106,7 +106,7 @@ fn reads_a_edge_along_the_route_given() {
     );
 }
 
-/// Given a edge with a label
+/// Given an edge with a label
 /// When the sketch is fixed
 /// Then the label sits beside that edge
 #[test]
@@ -121,7 +121,7 @@ fn places_a_edge_label_beside_its_edge() {
         .labels
         .iter()
         .find(|label| label.edge.is_some())
-        .expect("the connector's label");
+        .expect("the edge's label");
     assert!(distance_to_route(&label.bounds, &route(&result.report, "order", "bill")) <= 16.0);
     assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
 }
@@ -164,7 +164,7 @@ fn lays_out_a_sketch_like_the_svg_it_stands_for() {
             {"id": "notify", "x": 30, "y": 100, "width": 120, "height": 56, "label": "Notify"},
             {"id": "mail", "x": 280, "y": 52, "width": 120, "height": 56, "label": "Mail"}
         ],
-        "connectors": [{"from": "notify", "to": "mail",
+        "edges": [{"from": "notify", "to": "mail",
             "points": [{"x": 150, "y": 128}, {"x": 220, "y": 128}, {"x": 220, "y": 80}, {"x": 280, "y": 80}]}]
     }));
 
@@ -175,7 +175,7 @@ fn lays_out_a_sketch_like_the_svg_it_stands_for() {
     assert_eq!(laid_out.report.diagram, from_svg.report.diagram);
 }
 
-/// Given a edge to a node that is not in the sketch, and a node whose parent is not
+/// Given an edge to a node that is not in the sketch, and a node whose parent is not
 /// When the sketch is read
 /// Then each is an error naming where in the sketch the reference is and what it points to
 #[test]
@@ -188,7 +188,7 @@ fn rejects_references_to_nodes_not_in_the_sketch() {
     assert_eq!(
         nicevg::inspect_sketch(&dangling).unwrap_err(),
         SketchError::UnknownNode {
-            referrer: "connectors[0].to".to_owned(),
+            referrer: "edges[0].to".to_owned(),
             node: "ghost".to_owned()
         }
     );
@@ -258,7 +258,7 @@ fn takes_the_shape_marked_data_bounds_as_the_node() {
     assert_eq!(node.shape, Some(Shape::Circle));
 }
 
-/// Given a node drawn by its SVG overlapping a box, joined to it by a edge with no route
+/// Given a node drawn by its SVG overlapping a box, joined to it by an edge with no route
 /// When the sketch is fixed
 /// Then the drawn node moves clear as it was drawn, keeping its size, and the edge meets its side
 #[test]
@@ -268,7 +268,7 @@ fn moves_a_drawn_node_without_resizing_it_and_routes_to_its_sides() {
             {"id": "order", "x": 20, "y": 20, "width": 120, "height": 56, "label": "Order"},
             {"id": "orders", "x": 100, "y": 30, "svg": STORE}
         ],
-        "connectors": [{"from": "order", "to": "orders"}]
+        "edges": [{"from": "order", "to": "orders"}]
     }));
 
     let result = nicevg::fix_sketch(&input).expect("valid sketch");
@@ -361,7 +361,7 @@ fn rejects_root_attributes_nicevg_writes_or_that_are_not_names() {
 }
 
 /// Given two nodes whose data-bounds cover only their icons, their names drawn far below them, joined
-///   by a edge with no route
+///   by an edge with no route
 /// When the sketch is fixed
 /// Then the edge runs orthogonally between sides of the icons, the nodes' extents
 #[test]
@@ -372,7 +372,7 @@ fn routes_from_the_data_bounds_even_with_a_picture_reaching_past_them() {
             {"id": "left", "x": 20, "y": 20, "svg": svg},
             {"id": "right", "x": 300, "y": 60, "svg": svg}
         ],
-        "connectors": [{"from": "left", "to": "right"}]
+        "edges": [{"from": "left", "to": "right"}]
     }));
 
     let result = nicevg::fix_sketch(&input).expect("valid sketch");
@@ -398,7 +398,7 @@ fn table_with_port(port: &str) -> String {
     )
 }
 
-/// Given two drawn tables and a edge naming a port of each, with no route
+/// Given two drawn tables and an edge naming a port of each, with no route
 /// When the sketch is fixed
 /// Then the edge leaves and reaches those ports, which the diagram read back names
 #[test]
@@ -408,7 +408,7 @@ fn routes_a_sketch_edge_between_the_ports_it_names() {
             {"id": "article", "x": 20, "y": 20, "svg": table_with_port("author")},
             {"id": "user", "x": 300, "y": 20, "svg": table_with_port("id")}
         ],
-        "connectors": [{"from": "article", "fromPort": "author", "to": "user", "toPort": "id"}]
+        "edges": [{"from": "article", "fromPort": "author", "to": "user", "toPort": "id"}]
     }));
 
     let result = nicevg::fix_sketch(&input).expect("valid sketch");
@@ -421,7 +421,7 @@ fn routes_a_sketch_edge_between_the_ports_it_names() {
     assert_eq!(edge.points, [point(140.0, 82.0), point(300.0, 82.0)]);
 }
 
-/// Given a edge naming a port "email" that the drawn table `user` does not mark
+/// Given an edge naming a port "email" that the drawn table `user` does not mark
 /// When the sketch is read
 /// Then it is an error naming the edge's end and the port
 #[test]
@@ -431,13 +431,13 @@ fn rejects_a_edge_naming_a_port_its_node_does_not_mark() {
             {"id": "article", "x": 20, "y": 20, "svg": table_with_port("author")},
             {"id": "user", "x": 300, "y": 20, "svg": table_with_port("id")}
         ],
-        "connectors": [{"from": "article", "fromPort": "author", "to": "user", "toPort": "email"}]
+        "edges": [{"from": "article", "fromPort": "author", "to": "user", "toPort": "email"}]
     }));
 
     assert_eq!(
         nicevg::inspect_sketch(&input).unwrap_err(),
         SketchError::UnknownPort {
-            referrer: "connectors[0].toPort".to_owned(),
+            referrer: "edges[0].toPort".to_owned(),
             node: "user".to_owned(),
             port: "email".to_owned()
         }
@@ -464,7 +464,7 @@ fn towards(from: nicevg::Point, to: nicevg::Point, length: f64) -> (f64, f64) {
     ((to.x - from.x) / whole * length, (to.y - from.y) / whole * length)
 }
 
-/// Given a edge between two boxes with no arrow and no route given
+/// Given an edge between two boxes with no arrow and no route given
 /// When the sketch is fixed
 /// Then one arrowhead sits at its `to` end, its tip on a side of `bill` and pointing along the last
 ///   segment, and the line stops at the arrowhead's base, 10px before the tip
@@ -487,9 +487,9 @@ fn draws_a_arrowhead_at_the_to_end_unless_told_otherwise() {
     assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
 }
 
-/// Given a edge between two boxes with `arrow: "both"` and no route given
+/// Given an edge between two boxes with `arrow: "both"` and no route given
 /// When the sketch is fixed
-/// Then a arrowhead sits at each end, its tip on a side of the node there, pointing into it
+/// Then an arrowhead sits at each end, its tip on a side of the node there, pointing into it
 #[test]
 fn draws_a_arrowhead_at_both_ends_when_told() {
     let input = two_boxes(json!({"from": "order", "to": "bill", "arrow": "both"}));
@@ -514,9 +514,9 @@ fn draws_a_arrowhead_at_both_ends_when_told() {
     assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
 }
 
-/// Given a edge from `order` to itself with no route given
+/// Given an edge from `order` to itself with no route given
 /// When the sketch is fixed
-/// Then it loops out of `order` and back, with a arrowhead at its end whose tip is on a side of
+/// Then it loops out of `order` and back, with an arrowhead at its end whose tip is on a side of
 ///   `order`, pointing along the last segment
 #[test]
 fn draws_a_arrowhead_on_a_edge_to_its_own_node() {
@@ -534,7 +534,7 @@ fn draws_a_arrowhead_on_a_edge_to_its_own_node() {
     assert_eq!((tip.x - base.x, tip.y - base.y), towards(before, end, 10.0));
     assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
 }
-/// Given a edge between two boxes with `arrow: "none"`
+/// Given an edge between two boxes with `arrow: "none"`
 /// When the sketch is fixed
 /// Then it is a line with no arrowhead, running to a side of `bill`
 #[test]
@@ -548,7 +548,7 @@ fn draws_no_arrowhead_when_told() {
     assert!(side_of(points[points.len() - 1], &node_bounds(&result.report, "bill")).is_some());
 }
 
-/// Given a edge with `color: "#c00"`, one with `&` and `"` in its colour, and one with no colour
+/// Given an edge with `color: "#c00"`, one with `&` and `"` in its colour, and one with no colour
 /// When each sketch is fixed
 /// Then the line and the arrowhead are written in that colour, read back as given, or in black
 #[test]
@@ -574,7 +574,7 @@ fn draws_a_edge_and_its_arrowhead_in_its_colour() {
     assert_eq!(painted(json!({"from": "order", "to": "bill"})), colour("black"));
 }
 
-/// Given a edge with `strokeWidth: 2` and `strokeDasharray: "6 4"`, and one with neither
+/// Given an edge with `strokeWidth: 2` and `strokeDasharray: "6 4"`, and one with neither
 /// When each sketch is fixed
 /// Then the first's line is written 2 wide and dashed 6 4, and the other's carries neither
 ///   attribute
@@ -594,7 +594,7 @@ fn draws_a_edge_at_its_stroke_width_and_dashes() {
     assert_eq!(stroked(json!({"from": "order", "to": "bill"})), (None, None));
 }
 
-/// Given a edge with its route given, the last segment 6px long, and the default arrowhead
+/// Given an edge with its route given, the last segment 6px long, and the default arrowhead
 /// When the sketch is fixed and the fixed SVG is read again
 /// Then the route read back is the one given, its end at the arrowhead's tip, and the arrowhead is read as
 ///   the edge's, leaving no stray shape
@@ -611,7 +611,7 @@ fn reads_a_headed_edge_along_the_route_given_even_with_a_short_last_segment() {
             {"id": "order", "x": 20, "y": 20, "width": 120, "height": 56},
             {"id": "bill", "x": 366, "y": 130, "width": 120, "height": 56}
         ],
-        "connectors": [{"from": "order", "to": "bill", "points": given}]
+        "edges": [{"from": "order", "to": "bill", "points": given}]
     }));
 
     let result = nicevg::fix_sketch(&input).expect("valid sketch");

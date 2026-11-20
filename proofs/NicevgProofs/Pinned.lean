@@ -2,7 +2,7 @@
 # Ends pinned to ports read no chosen side
 
 `reroute_around` (src/fix.rs) first chooses a pair of node sides for every
-edge it reroutes (`choose_all`, two route searches a edge and
+edge it reroutes (`choose_all`, two route searches an edge and
 more on its second pass), then pins each end that names a port to one of
 the port's places. A chosen side is read in three places only:
 
@@ -14,7 +14,7 @@ the port's places. A chosen side is read in three places only:
   already taken.
 
 `pinned_reads_no_side` proves the first two give the same whatever sides
-were chosen, for a edge whose ends both name ports: every place
+were chosen, for an edge whose ends both name ports: every place
 priced and the sides met come out equal. The third is read only while
 sides are being chosen. So when every edge rerouted has both ends on
 ports, nothing reads a chosen side, and the code does not search for any.
@@ -51,7 +51,7 @@ theorem endSide_pinned (sideOf : Pin → Side) (s t : Side) (pin : Option Pin) (
   | none => cases h
   | some p => rfl
 
-/-- **A edge pinned at both ends reads no chosen side.** Whatever
+/-- **An edge pinned at both ends reads no chosen side.** Whatever
 sides `s` and `t` were chosen for it, every option of places is priced from
 the same ports and meets the same sides. -/
 theorem pinned_reads_no_side (point : Pin → Point) (sideOf : Pin → Side)
