@@ -45,7 +45,7 @@ pub fn drawn_edges(document: &Document) -> Vec<Drawn> {
     let mut taken: Vec<Path> = Vec::new();
     let from_shafts = shafts.iter().enumerate().filter_map(|(index, (path, element))| {
         let (from, to) = annotation(element)?;
-        let id = non_empty(element.attr("id")).map_or_else(|| format!("connector-{}", index + 1), str::to_owned);
+        let id = non_empty(element.attr("id")).map_or_else(|| format!("edge-{}", index + 1), str::to_owned);
         let parent = &path[..path.len() - 1];
         let beside: Vec<Path> = if document.element(parent).name == "g" {
             polygons_within(document, parent)
@@ -65,8 +65,8 @@ pub fn drawn_edges(document: &Document) -> Vec<Drawn> {
             .iter()
             .filter(|(path, _)| path.len() > group.len() && path.starts_with(group))
             .min_by_key(|(path, _)| path.clone())?;
-        let id = non_empty(element.attr("id"))
-            .map_or_else(|| format!("connector-{}", shafts.len() + index + 1), str::to_owned);
+        let id =
+            non_empty(element.attr("id")).map_or_else(|| format!("edge-{}", shafts.len() + index + 1), str::to_owned);
         Some(drawn(
             document,
             id,

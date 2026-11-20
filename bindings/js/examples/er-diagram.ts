@@ -149,7 +149,7 @@ process.stdout.write(
       /(<svg[^>]*viewBox="(\S+) (\S+) (\S+) (\S+)"[^>]*>)/,
       `$1\n  ${arrow}\n  <rect x="$2" y="$3" width="$4" height="$5" fill="white"/>`,
     )
-    .replace(/<path (id="connector-\d+" [^>]*)\/>/g, '<path $1 marker-end="url(#arrow)"/>'),
+    .replace(/<path (id="edge-\d+" [^>]*)\/>/g, '<path $1 marker-end="url(#arrow)"/>'),
 );
 for (const issue of image.report.issues) {
   console.error(`${issue.code}: ${issue.message}`);
