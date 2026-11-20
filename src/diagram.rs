@@ -585,7 +585,7 @@ pub(crate) fn read_nodes(document: &Document, before: Option<(&ReadNodes, &[Path
 
 /// The diagram of a document whose nodes are already read.
 pub(crate) fn read_around(document: &Document, nodes: Vec<DiagramNode>) -> Diagram {
-    let phase = tracing::info_span!("read_connectors").entered();
+    let phase = tracing::info_span!("read_edges").entered();
     let edges = drawn_edges(document)
         .into_iter()
         .map(|drawn| {

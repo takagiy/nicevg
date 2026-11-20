@@ -134,7 +134,7 @@ struct Move {
     dy: f64,
 }
 
-#[tracing::instrument(name = "arrange_step", skip_all, fields(rounds_left = rounds, candidates = tracing::field::Empty))]
+#[tracing::instrument(name = "layout_round", skip_all, fields(rounds_left = rounds, candidates = tracing::field::Empty))]
 fn run_rounds<'scope>(
     context: &'scope Context,
     state: State,
@@ -413,7 +413,7 @@ fn evaluate(context: &Context, state: &State, id: &str, by: Move) -> Option<Stat
     let change = FixChange {
         code: "arrange-node".to_owned(),
         message: format!(
-            "Moved {} {names} by ({}, {}) so connectors bend, cross and crowd less.",
+            "Moved {} {names} by ({}, {}) so edges bend, cross and crowd less.",
             if ids.len() > 1 { "nodes" } else { "node" },
             format_number(by.dx),
             format_number(by.dy)

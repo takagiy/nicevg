@@ -36,8 +36,8 @@ CONTENTS                                                     *nicevg-contents*
        |nicevg-engine-issue-edge-end-detached|
        |nicevg-engine-issue-edge-overlaps-node-outline|
        |nicevg-engine-issue-label-overlaps|
-       |nicevg-engine-issue-edge-label-overlaps-node|
-       |nicevg-engine-issue-edge-near-edge-label|
+       |nicevg-engine-issue-label-overlaps-node|
+       |nicevg-engine-issue-edge-near-label|
        |nicevg-engine-issue-edge-label-detached|
 
 ==============================================================================
@@ -370,8 +370,8 @@ node-overflows-parent              *nicevg-engine-issue-node-overflows-parent*
 	Fix: move the node inside its parent.
 
 node-overlaps-parent-label    *nicevg-engine-issue-node-overlaps-parent-label*
-	A node lies on a text its parent draws, such as its title.
-	Fix: move the node below or to the right of the text.
+	A node lies on a label its parent draws, such as its title.
+	Fix: move the node below or to the right of the label.
 
 node-id-duplicated                    *nicevg-engine-issue-node-id-duplicated*
 	Two nodes share an id.
@@ -413,11 +413,11 @@ label-overlaps                            *nicevg-engine-issue-label-overlaps*
 	Two labels overlap.
 	Fix: move apart the nodes their edges join.
 
-edge-label-overlaps-node        *nicevg-engine-issue-edge-label-overlaps-node*
+label-overlaps-node                  *nicevg-engine-issue-label-overlaps-node*
 	An edge's label overlaps a node.
 	Fix: move that node away from the edge.
 
-edge-near-edge-label                *nicevg-engine-issue-edge-near-edge-label*
+edge-near-label                          *nicevg-engine-issue-edge-near-label*
 	An edge passes within 8px of another edge's label.
 	Fix: move the nodes so the edge passes further from the label.
 
