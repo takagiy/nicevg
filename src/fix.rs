@@ -251,7 +251,7 @@ fn expand_nodes(draft: Draft) -> Draft {
     report
         .issues
         .iter()
-        .filter(|issue| issue.code == "text-overflow")
+        .filter(|issue| issue.code == "node-label-overflows")
         .filter_map(|issue| issue.elements.first().cloned())
         .fold(draft, |draft, node_id| {
             let document = &draft.document;
@@ -336,7 +336,7 @@ fn grow_parents(draft: Draft) -> Draft {
         let grown = report
             .issues
             .iter()
-            .filter(|issue| issue.code == "node-outside-parent")
+            .filter(|issue| issue.code == "node-overflows-parent")
             .find_map(|issue| {
                 let node = |index: usize| issue.elements.get(index).and_then(|id| report.diagram.node(id));
                 let (parent, child) = (node(1)?, node(0)?);
@@ -408,7 +408,7 @@ fn separate_nodes(draft: Draft) -> Draft {
         let Some(issue) = report
             .issues
             .iter()
-            .find(|issue| issue.code == "node-overlap" || issue.code == "node-gap")
+            .find(|issue| issue.code == "node-overlaps" || issue.code == "node-near-node")
         else {
             return draft;
         };
@@ -461,7 +461,7 @@ fn clear_parent_texts(draft: Draft) -> Draft {
         let Some((id, by)) = report
             .issues
             .iter()
-            .filter(|issue| issue.code == "parent-text-overlap")
+            .filter(|issue| issue.code == "node-overlaps-parent-label")
             .find_map(|issue| {
                 let node = |index: usize| issue.elements.get(index).and_then(|id| report.diagram.node(id));
                 let (child, parent) = (node(0)?, node(1)?);
@@ -646,8 +646,8 @@ fn pick_reroutes<'a>(
         .issues
         .iter()
         .filter_map(|issue| match issue.code.as_str() {
-            "label-detached" => Some((issue.elements.first()?.as_str(), issue.elements.get(1)?.as_str())),
-            "label-node-overlap" => {
+            "edge-label-detached" => Some((issue.elements.first()?.as_str(), issue.elements.get(1)?.as_str())),
+            "edge-label-overlaps-node" => {
                 let label = diagram
                     .labels
                     .iter()
@@ -690,15 +690,14 @@ fn pick_reroutes<'a>(
         .collect();
 
     let reroute_codes = [
-        "connector-node-crossing",
-        "connector-label-clearance",
-        "connector-endpoint-inside",
-        "connector-endpoint-detached",
-        "connector-slanted",
-        "connector-end-off-port",
-        "connector-end-along-side",
-        "connector-overlap",
-        "connector-near-miss",
+        "edge-overlaps-node",
+        "edge-near-edge-label",
+        "edge-end-detached",
+        "edge-slanted",
+        "edge-end-detached-port",
+        "edge-overlaps-node-outline",
+        "edge-overlaps",
+        "edge-bend-near-edge",
     ];
     let with_issues: HashSet<&str> = stuck_edges
         .into_iter()
@@ -708,7 +707,7 @@ fn pick_reroutes<'a>(
                 .iter()
                 .filter(|issue| reroute_codes.contains(&issue.code.as_str()))
                 .flat_map(|issue| {
-                    let take = if issue.code == "connector-overlap" || issue.code == "connector-near-miss" {
+                    let take = if issue.code == "edge-overlaps" || issue.code == "edge-bend-near-edge" {
                         issue.elements.len()
                     } else {
                         1
@@ -2108,7 +2107,7 @@ fn expand_view_box(draft: Draft) -> Draft {
     let nodes = draft.nodes.get().cloned();
     let root_path = vec![draft.document.root_index()];
     let view_box = parse_view_box(draft.document.root().attr("viewBox"));
-    let clipped = report.issues.iter().any(|issue| issue.code == "viewport-clipping");
+    let clipped = report.issues.iter().any(|issue| issue.code == "diagram-clipped");
     let (Some(view_box), Some(diagram), true) = (view_box, report.diagram_bounds, clipped) else {
         return draft;
     };

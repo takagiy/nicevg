@@ -64,7 +64,7 @@ fn expands_a_clipping_viewbox_without_shrinking_its_existing_extent() {
     assert!(contains(&written, &view_box(Written::parse(svg).root())));
     let drawing = result.report.diagram_bounds.expect("drawing bounds");
     assert!(contains(&written, &inflate(&drawing, 20.0)));
-    assert!(!has_issue(&result.report, "viewport-clipping"));
+    assert!(!has_issue(&result.report, "diagram-clipped"));
     assert_eq!(change_codes(&result), ["expand-viewbox"]);
 
     assert_fix_snapshots!(result);
@@ -228,7 +228,7 @@ fn expands_a_node_box_around_its_label_without_moving_the_label() {
     assert!(contains(&box_, &bounds(20.0, 20.0, 70.0, 40.0)));
     assert!(contains(&box_, &inflate(&label, 12.0)));
     assert_eq!((attr(text, "x"), attr(text, "y")), ("55", "52"));
-    assert!(!has_issue(&result.report, "text-overflow"));
+    assert!(!has_issue(&result.report, "node-label-overflows"));
 
     assert_fix_snapshots!(result);
 }
@@ -256,7 +256,7 @@ fn grows_a_circular_node_around_its_label_without_moving_either() {
     assert_eq!((attr(circle, "cx"), attr(circle, "cy")), ("120", "100"));
     assert!(attr(circle, "r").parse::<f64>().expect("numeric radius") > 40.0);
     assert_eq!((attr(text, "x"), attr(text, "y")), ("120", "105"));
-    assert!(!has_issue(&result.report, "text-overflow"));
+    assert!(!has_issue(&result.report, "node-label-overflows"));
 
     assert_fix_snapshots!(result);
 }
@@ -286,8 +286,8 @@ fn pushes_overlapping_nodes_apart_while_preserving_their_order() {
     assert_eq!(first, bounds(20.0, 20.0, 100.0, 56.0));
     assert!(second.x > first.x);
     assert!(gap_between(&first, &second) >= 20.0);
-    assert!(!has_issue(&result.report, "node-overlap"));
-    assert!(!has_issue(&result.report, "node-gap"));
+    assert!(!has_issue(&result.report, "node-overlaps"));
+    assert!(!has_issue(&result.report, "node-near-node"));
 
     assert_fix_snapshots!(result);
 }
@@ -322,8 +322,8 @@ fn pushes_nodes_apart_to_fit_the_label_of_the_edge_between_them() {
     assert!(gap_between(&first, &second) >= label.width + 16.0 - 0.01);
     assert_eq!(bend_count(&edge_points(&result.report, "flow")), 0);
     assert!(label.x >= first.right() && label.right() <= second.x);
-    assert!(!has_issue(&result.report, "label-detached"));
-    assert!(!has_issue(&result.report, "node-gap"));
+    assert!(!has_issue(&result.report, "edge-label-detached"));
+    assert!(!has_issue(&result.report, "node-near-node"));
 
     assert_fix_snapshots!(result);
 }
@@ -343,7 +343,7 @@ fn reroutes_a_edge_around_an_unrelated_node() {
         &points,
         &inflate(&node_bounds(&result.report, "obstacle"), 8.0)
     ));
-    assert!(!has_issue(&result.report, "connector-node-crossing"));
+    assert!(!has_issue(&result.report, "edge-overlaps-node"));
 
     assert_fix_snapshots!(result);
 }
@@ -592,7 +592,7 @@ fn reroutes_a_edge_end_that_runs_along_its_node_s_side() {
     let points = edge_points(&result.report, "order");
     let orders = node_bounds(&result.report, "orders");
 
-    assert_eq!(issue_codes(&inspect(svg)), ["connector-end-along-side"]);
+    assert_eq!(issue_codes(&inspect(svg)), ["edge-overlaps-node-outline"]);
     assert!(enters_perpendicularly(&points, &orders), "{points:?}");
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
@@ -746,8 +746,8 @@ fn places_a_label_across_a_parent_s_outline_when_neither_side_has_room() {
         let route = edge_points(&result.report, "edge");
 
         assert!(distance_to_route(&label, &route) <= 16.0, "{to}: {label:?} {route:?}");
-        assert!(!has_issue(&result.report, "connector-label-clearance"), "{to}");
-        assert!(!has_issue(&result.report, "label-detached"), "{to}");
+        assert!(!has_issue(&result.report, "edge-near-edge-label"), "{to}");
+        assert!(!has_issue(&result.report, "edge-label-detached"), "{to}");
     }
 }
 
@@ -1080,7 +1080,7 @@ fn keeps_edges_off_crowded_sides_so_every_label_finds_a_slot() {
     for edge in &result.report.diagram.edges {
         assert!(is_orthogonal(&edge.points));
     }
-    assert!(!has_issue(&result.report, "connector-label-clearance"));
+    assert!(!has_issue(&result.report, "edge-near-edge-label"));
     assert!(result.report.issues.is_empty());
 
     assert_fix_snapshots!(result);
@@ -1205,7 +1205,7 @@ fn moves_a_label_off_a_node_to_a_free_spot_beside_its_edge() {
     let result = fix(svg);
     let points = edge_points(&result.report, "flow");
 
-    assert_eq!(issue_codes(&inspect(svg)), ["label-node-overlap"]);
+    assert_eq!(issue_codes(&inspect(svg)), ["edge-label-overlaps-node"]);
     assert_eq!(points, edge_points(&inspect(svg), "flow"));
     assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
     assert_eq!(change_codes(&result), ["move-label"]);
@@ -1344,7 +1344,7 @@ fn moves_every_tspan_line_of_a_label() {
 
     let result = fix(&svg);
 
-    assert_eq!(issue_codes(&inspect(&svg)), ["label-node-overlap"]);
+    assert_eq!(issue_codes(&inspect(&svg)), ["edge-label-overlaps-node"]);
     assert_moved_as_one_block(&svg, &result);
     assert_fix_snapshots!(result);
 }
@@ -1647,7 +1647,7 @@ fn reroutes_edges_that_bend_just_beside_each_other() {
     let before = inspect(svg);
     let result = fix(svg);
 
-    assert!(has_issue(&before, "connector-near-miss"));
+    assert!(has_issue(&before, "edge-bend-near-edge"));
     assert!(is_orthogonal(&edge_points(&result.report, "score")));
     assert!(is_orthogonal(&edge_points(&result.report, "model")));
     assert_eq!(near_misses(&result.report), Vec::<(String, String)>::new());
@@ -1704,7 +1704,7 @@ fn routes_no_edge_to_bend_just_beside_another() {
     let result = fix(svg);
 
     assert!(
-        !has_issue(&result.report, "connector-near-miss"),
+        !has_issue(&result.report, "edge-bend-near-edge"),
         "{:?}",
         result.report.issues
     );
@@ -1885,7 +1885,7 @@ fn does_not_reroute_onto_a_short_segment_between_grid_lines() {
 
     assert!(is_orthogonal(&flow));
     assert!(!overlaps_route(&flow, &edge_points(&result.report, "tick")));
-    assert!(!has_issue(&result.report, "connector-overlap"));
+    assert!(!has_issue(&result.report, "edge-overlaps"));
 
     assert_fix_snapshots!(result);
 }
@@ -2115,7 +2115,7 @@ fn reroutes_with_several_bends_when_one_detour_cannot_clear_the_obstacles() {
     assert!(is_orthogonal(&points));
     assert!(leaves_perpendicularly(&points, &node_bounds(&result.report, "n20")));
     assert!(enters_perpendicularly(&points, &node_bounds(&result.report, "n02")));
-    assert!(!has_issue(&result.report, "connector-node-crossing"));
+    assert!(!has_issue(&result.report, "edge-overlaps-node"));
 
     assert_fix_snapshots!(result);
 }
@@ -2140,11 +2140,7 @@ fn pushes_another_edge_s_label_aside_to_keep_a_line_straight() {
       </svg>
     "#;
     let before = inspect(svg);
-    assert!(
-        has_issue(&before, "connector-label-clearance"),
-        "{:?}",
-        issue_codes(&before)
-    );
+    assert!(has_issue(&before, "edge-near-edge-label"), "{:?}", issue_codes(&before));
 
     let result = fix(svg);
     let label = label_bounds(&result.report, "events");
@@ -2210,7 +2206,7 @@ fn reroutes_a_edge_reaching_its_node_off_the_port_it_names() {
     let svg = tables_with_ports(
         r#"<path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="id" d="M 50 116 L 50 250 L 300 250"/>"#,
     );
-    assert!(has_issue(&inspect(&svg), "connector-end-off-port"));
+    assert!(has_issue(&inspect(&svg), "edge-end-detached-port"));
 
     let result = fix(&svg);
 
@@ -2333,7 +2329,7 @@ fn reroutes_each_of_two_edges_joining_the_same_nodes() {
         assert!(is_orthogonal(&points), "{id}: {points:?}");
     }
     assert!(
-        !has_issue(&result.report, "connector-endpoint-inside"),
+        !has_issue(&result.report, "edge-overlaps-node"),
         "{:?}",
         issue_codes(&result.report)
     );
@@ -2469,7 +2465,7 @@ fn reroutes_a_slanted_edge_orthogonally() {
     let result = fix(svg);
 
     assert!(is_orthogonal(&edge_points(&result.report, "flow")));
-    assert!(!has_issue(&result.report, "connector-slanted"));
+    assert!(!has_issue(&result.report, "edge-slanted"));
 }
 
 /// Given a round node 13px under a box, too close for a route straight up
@@ -2495,7 +2491,7 @@ fn routes_round_into_a_box_too_close_to_reach_straight() {
     let result = fix(svg);
 
     assert!(is_orthogonal(&edge_points(&result.report, "f")));
-    assert!(!has_issue(&result.report, "connector-slanted"));
+    assert!(!has_issue(&result.report, "edge-slanted"));
 }
 
 /// A VPC holding a queue, a worker beside it and, below them, a cluster
@@ -2568,7 +2564,7 @@ fn grows_a_parent_on_the_side_a_child_pokes_out_of() {
 
     assert_eq!(node_bounds(&result.report, "group"), bounds(20.0, 20.0, 222.0, 120.0));
     assert!(
-        !has_issue(&result.report, "node-outside-parent"),
+        !has_issue(&result.report, "node-overflows-parent"),
         "{:?}",
         result.report.issues
     );
@@ -2598,7 +2594,7 @@ fn grows_a_parent_round_the_inner_parent_it_grew() {
     assert_eq!(node_bounds(&result.report, "inner").right(), 242.0);
     assert_eq!(node_bounds(&result.report, "outer").right(), 254.0);
     assert!(
-        !has_issue(&result.report, "node-outside-parent"),
+        !has_issue(&result.report, "node-overflows-parent"),
         "{:?}",
         result.report.issues
     );
@@ -2623,7 +2619,7 @@ fn leaves_a_custom_parent_its_size() {
 
     assert_eq!(node_bounds(&result.report, "picture"), bounds(20.0, 20.0, 200.0, 120.0));
     assert_eq!(
-        issues_with_code(&result.report, "node-outside-parent"),
+        issues_with_code(&result.report, "node-overflows-parent"),
         [["out", "picture"]]
     );
 }
@@ -2677,7 +2673,7 @@ fn moves_a_child_off_its_parent_s_text() {
     assert_eq!(under.y, title.bottom() + 12.0);
     assert_eq!(node_bounds(&result.report, "group").y, 20.0);
     assert!(
-        !has_issue(&result.report, "parent-text-overlap"),
+        !has_issue(&result.report, "node-overlaps-parent-label"),
         "{:?}",
         result.report.issues
     );

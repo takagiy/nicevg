@@ -20,7 +20,7 @@ groups, edges from elements naming their ends and labels from texts,
 and from the root only the properties texts inherit and its children's
 names; it reads neither the viewBox, the root's width and height, nor the
 place and size of a rect drawn on the root. No check but `viewport` gives a
-`viewport-clipping` issue.
+`diagram-clipped` issue.
 -/
 
 namespace Nicevg.Viewport

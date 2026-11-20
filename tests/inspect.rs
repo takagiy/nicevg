@@ -265,7 +265,7 @@ fn treats_a_nested_node_as_intentional_containment() {
         .expect("service node");
 
     assert_eq!(child.parent_id.as_deref(), Some("system"));
-    assert!(!has_issue(&report, "node-overlap"));
+    assert!(!has_issue(&report, "node-overlaps"));
 }
 
 /// Given malformed SVG XML

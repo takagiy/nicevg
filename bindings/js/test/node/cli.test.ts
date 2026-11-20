@@ -91,7 +91,7 @@ for (const [runtime, cli] of runtimes) {
 
       assert.equal(result.status, 1);
       assert.match(result.stdout, /^<svg/);
-      assert.match(result.stderr, /^label-overlap: /);
+      assert.match(result.stderr, /^label-overlaps: /);
     });
 
     /**
@@ -245,7 +245,7 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
       const [toc, hint] = result.stdout.trimEnd().split("\n\n");
       const lines = toc!.split("\n");
       assert.match(lines[0]!, /^1\. Introduction \.+ \|nicevg-intro\|$/);
-      assert.match(lines.at(-1)!, /\|nicevg-engine-issue-label-detached\|$/);
+      assert.match(lines.at(-1)!, /\|nicevg-engine-issue-edge-label-detached\|$/);
       for (const [, tag] of page.matchAll(/\*(nicevg-engine-issue-[a-z-]+)\*$/gm)) {
         assert.ok(lines.some((line) => line.endsWith(`|${tag}|`)), tag);
       }
@@ -283,16 +283,16 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
 
     /**
      * [x] When a query is text in a section, `nicevg man` can print that section with its title line, without the sections inside or outside it, the text emphasized.
-     * Given text found only in the title line of the node-gap issue
+     * Given text found only in the title line of the node-near-node issue
      * When `nicevg man` runs with it
      * Then that issue's entry alone is written, the text emphasized
      */
     test("man prints the sections holding a text, the text emphasized", () => {
-      const result = man("node-gap");
+      const result = man("node-near-node");
 
       assert.equal(result.status, 0, result.stderr);
-      const entry = page.slice(page.indexOf("node-gap  "), page.indexOf("\nnode-outside-parent  ")).trimEnd();
-      assert.equal(result.stdout, `${entry.replaceAll("node-gap", em("node-gap"))}\n`);
+      const entry = page.slice(page.indexOf("node-near-node  "), page.indexOf("\nnode-overflows-parent  ")).trimEnd();
+      assert.equal(result.stdout, `${entry.replaceAll("node-near-node", em("node-near-node"))}\n`);
     });
 
     /**
@@ -315,16 +315,16 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
 
     /**
      * [x] When matches do not nest, `nicevg man` can print each in page order, separated by a rule.
-     * Given the node-gap issue's tag and then the introduction's tag
+     * Given the node-near-node issue's tag and then the introduction's tag
      * When `nicevg man` runs with them
-     * Then the introduction, a rule and the node-gap entry are written
+     * Then the introduction, a rule and the node-near-node entry are written
      */
     test("man prints matches that do not nest in page order, separated by a rule", () => {
-      const result = man("nicevg-engine-issue-node-gap", "nicevg-intro");
+      const result = man("nicevg-engine-issue-node-near-node", "nicevg-intro");
 
       assert.equal(result.status, 0, result.stderr);
       const intro = page.slice(page.indexOf("1. Introduction  "), page.indexOf(`\n\n${"=".repeat(78)}\n2. nicevg doc`));
-      const entry = page.slice(page.indexOf("node-gap  "), page.indexOf("\nnode-outside-parent  ")).trimEnd();
+      const entry = page.slice(page.indexOf("node-near-node  "), page.indexOf("\nnode-overflows-parent  ")).trimEnd();
       assert.equal(result.stdout, `${intro}\n\n${"=".repeat(78)}\n${entry}\n`);
     });
 
@@ -382,7 +382,7 @@ describe("nicevg help page", () => {
   test("documents every issue code but the port ones", () => {
     const inspect = readFileSync(new URL("../../../../src/inspect.rs", import.meta.url), "utf8");
     const codes = [...inspect.matchAll(/issue\(\s*"([a-z][a-z-]*)"/g)].map(([, code]) => code!);
-    const ports = ["connector-end-off-port", "connector-unknown-port"];
+    const ports = ["edge-end-detached-port", "unknown-port"];
 
     assert.ok(codes.length > 0);
     for (const code of codes.filter((code) => !ports.includes(code))) {

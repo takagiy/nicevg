@@ -98,7 +98,7 @@ pub(crate) fn viewport(view_box: Option<Bounds>, diagram: Option<Bounds>) -> Vec
         return Vec::new();
     }
     vec![issue(
-        "viewport-clipping",
+        "diagram-clipped",
         format!("Drawing exceeds the safe viewBox on the {} side.", sides.join(", ")),
         &["svg"],
         Some(json!({ "sides": sides, "requiredViewBox": json_bounds(&required) })),
@@ -134,7 +134,7 @@ fn text_fit(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
             };
             (!fits).then(|| {
                 issue(
-                    "text-overflow",
+                    "node-label-overflows",
                     format!(
                         "Label does not fit inside node \"{}\" with {}px padding.",
                         node.id,
@@ -184,7 +184,7 @@ fn node_overlaps(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
         .filter_map(|(first, second)| {
             let overlap = intersection(&first.bounds, &second.bounds)?;
             Some(issue(
-                "node-overlap",
+                "node-overlaps",
                 format!("Nodes \"{}\" and \"{}\" overlap.", first.id, second.id),
                 &[&first.id, &second.id],
                 Some(json!({ "intersection": json_bounds(&overlap) })),
@@ -213,7 +213,7 @@ fn node_gaps(diagram: &Diagram) -> Vec<DiagramIssue> {
             let required = label_gap(diagram, &left.id, &right.id);
             (0.0..required).contains(&gap).then(|| {
                 issue(
-                    "node-gap",
+                    "node-near-node",
                     format!(
                         "Nodes \"{}\" and \"{}\" have a {}px gap; {}px is required.",
                         left.id,
@@ -269,7 +269,7 @@ fn edge_crossings(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIs
                 })
                 .map(move |node| {
                     issue(
-                        "connector-node-crossing",
+                        "edge-overlaps-node",
                         format!("Connector \"{}\" crosses unrelated node \"{}\".", edge.id, node.id),
                         &[&edge.id, &node.id],
                         None,
@@ -289,7 +289,7 @@ fn label_overlaps(labels: &[DiagramLabel]) -> Vec<DiagramIssue> {
                 .filter(move |second| intersection(&first.bounds, &second.bounds).is_some())
                 .map(move |second| {
                     issue(
-                        "label-overlap",
+                        "label-overlaps",
                         format!("Labels \"{}\" and \"{}\" overlap.", first.id, second.id),
                         &[&first.id, &second.id],
                         None,
@@ -331,7 +331,7 @@ fn label_node_overlaps(nodes: &[DiagramNode], labels: &[DiagramLabel]) -> Vec<Di
                 })
                 .map(move |node| {
                     issue(
-                        "label-node-overlap",
+                        "edge-label-overlaps-node",
                         format!("Label \"{}\" overlaps node \"{}\".", label.id, node.id),
                         &[&label.id, &node.id],
                         None,
@@ -355,7 +355,7 @@ fn edge_label_clearance(edges: &[DiagramEdge], labels: &[DiagramLabel]) -> Vec<D
                 })
                 .map(move |label| {
                     issue(
-                        "connector-label-clearance",
+                        "edge-near-edge-label",
                         format!(
                             "Connector \"{}\" passes within {}px of label \"{}\".",
                             edge.id,
@@ -407,7 +407,7 @@ fn slanted_edges(edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
         })
         .map(|edge| {
             issue(
-                "connector-slanted",
+                "edge-slanted",
                 format!("Connector \"{}\" runs slanted.", edge.id),
                 &[&edge.id],
                 None,
@@ -435,7 +435,7 @@ fn edge_ends(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> 
                 let (end, owner) = (end?, owner?);
                 if point_is_inside_node(*end, owner) {
                     return Some(issue(
-                        "connector-endpoint-inside",
+                        "edge-overlaps-node",
                         format!("Connector \"{}\" {verb} inside node \"{}\".", edge.id, owner.id),
                         &[&edge.id, &owner.id],
                         Some(json!({ "endpoint": which })),
@@ -446,7 +446,7 @@ fn edge_ends(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> 
                 let distance = distance_to_node(*end, owner);
                 (port.is_none() && distance > END_GAP).then(|| {
                     issue(
-                        "connector-endpoint-detached",
+                        "edge-end-detached",
                         format!(
                             "Connector \"{}\" {verb} {}px away from node \"{}\".",
                             edge.id,
@@ -510,7 +510,7 @@ fn children_outside_parents(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
             let padding = parent.child_padding();
             room.iter().any(|room| *room < padding).then(|| {
                 issue(
-                    "node-outside-parent",
+                    "node-overflows-parent",
                     format!(
                         "Node \"{}\" does not fit inside its parent \"{}\" with {}px padding.",
                         child.id,
@@ -537,7 +537,7 @@ fn children_on_parent_texts(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
                 .any(|text| intersection(text, &child.bounds).is_some())
                 .then(|| {
                     issue(
-                        "parent-text-overlap",
+                        "node-overlaps-parent-label",
                         format!("Node \"{}\" lies on a text of its parent \"{}\".", child.id, parent.id),
                         &[&child.id, &parent.id],
                         None,
@@ -561,7 +561,7 @@ fn duplicate_node_ids(nodes: &[DiagramNode]) -> Vec<DiagramIssue> {
         .filter(|(id, count)| *count > 1 && reported.insert(*id))
         .map(|(id, count)| {
             issue(
-                "node-duplicate-id",
+                "node-id-duplicated",
                 format!("{count} nodes share the id \"{id}\"."),
                 &[id],
                 Some(json!({ "count": count })),
@@ -581,7 +581,7 @@ fn edge_unknown_nodes(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<Diagr
                 .filter(|(id, _, _)| !id.is_empty() && !nodes.iter().any(|node| node.id == **id))
                 .map(move |(id, verb, which)| {
                     issue(
-                        "connector-unknown-node",
+                        "unknown-node",
                         format!(
                             "Connector \"{}\" {verb} at node \"{id}\", which the diagram does not have.",
                             edge.id
@@ -608,7 +608,7 @@ fn edge_ends_off_ports(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<Diag
                 let elements: [&str; 2] = [&edge.id, &owner.id];
                 if places.is_empty() {
                     return Some(issue(
-                        "connector-unknown-port",
+                        "unknown-port",
                         format!(
                             "Connector \"{}\" {verb} at port \"{port}\", which node \"{}\" does not have.",
                             edge.id, owner.id
@@ -622,7 +622,7 @@ fn edge_ends_off_ports(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<Diag
                     .all(|place| hypot(end.x - place.x, end.y - place.y) > PORT_TOLERANCE)
                     .then(|| {
                         issue(
-                            "connector-end-off-port",
+                            "edge-end-detached-port",
                             format!(
                                 "Connector \"{}\" {verb} off port \"{port}\" of node \"{}\".",
                                 edge.id, owner.id
@@ -667,7 +667,7 @@ fn edge_ends_along_sides(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<Di
                 let owner = owner?;
                 along(end, inner, &owner.bounds).then(|| {
                     issue(
-                        "connector-end-along-side",
+                        "edge-overlaps-node-outline",
                         format!(
                             "Connector \"{}\" {verb} running along a side of node \"{}\".",
                             edge.id, owner.id
@@ -768,7 +768,7 @@ fn edge_overlaps(edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
                 })
                 .map(move |second| {
                     issue(
-                        "connector-overlap",
+                        "edge-overlaps",
                         format!(
                             "Connectors \"{}\" and \"{}\" overlap along a segment.",
                             first.id, second.id
@@ -813,7 +813,7 @@ fn edge_near_misses(edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
                 })
                 .map(move |second| {
                     issue(
-                        "connector-near-miss",
+                        "edge-bend-near-edge",
                         format!(
                             "Connectors \"{}\" and \"{}\" come within {}px of each other where one turns.",
                             first.id,
@@ -836,7 +836,7 @@ fn detached_labels(labels: &[DiagramLabel], edges: &[DiagramEdge]) -> Vec<Diagra
             let distance = distance_to_route(&label.bounds, &edge.points);
             (distance > DETACHED_LABEL_DISTANCE).then(|| {
                 issue(
-                    "label-detached",
+                    "edge-label-detached",
                     format!(
                         "Label \"{}\" sits {}px from its connector \"{}\".",
                         label.id,

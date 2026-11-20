@@ -47,7 +47,7 @@ fn reports_the_side_and_required_bounds_when_the_viewbox_clips_content() {
     assert_eq!(
         issues_json(&report),
         [json!({
-            "code": "viewport-clipping",
+            "code": "diagram-clipped",
             "message": "Drawing exceeds the safe viewBox on the right side.",
             "elements": ["svg"],
             "details": {
@@ -77,7 +77,7 @@ fn reports_the_required_box_size_when_a_label_violates_node_padding() {
     assert_eq!(
         issues_json(&report),
         [json!({
-            "code": "text-overflow",
+            "code": "node-label-overflows",
             "message": "Label does not fit inside node \"confirm\" with 12px padding.",
             "elements": ["confirm"],
             "details": { "requiredWidth": 148, "requiredHeight": 41 },
@@ -106,7 +106,7 @@ fn reports_overlap_between_unrelated_nodes() {
     let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
-        "code": "node-overlap",
+        "code": "node-overlaps",
         "message": "Nodes \"first\" and \"second\" overlap.",
         "elements": ["first", "second"],
         "details": { "intersection": { "x": 90, "y": 20, "width": 30, "height": 56 } },
@@ -134,7 +134,7 @@ fn reports_insufficient_spacing_between_nodes_in_the_same_row() {
     let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
-        "code": "node-gap",
+        "code": "node-near-node",
         "message": "Nodes \"first\" and \"second\" have a 10px gap; 20px is required.",
         "elements": ["first", "second"],
         "details": { "actualGap": 10, "requiredGap": 20, "shortage": 10 },
@@ -169,8 +169,8 @@ fn reports_the_gap_a_edge_label_between_nodes_needs() {
     let issue = report
         .issues
         .iter()
-        .find(|issue| issue.code == "node-gap")
-        .expect("a node-gap issue");
+        .find(|issue| issue.code == "node-near-node")
+        .expect("a node-near-node issue");
     let details = issue.details.as_ref().expect("details");
 
     assert_eq!(issue.elements, ["first", "second"]);
@@ -205,7 +205,7 @@ fn reports_a_edge_crossing_an_unrelated_node() {
     let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
-        "code": "connector-node-crossing",
+        "code": "edge-overlaps-node",
         "message": "Connector \"flow\" crosses unrelated node \"obstacle\".",
         "elements": ["flow", "obstacle"],
     })));
@@ -241,7 +241,7 @@ fn does_not_report_crossing_a_parent_that_holds_the_edge_ends() {
       </svg>
     "#;
 
-    assert!(!has_issue(&inspect(svg), "connector-node-crossing"));
+    assert!(!has_issue(&inspect(svg), "edge-overlaps-node"));
 }
 
 /// Given a edge that passes 5px below an edge label
@@ -269,7 +269,7 @@ fn reports_a_edge_passing_within_8px_of_a_free_label() {
     let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
-        "code": "connector-label-clearance",
+        "code": "edge-near-edge-label",
         "message": "Connector \"flow\" passes within 8px of label \"retry\".",
         "elements": ["flow", "retry"],
         "details": { "requiredClearance": 8 },
@@ -299,20 +299,20 @@ fn reports_edge_ends_placed_inside_their_nodes() {
     let report = inspect(svg);
     let ends: Vec<serde_json::Value> = issues_json(&report)
         .into_iter()
-        .filter(|issue| issue["code"] == "connector-endpoint-inside")
+        .filter(|issue| issue["code"] == "edge-overlaps-node")
         .collect();
 
     assert_eq!(
         ends,
         [
             json!({
-                "code": "connector-endpoint-inside",
+                "code": "edge-overlaps-node",
                 "message": "Connector \"flow\" starts inside node \"source\".",
                 "elements": ["flow", "source"],
                 "details": { "endpoint": "start" },
             }),
             json!({
-                "code": "connector-endpoint-inside",
+                "code": "edge-overlaps-node",
                 "message": "Connector \"flow\" ends inside node \"target\".",
                 "elements": ["flow", "target"],
                 "details": { "endpoint": "end" },
@@ -348,20 +348,20 @@ fn reports_edge_ends_away_from_their_nodes() {
     let report = inspect(svg);
     let detached: Vec<serde_json::Value> = issues_json(&report)
         .into_iter()
-        .filter(|issue| issue["code"] == "connector-endpoint-detached")
+        .filter(|issue| issue["code"] == "edge-end-detached")
         .collect();
 
     assert_eq!(
         detached,
         [
             json!({
-                "code": "connector-endpoint-detached",
+                "code": "edge-end-detached",
                 "message": "Connector \"flow\" starts 40px away from node \"source\".",
                 "elements": ["flow", "source"],
                 "details": { "endpoint": "start", "distance": 40 },
             }),
             json!({
-                "code": "connector-endpoint-detached",
+                "code": "edge-end-detached",
                 "message": "Connector \"flow\" ends 40px away from node \"target\".",
                 "elements": ["flow", "target"],
                 "details": { "endpoint": "end", "distance": 40 },
@@ -388,7 +388,7 @@ fn allows_overlap_explicitly_marked_as_intentional() {
       </svg>
     "#;
 
-    assert!(!has_issue(&inspect(svg), "node-overlap"));
+    assert!(!has_issue(&inspect(svg), "node-overlaps"));
 }
 
 /// Given two free labels whose estimated bounding boxes intersect
@@ -406,7 +406,7 @@ fn reports_overlapping_free_labels() {
     let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
-        "code": "label-overlap",
+        "code": "label-overlaps",
         "message": "Labels \"approved\" and \"pending\" overlap.",
         "elements": ["approved", "pending"],
     })));
@@ -438,16 +438,16 @@ fn reports_labels_that_cover_nodes() {
     assert_eq!(
         issues_json(&report)
             .into_iter()
-            .filter(|issue| issue["code"] == "label-node-overlap")
+            .filter(|issue| issue["code"] == "edge-label-overlaps-node")
             .collect::<Vec<_>>(),
         [
             json!({
-                "code": "label-node-overlap",
+                "code": "edge-label-overlaps-node",
                 "message": "Label \"over-box\" overlaps node \"box\".",
                 "elements": ["over-box", "box"],
             }),
             json!({
-                "code": "label-node-overlap",
+                "code": "edge-label-overlaps-node",
                 "message": "Label \"over-disc\" overlaps node \"disc\".",
                 "elements": ["over-disc", "disc"],
             }),
@@ -479,7 +479,7 @@ fn ignores_labels_inside_a_parent_unless_they_cover_a_child() {
     let report = inspect(svg);
 
     assert_eq!(
-        issues_with_code(&report, "label-node-overlap"),
+        issues_with_code(&report, "edge-label-overlaps-node"),
         [["over-child", "service"]]
     );
 }
@@ -498,7 +498,7 @@ fn includes_free_labels_when_checking_the_safe_viewbox() {
     let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
-        "code": "viewport-clipping",
+        "code": "diagram-clipped",
         "message": "Drawing exceeds the safe viewBox on the right side.",
         "elements": ["svg"],
         "details": {
@@ -533,7 +533,7 @@ fn reports_edges_that_run_along_the_same_segment() {
     let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
-        "code": "connector-overlap",
+        "code": "edge-overlaps",
         "message": "Connectors \"request\" and \"reply\" overlap along a segment.",
         "elements": ["request", "reply"],
     })));
@@ -569,7 +569,7 @@ fn does_not_report_edges_that_only_cross_each_other() {
       </svg>
     "#;
 
-    assert!(!has_issue(&inspect(svg), "connector-overlap"));
+    assert!(!has_issue(&inspect(svg), "edge-overlaps"));
 }
 
 /// Given a edge that bends 1px beside where another bends, so the two
@@ -583,7 +583,7 @@ fn reports_a_edge_bending_just_beside_another() {
     let report = inspect(&svg);
 
     assert!(issues_json(&report).contains(&json!({
-        "code": "connector-near-miss",
+        "code": "edge-bend-near-edge",
         "message": "Connectors \"score\" and \"model\" come within 5px of each other where one turns.",
         "elements": ["score", "model"],
     })));
@@ -596,7 +596,7 @@ fn reports_a_edge_bending_just_beside_another() {
 fn does_not_report_edges_bending_a_lane_apart() {
     let svg = near_miss_svg(969.0, 370.0);
 
-    assert!(!has_issue(&inspect(&svg), "connector-near-miss"));
+    assert!(!has_issue(&inspect(&svg), "edge-bend-near-edge"));
 }
 
 /// Two edges entering the left of "assess": "score" comes down from
@@ -646,7 +646,7 @@ fn tied_label(label_y: u32) -> String {
 fn reports_a_tied_label_that_sits_away_from_its_edge() {
     let report = inspect(&tied_label(0));
 
-    assert_eq!(issues_with_code(&report, "label-detached"), [["retry", "flow"]]);
+    assert_eq!(issues_with_code(&report, "edge-label-detached"), [["retry", "flow"]]);
 }
 
 /// Given a label tied to a edge, keeping 9px above it
@@ -654,7 +654,7 @@ fn reports_a_tied_label_that_sits_away_from_its_edge() {
 /// Then no detached label is reported
 #[test]
 fn accepts_a_tied_label_right_beside_its_edge() {
-    assert!(!has_issue(&inspect(&tied_label(36)), "label-detached"));
+    assert!(!has_issue(&inspect(&tied_label(36)), "edge-label-detached"));
 }
 
 /// Given two circular nodes: one whose two-line label fits its bounding
@@ -678,7 +678,7 @@ fn reports_a_label_that_cuts_into_a_circular_node_s_padding() {
       </svg>
     "#;
 
-    assert_eq!(issues_with_code(&inspect(svg), "text-overflow"), [["crowded"]]);
+    assert_eq!(issues_with_code(&inspect(svg), "node-label-overflows"), [["crowded"]]);
 }
 
 /// Given a circular node, an L-shaped edge that bends inside a corner
@@ -718,7 +718,7 @@ fn reports_edges_through_a_circle_but_not_past_its_bounding_corners() {
     "#;
 
     assert_eq!(
-        issues_with_code(&inspect(svg), "connector-node-crossing"),
+        issues_with_code(&inspect(svg), "edge-overlaps-node"),
         [["through", "stop"]]
     );
 }
@@ -747,7 +747,7 @@ fn accepts_ends_on_a_circle_and_reports_ones_inside_it() {
     "#;
 
     assert_eq!(
-        issues_with_code(&inspect(svg), "connector-endpoint-inside"),
+        issues_with_code(&inspect(svg), "edge-overlaps-node"),
         [["inside", "hub"]]
     );
 }
@@ -772,7 +772,7 @@ fn reports_a_edge_end_running_along_the_side_it_ends_on() {
     let report = inspect(svg);
 
     assert_eq!(
-        issues_with_code(&report, "connector-end-along-side"),
+        issues_with_code(&report, "edge-overlaps-node-outline"),
         [["order", "orders"]]
     );
 }
@@ -825,7 +825,7 @@ fn accepts_an_end_at_a_port_outside_its_node() {
     "#;
 
     assert_eq!(
-        issues_with_code(&inspect(svg), "connector-endpoint-detached"),
+        issues_with_code(&inspect(svg), "edge-end-detached"),
         Vec::<Vec<String>>::new()
     );
 }
@@ -843,10 +843,10 @@ fn reports_a_edge_end_off_the_port_it_names() {
     assert_eq!(
         issues_json(&report)
             .into_iter()
-            .filter(|issue| issue["code"] == "connector-end-off-port")
+            .filter(|issue| issue["code"] == "edge-end-detached-port")
             .collect::<Vec<_>>(),
         [json!({
-            "code": "connector-end-off-port",
+            "code": "edge-end-detached-port",
             "message": "Connector \"wrote\" ends off port \"id\" of node \"user\".",
             "elements": ["wrote", "user"],
             "details": { "endpoint": "end", "port": "id" },
@@ -869,7 +869,7 @@ fn reports_a_edge_end_naming_a_port_its_node_lacks() {
             .filter(|issue| issue["code"].as_str().is_some_and(|code| code.contains("port")))
             .collect::<Vec<_>>(),
         [json!({
-            "code": "connector-unknown-port",
+            "code": "unknown-port",
             "message": "Connector \"wrote\" ends at port \"email\", which node \"user\" does not have.",
             "elements": ["wrote", "user"],
             "details": { "endpoint": "end", "port": "email" },
@@ -916,10 +916,7 @@ fn does_not_report_edges_merging_into_one_port_as_overlapping() {
 
     let report = inspect(svg);
 
-    assert_eq!(
-        issues_with_code(&report, "connector-overlap"),
-        Vec::<Vec<String>>::new()
-    );
+    assert_eq!(issues_with_code(&report, "edge-overlaps"), Vec::<Vec<String>>::new());
 }
 
 /// Given two edges joining 40px before the port "id" of `user`, one
@@ -931,7 +928,7 @@ fn does_not_report_the_bend_where_edges_merge_into_a_port_as_a_near_miss() {
     let report = inspect(MERGING_INTO_ONE_PORT);
 
     assert_eq!(
-        issues_with_code(&report, "connector-near-miss"),
+        issues_with_code(&report, "edge-bend-near-edge"),
         Vec::<Vec<String>>::new()
     );
 }
@@ -964,7 +961,7 @@ fn reports_a_slanted_edge() {
     let svg = source_and_lower_target("M 120 48 L 260 168");
 
     assert_eq!(
-        issues_with_code(&inspect(&svg), "connector-slanted"),
+        issues_with_code(&inspect(&svg), "edge-slanted"),
         vec![vec!["flow".to_owned()]]
     );
 }
@@ -977,7 +974,7 @@ fn does_not_report_an_orthogonal_edge_as_slanted() {
     let svg = source_and_lower_target("M 120 48 L 190 48 L 190 168 L 260 168");
 
     assert_eq!(
-        issues_with_code(&inspect(&svg), "connector-slanted"),
+        issues_with_code(&inspect(&svg), "edge-slanted"),
         Vec::<Vec<String>>::new()
     );
 }
@@ -1003,10 +1000,10 @@ fn reports_a_edge_end_naming_a_node_the_diagram_lacks() {
     assert_eq!(
         issues_json(&report)
             .into_iter()
-            .filter(|issue| issue["code"] == "connector-unknown-node")
+            .filter(|issue| issue["code"] == "unknown-node")
             .collect::<Vec<_>>(),
         [json!({
-          "code": "connector-unknown-node",
+          "code": "unknown-node",
           "message": "Connector \"typo\" ends at node \"ghost\", which the diagram does not have.",
           "elements": ["typo"],
           "details": { "endpoint": "end", "node": "ghost" },
@@ -1032,10 +1029,10 @@ fn reports_an_id_two_nodes_share() {
     assert_eq!(
         issues_json(&report)
             .into_iter()
-            .filter(|issue| issue["code"] == "node-duplicate-id")
+            .filter(|issue| issue["code"] == "node-id-duplicated")
             .collect::<Vec<_>>(),
         [json!({
-          "code": "node-duplicate-id",
+          "code": "node-id-duplicated",
           "message": "2 nodes share the id \"a\".",
           "elements": ["a"],
           "details": { "count": 2 },
@@ -1075,7 +1072,7 @@ fn does_not_report_a_edge_crossing_a_parent_its_end_lies_across() {
     "#;
 
     assert_eq!(
-        issues_with_code(&inspect(svg), "connector-node-crossing"),
+        issues_with_code(&inspect(svg), "edge-overlaps-node"),
         Vec::<Vec<String>>::new()
     );
 }
@@ -1083,7 +1080,7 @@ fn does_not_report_a_edge_crossing_a_parent_its_end_lies_across() {
 /// Given a parent with a child poking 10px out of its right side, one 4px
 ///   from its left side and one 12px or more from every side
 /// When the diagram is inspected
-/// Then the first two are reported as node-outside-parent with their parent,
+/// Then the first two are reported as node-overflows-parent with their parent,
 ///   and the third is not
 #[test]
 fn reports_a_child_out_of_its_parent_or_nearer_its_outline_than_12px() {
@@ -1099,7 +1096,7 @@ fn reports_a_child_out_of_its_parent_or_nearer_its_outline_than_12px() {
     "#;
 
     assert_eq!(
-        issues_with_code(&inspect(svg), "node-outside-parent"),
+        issues_with_code(&inspect(svg), "node-overflows-parent"),
         [["near", "group"], ["out", "group"]]
     );
 }
@@ -1130,7 +1127,7 @@ fn takes_a_parent_s_padding_from_its_group_else_its_frame() {
     "#;
 
     assert_eq!(
-        issues_with_code(&inspect(svg), "node-outside-parent"),
+        issues_with_code(&inspect(svg), "node-overflows-parent"),
         [["first", "wide"], ["third", "both"]]
     );
 }
@@ -1138,7 +1135,7 @@ fn takes_a_parent_s_padding_from_its_group_else_its_frame() {
 /// Given a parent titled at its top left, with one child lying on the title
 ///   and one clear of it
 /// When the diagram is inspected
-/// Then the child on the title is reported as parent-text-overlap with its
+/// Then the child on the title is reported as node-overlaps-parent-label with its
 ///   parent, and the other is not
 #[test]
 fn reports_a_child_lying_on_its_parent_s_text() {
@@ -1154,7 +1151,7 @@ fn reports_a_child_lying_on_its_parent_s_text() {
     "#;
 
     assert_eq!(
-        issues_with_code(&inspect(svg), "parent-text-overlap"),
+        issues_with_code(&inspect(svg), "node-overlaps-parent-label"),
         [["under", "group"]]
     );
 }

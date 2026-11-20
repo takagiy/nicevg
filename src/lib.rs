@@ -71,7 +71,7 @@ impl InspectionReport {
             .chain(
                 self.issues
                     .iter()
-                    .filter(|issue| issue.code != "viewport-clipping")
+                    .filter(|issue| issue.code != "diagram-clipped")
                     .cloned(),
             )
             .collect();

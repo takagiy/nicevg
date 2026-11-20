@@ -4,10 +4,10 @@ docs/adr/parents-fit-their-children.md の決定を、1 項目ずつ実テスト
 
 ## 検査（`tests/inspection.rs`）
 
-- [x] 子が親のアウトラインから出ているか、アウトラインとのパディングが 12px に足りないと、子と親を示す問題 `node-outside-parent` になる
+- [x] 子が親のアウトラインから出ているか、アウトラインとのパディングが 12px に足りないと、子と親を示す問題 `node-overflows-parent` になる
 - [x] パディングを保ってアウトラインの中にある子は、報告されない
 - [x] 親のグループかアウトラインの要素の `data-padding` がパディングになり、両方にあればグループの値を使う
-- [x] 親自身のラベルに重なる子は、子と親を示す問題 `parent-text-overlap` になり、重ならない子は報告されない
+- [x] 親自身のラベルに重なる子は、子と親を示す問題 `node-overlaps-parent-label` になり、重ならない子は報告されない
 
 ## 修正（`tests/fix.rs`）
 

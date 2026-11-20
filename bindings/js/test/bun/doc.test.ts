@@ -550,7 +550,7 @@ render({
     expect(exitCode).toBe(0);
     expect(Object.keys(result)).toEqual(["changedFiles", "failures", "remainingIssues"]);
     expect(result.remainingIssues).toEqual([
-      { file: "guide.md", line: 1, code: "label-node-overlap", message: 'Label "connector-0" overlaps node "g".' },
+      { file: "guide.md", line: 1, code: "edge-label-overlaps-node", message: 'Label "connector-0" overlaps node "g".' },
     ]);
   });
 
