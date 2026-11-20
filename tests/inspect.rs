@@ -1,0 +1,467 @@
+//! Reading a diagram: which SVG elements become nodes, edges and
+//! unsupported shapes.
+
+mod support;
+
+use nicevg::{DiagramEdge, DiagramNode, Shape, Side, UnsupportedElement};
+use support::*;
+
+/// Given an SVG group explicitly marked as a diagram node
+/// When the SVG is inspected
+/// Then the public report exposes the node, its box, and its label bounds
+#[test]
+fn recognizes_an_annotated_node_with_its_box_and_label() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120">
+        <g data-node="checkout">
+          <rect x="20" y="20" width="120" height="56" />
+          <text x="80" y="53" text-anchor="middle" font-size="14">Checkout</text>
+        </g>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    assert_eq!(
+        report.diagram.nodes,
+        [DiagramNode {
+            id: "checkout".to_owned(),
+            shape: None,
+            bounds: bounds(20.0, 20.0, 120.0, 56.0),
+            label_bounds: vec![bounds(47.0, 39.0, 66.0, 17.0)],
+            parent_id: None,
+            allow_overlap: false,
+            custom: false,
+            ports: vec![],
+            padding: None,
+            redrawn: false,
+        }]
+    );
+}
+
+/// Given an unannotated SVG group with a direct rectangle and text child
+/// When the SVG is inspected
+/// Then the group is exposed as a node using its id
+#[test]
+fn infers_a_node_from_a_group_containing_a_rectangle_and_text() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120">
+        <g id="review">
+          <rect x="30" y="24" width="100" height="48" />
+          <text x="80" y="53" text-anchor="middle" font-size="14">Review</text>
+        </g>
+      </svg>
+    "#;
+
+    let ids: Vec<String> = inspect(svg).diagram.nodes.into_iter().map(|node| node.id).collect();
+
+    assert_eq!(ids, ["review"]);
+}
+
+/// Given an annotated group whose shape is a circle
+/// When the SVG is inspected
+/// Then it is a circular node whose bounds are the circle's bounding box
+#[test]
+fn recognizes_an_annotated_circle_as_a_circular_node() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160">
+        <g data-node="start">
+          <circle cx="80" cy="70" r="40" />
+          <text x="80" y="75" text-anchor="middle" font-size="14">Start</text>
+        </g>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+    let node = &report.diagram.nodes[0];
+
+    assert_eq!(node.id, "start");
+    assert_eq!(node.shape, Some(Shape::Circle));
+    assert_eq!(node.bounds, bounds(40.0, 30.0, 80.0, 80.0));
+}
+
+/// Given an unannotated group with a direct circle and text child
+/// When the SVG is inspected
+/// Then the group is exposed as a circular node using its id
+#[test]
+fn infers_a_circular_node_from_a_group_containing_a_circle_and_text() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160">
+        <g id="done">
+          <circle cx="80" cy="70" r="40" />
+          <text x="80" y="75" text-anchor="middle" font-size="14">Done</text>
+        </g>
+      </svg>
+    "#;
+
+    let nodes: Vec<(String, Option<Shape>)> = inspect(svg)
+        .diagram
+        .nodes
+        .into_iter()
+        .map(|node| (node.id, node.shape))
+        .collect();
+
+    assert_eq!(nodes, [("done".to_owned(), Some(Shape::Circle))]);
+}
+
+/// Given a line with explicit source and target node ids
+/// When the SVG is inspected
+/// Then the public report exposes the edge and its ends
+#[test]
+fn recognizes_an_annotated_edge_between_nodes() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120">
+        <g data-node="submit">
+          <rect x="20" y="20" width="100" height="56" />
+          <text x="70" y="53" text-anchor="middle">Submit</text>
+        </g>
+        <g data-node="review">
+          <rect x="200" y="20" width="100" height="56" />
+          <text x="250" y="53" text-anchor="middle">Review</text>
+        </g>
+        <line id="submit-review" data-from="submit" data-to="review"
+          x1="120" y1="48" x2="200" y2="48" />
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    assert_eq!(
+        report.diagram.edges,
+        [DiagramEdge {
+            id: "submit-review".to_owned(),
+            from: "submit".to_owned(),
+            to: "review".to_owned(),
+            points: vec![point(120.0, 48.0), point(200.0, 48.0)],
+            from_port: None,
+            to_port: None,
+        }]
+    );
+}
+
+/// Two nodes in a row joined by `arrow`, an arrow drawn with a polygon arrowhead.
+fn row_with_arrow(arrow: &str) -> String {
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120">
+          <g data-node="submit">
+            <rect x="20" y="20" width="100" height="56" />
+            <text x="70" y="53" text-anchor="middle">Submit</text>
+          </g>
+          <g data-node="review">
+            <rect x="260" y="20" width="100" height="56" />
+            <text x="310" y="53" text-anchor="middle">Review</text>
+          </g>
+          {arrow}
+        </svg>"#
+    )
+}
+
+/// Given an arrow drawn as a group carrying data-from and data-to around a
+///   path that stops at the tail of a polygon arrowhead
+/// When the SVG is inspected
+/// Then it is one edge running to the arrowhead's tip on the target
+#[test]
+fn recognizes_an_annotated_group_of_a_line_and_a_polygon_arrowhead_as_a_edge() {
+    let svg = row_with_arrow(
+        r#"<g id="submit-review" data-from="submit" data-to="review">
+            <path d="M 120 48 L 250 48" />
+            <polygon points="250,43 260,48 250,53" />
+          </g>"#,
+    );
+
+    let report = inspect(&svg);
+
+    assert_eq!(
+        report.diagram.edges,
+        [DiagramEdge {
+            id: "submit-review".to_owned(),
+            from: "submit".to_owned(),
+            to: "review".to_owned(),
+            points: vec![point(120.0, 48.0), point(260.0, 48.0)],
+            from_port: None,
+            to_port: None,
+        }]
+    );
+    assert!(report.issues.is_empty(), "{:?}", report.issues);
+}
+
+/// Given an annotated line grouped with a polygon arrowhead at its end, and
+///   another polygon in the group away from either end
+/// When the SVG is inspected
+/// Then the edge runs to the arrowhead's tip, ignoring the other polygon
+#[test]
+fn extends_an_annotated_line_to_the_tip_of_a_polygon_arrowhead_beside_it() {
+    let svg = row_with_arrow(
+        r#"<g>
+            <line id="submit-review" data-from="submit" data-to="review" x1="120" y1="48" x2="250" y2="48" />
+            <polygon points="250,43 260,48 250,53" />
+            <polygon points="180,90 190,95 180,100" />
+          </g>"#,
+    );
+
+    let report = inspect(&svg);
+
+    assert_eq!(
+        edge_points(&report, "submit-review"),
+        [point(120.0, 48.0), point(260.0, 48.0)]
+    );
+}
+
+/// Given a path annotated with data-a and data-b at the top level, and an
+///   arrow group annotated the same way
+/// When the SVG is inspected
+/// Then both are edges between the named nodes, as data-from and
+///   data-to would make them, and neither is reported as unsupported
+#[test]
+fn recognizes_data_a_and_data_b_like_data_from_and_data_to() {
+    let svg = row_with_arrow(
+        r#"<path id="plain" data-a="submit" data-b="review" d="M 120 40 L 260 40" />
+          <g id="grouped" data-a="submit" data-b="review">
+            <path d="M 120 56 L 250 56" />
+            <polygon points="250,51 260,56 250,61" />
+          </g>"#,
+    );
+
+    let report = inspect(&svg);
+    let ends: Vec<(&str, &str, &str)> = report
+        .diagram
+        .edges
+        .iter()
+        .map(|edge| (edge.id.as_str(), edge.from.as_str(), edge.to.as_str()))
+        .collect();
+
+    assert_eq!(ends, [("plain", "submit", "review"), ("grouped", "submit", "review")]);
+    assert_eq!(
+        edge_points(&report, "grouped"),
+        [point(120.0, 56.0), point(260.0, 56.0)]
+    );
+    assert!(report.diagram.unsupported_elements.is_empty());
+}
+
+/// Given a child node nested inside a parent node group
+/// When the SVG is inspected
+/// Then the child references its parent and their geometric overlap is allowed
+#[test]
+fn treats_a_nested_node_as_intentional_containment() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
+        <g data-node="system">
+          <rect x="10" y="10" width="300" height="180" />
+          <text x="30" y="35" font-size="14">System</text>
+          <g data-node="service">
+            <rect x="50" y="60" width="100" height="56" />
+            <text x="100" y="93" text-anchor="middle" font-size="14">Service</text>
+          </g>
+        </g>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+    let child = report
+        .diagram
+        .nodes
+        .iter()
+        .find(|node| node.id == "service")
+        .expect("service node");
+
+    assert_eq!(child.parent_id.as_deref(), Some("system"));
+    assert!(!has_issue(&report, "node-overlaps"));
+}
+
+/// Given malformed SVG XML
+/// When the public API inspects it
+/// Then callers receive a typed input error instead of a partial report
+#[test]
+fn rejects_malformed_xml_as_an_svg_input_error() {
+    assert!(nicevg::inspect("<svg><g></svg>").is_err());
+}
+
+/// Given groups nested 300 deep, deeper than the reader walks
+/// When the public API inspects it
+/// Then callers receive an input error instead of a stack overflow
+#[test]
+fn rejects_elements_nested_too_deep() {
+    let svg = format!("<svg>{}{}</svg>", "<g>".repeat(300), "</g>".repeat(300));
+
+    assert!(nicevg::inspect(&svg).is_err());
+}
+
+/// Given a standalone shape that cannot be mapped to a diagram node
+/// When the SVG is inspected
+/// Then it is exposed for diagnostics rather than assigned guessed semantics
+#[test]
+fn reports_standalone_freeform_shapes_as_unsupported() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120">
+        <circle id="mechanism-wheel" cx="70" cy="60" r="30" />
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    assert_eq!(
+        report.diagram.unsupported_elements,
+        [UnsupportedElement {
+            id: "mechanism-wheel".to_owned(),
+            tag_name: "circle".to_owned()
+        }]
+    );
+}
+
+/// Given a custom node whose picture marks a point on the left of its
+///   bounds as the port "author"
+/// When the SVG is inspected
+/// Then the node has a port named "author" at that point
+#[test]
+fn reads_a_marked_point_in_a_custom_node_s_picture_as_a_named_port() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="160" height="96" fill="white" stroke="black"/>
+            <text x="8" y="62" font-size="12">author</text>
+            <circle data-port="author" cx="0" cy="62" r="0"/>
+          </g>
+        </g>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    let ports = &report.diagram.node("article").expect("article").ports;
+    assert_eq!(
+        ports
+            .iter()
+            .map(|port| (port.name.as_str(), port.point))
+            .collect::<Vec<_>>(),
+        [("author", point(20.0, 82.0))]
+    );
+}
+
+/// Given a custom node with a port on each side of its bounds
+/// When the SVG is inspected
+/// Then each port faces out of the side it lies on
+#[test]
+fn faces_a_port_out_of_the_side_of_the_bounds_it_lies_on() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+        <g data-node="check" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="80" fill="white" stroke="black"/>
+            <circle data-port="in" cx="60" cy="0" r="0"/>
+            <circle data-port="yes" cx="120" cy="40" r="0"/>
+            <circle data-port="no" cx="60" cy="80" r="0"/>
+            <circle data-port="back" cx="0" cy="40" r="0"/>
+          </g>
+        </g>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    let ports = &report.diagram.node("check").expect("check").ports;
+    assert_eq!(
+        ports
+            .iter()
+            .map(|port| (port.name.as_str(), port.side))
+            .collect::<Vec<_>>(),
+        [
+            ("in", Side::Top),
+            ("yes", Side::Right),
+            ("no", Side::Bottom),
+            ("back", Side::Left)
+        ]
+    );
+}
+
+/// Given a custom node with a port just inside its right side and one just
+///   outside its left side
+/// When the SVG is inspected
+/// Then each port faces out of the side nearest to it
+#[test]
+fn faces_a_port_off_the_bounds_out_of_the_nearest_side() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+        <g data-node="row" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="80" fill="white" stroke="black"/>
+            <circle data-port="inside" cx="112" cy="20" r="0"/>
+            <circle data-port="outside" cx="-4" cy="60" r="0"/>
+          </g>
+        </g>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    let ports = &report.diagram.node("row").expect("row").ports;
+    assert_eq!(
+        ports
+            .iter()
+            .map(|port| (port.name.as_str(), port.side))
+            .collect::<Vec<_>>(),
+        [("inside", Side::Right), ("outside", Side::Left)]
+    );
+}
+
+/// Given a custom node marking the same port name on its left and right
+/// When the SVG is inspected
+/// Then the node has both points as places of that one port
+#[test]
+fn reads_points_of_the_same_name_as_places_of_one_port() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="160" height="96" fill="white" stroke="black"/>
+            <circle data-port="author" cx="0" cy="62" r="0"/>
+            <circle data-port="author" cx="160" cy="62" r="0"/>
+          </g>
+        </g>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    let ports = &report.diagram.node("article").expect("article").ports;
+    assert_eq!(
+        ports
+            .iter()
+            .map(|port| (port.name.as_str(), port.point, port.side))
+            .collect::<Vec<_>>(),
+        [
+            ("author", point(20.0, 82.0), Side::Left),
+            ("author", point(180.0, 82.0), Side::Right)
+        ]
+    );
+}
+
+/// Given an edge naming the port it leaves and the port it reaches
+/// When the SVG is inspected
+/// Then the report's edge carries both as fromPort and toPort
+#[test]
+fn reports_the_ports_a_edge_names() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 140">
+        <g data-node="article" data-custom="true">
+          <g transform="translate(20 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="author" cx="120" cy="62" r="0"/>
+          </g>
+        </g>
+        <g data-node="user" data-custom="true">
+          <g transform="translate(260 20)">
+            <rect data-bounds="true" width="120" height="96"/>
+            <circle data-port="id" cx="0" cy="62" r="0"/>
+          </g>
+        </g>
+        <path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="id"
+          d="M 140 82 L 260 82"/>
+      </svg>
+    "#;
+
+    let report = serde_json::to_value(inspect(svg)).expect("serializes");
+
+    let edge = &report["diagram"]["edges"][0];
+    assert_eq!((&edge["fromPort"], &edge["toPort"]), (&"author".into(), &"id".into()));
+}

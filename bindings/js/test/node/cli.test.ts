@@ -91,7 +91,7 @@ for (const [runtime, cli] of runtimes) {
 
       assert.equal(result.status, 1);
       assert.match(result.stdout, /^<svg/);
-      assert.match(result.stderr, /^label-overlap: /);
+      assert.match(result.stderr, /^label-overlaps: /);
     });
 
     /**
@@ -142,11 +142,11 @@ for (const [runtime, cli] of runtimes) {
     });
 
     /**
-     * Given a diagram whose connector bends only because one node sits 24px off, on standard input
+     * Given a diagram whose edge bends only because one node sits 24px off, on standard input
      * When the command runs
-     * Then it writes the arranged SVG, with the connector straight, and succeeds
+     * Then it writes the laid out SVG, with the edge straight, and succeeds
      */
-    test("arranges nodes by default", () => {
+    test("lays out nodes by default", () => {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 200">
         <g data-node="notify"><circle cx="100" cy="110" r="54"/><text x="100" y="115" text-anchor="middle" font-size="13">7 Notify</text></g>
         <g data-node="mail"><rect x="280" y="60" width="130" height="52"/><text x="345" y="91" text-anchor="middle" font-size="13">Email service</text></g>
@@ -162,7 +162,7 @@ for (const [runtime, cli] of runtimes) {
 
     /**
      * Given a reader that stops reading after the first bytes, as `head` does
-     * When the command writes the arranged SVG to it
+     * When the command writes the laid out SVG to it
      * Then it still succeeds, without a broken pipe error
      */
     test("succeeds when the reader of stdout goes away early", async () => {
@@ -180,11 +180,11 @@ for (const [runtime, cli] of runtimes) {
     });
 
     /**
-     * Given a diagram whose arranging frees its old candidates on other threads, run by many processes at once
+     * Given a diagram whose laying out frees its old candidates on other threads, run by many processes at once
      * When each process exits right after writing the SVG
      * Then none of them crashes: the library is done with its threads before the runtime unloads it
      */
-    test("exits cleanly after arranging, even under load", async () => {
+    test("exits cleanly after laying out, even under load", async () => {
       const svg = readFileSync(new URL("../../../../docs/images/before.svg", import.meta.url), "utf8");
 
       const statuses = await Promise.all(
@@ -245,7 +245,7 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
       const [toc, hint] = result.stdout.trimEnd().split("\n\n");
       const lines = toc!.split("\n");
       assert.match(lines[0]!, /^1\. Introduction \.+ \|nicevg-intro\|$/);
-      assert.match(lines.at(-1)!, /\|nicevg-engine-issue-label-detached\|$/);
+      assert.match(lines.at(-1)!, /\|nicevg-engine-issue-edge-label-detached\|$/);
       for (const [, tag] of page.matchAll(/\*(nicevg-engine-issue-[a-z-]+)\*$/gm)) {
         assert.ok(lines.some((line) => line.endsWith(`|${tag}|`)), tag);
       }
@@ -283,16 +283,16 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
 
     /**
      * [x] When a query is text in a section, `nicevg man` can print that section with its title line, without the sections inside or outside it, the text emphasized.
-     * Given text found only in the title line of the node-gap issue
+     * Given text found only in the title line of the node-near-node issue
      * When `nicevg man` runs with it
      * Then that issue's entry alone is written, the text emphasized
      */
     test("man prints the sections holding a text, the text emphasized", () => {
-      const result = man("node-gap");
+      const result = man("node-near-node");
 
       assert.equal(result.status, 0, result.stderr);
-      const entry = page.slice(page.indexOf("node-gap  "), page.indexOf("\nnode-outside-parent  ")).trimEnd();
-      assert.equal(result.stdout, `${entry.replaceAll("node-gap", em("node-gap"))}\n`);
+      const entry = page.slice(page.indexOf("node-near-node  "), page.indexOf("\nnode-overflows-parent  ")).trimEnd();
+      assert.equal(result.stdout, `${entry.replaceAll("node-near-node", em("node-near-node"))}\n`);
     });
 
     /**
@@ -315,16 +315,16 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
 
     /**
      * [x] When matches do not nest, `nicevg man` can print each in page order, separated by a rule.
-     * Given the node-gap issue's tag and then the introduction's tag
+     * Given the node-near-node issue's tag and then the introduction's tag
      * When `nicevg man` runs with them
-     * Then the introduction, a rule and the node-gap entry are written
+     * Then the introduction, a rule and the node-near-node entry are written
      */
     test("man prints matches that do not nest in page order, separated by a rule", () => {
-      const result = man("nicevg-engine-issue-node-gap", "nicevg-intro");
+      const result = man("nicevg-engine-issue-node-near-node", "nicevg-intro");
 
       assert.equal(result.status, 0, result.stderr);
       const intro = page.slice(page.indexOf("1. Introduction  "), page.indexOf(`\n\n${"=".repeat(78)}\n2. nicevg doc`));
-      const entry = page.slice(page.indexOf("node-gap  "), page.indexOf("\nnode-outside-parent  ")).trimEnd();
+      const entry = page.slice(page.indexOf("node-near-node  "), page.indexOf("\nnode-overflows-parent  ")).trimEnd();
       assert.equal(result.stdout, `${intro}\n\n${"=".repeat(78)}\n${entry}\n`);
     });
 
@@ -382,7 +382,7 @@ describe("nicevg help page", () => {
   test("documents every issue code but the port ones", () => {
     const inspect = readFileSync(new URL("../../../../src/inspect.rs", import.meta.url), "utf8");
     const codes = [...inspect.matchAll(/issue\(\s*"([a-z][a-z-]*)"/g)].map(([, code]) => code!);
-    const ports = ["connector-end-off-port", "connector-unknown-port"];
+    const ports = ["edge-end-detached-port", "unknown-port"];
 
     assert.ok(codes.length > 0);
     for (const code of codes.filter((code) => !ports.includes(code))) {

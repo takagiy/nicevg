@@ -1,18 +1,18 @@
-//! Connectors as drawn: a shaft (`line`, `polyline` or `path`) and any
+//! Edges as drawn: a shaft (`line`, `polyline` or `path`) and any
 //! arrowheads drawn as separate polygons touching its ends.
 //!
-//! A connector is annotated either on its shaft or on a group around the
-//! shaft and its heads. A head lies at the end it touches, and the
-//! connector runs on to the head's tip, where it meets its node.
+//! An edge is annotated either on its shaft or on a group around the
+//! shaft and its arrowheads. An arrowhead lies at the end it touches, and the
+//! edge runs on to the arrowhead's tip, where it meets its node.
 
-use crate::diagram::{connector_elements, connector_points, non_empty, translation};
+use crate::diagram::{edge_elements, edge_points, non_empty, translation};
 use crate::geometry::{Point, format_number, hypot, point, point_list, round};
 use crate::xml::{Document, Element, Path};
 
 /// An arrowhead polygon at one end of a shaft: where its tip points along
 /// the shaft's direction there, and how far that tip lies beyond the shaft.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Head {
+pub struct Arrowhead {
     pub path: Path,
     pub at_start: bool,
     pub tip: Point,
@@ -26,33 +26,38 @@ pub struct Drawn {
     pub from: String,
     pub to: String,
     pub shaft: Path,
-    pub heads: Vec<Head>,
-    /// The shaft's points, run on to the tips of its heads.
+    pub arrowheads: Vec<Arrowhead>,
+    /// The shaft's points, run on to the tips of its arrowheads.
     pub points: Vec<Point>,
 }
 
-/// Every annotated connector: annotated shafts first, in the order they
+/// Every annotated edge: annotated shafts first, in the order they
 /// were always numbered in, then annotated groups.
-pub fn drawn_connectors(document: &Document) -> Vec<Drawn> {
-    let shafts = connector_elements(document);
+pub fn drawn_edges(document: &Document) -> Vec<Drawn> {
+    let shafts = edge_elements(document);
     let groups: Vec<(Path, &Element)> = document
         .elements_named("g")
         .into_iter()
         .filter(|(_, group)| annotation(group).is_some())
         .collect();
+    // The arrowheads earlier shafts took, which later shafts skip: of two
+    // shafts ending at one point, each takes an arrowhead of its own.
+    let mut taken: Vec<Path> = Vec::new();
     let from_shafts = shafts.iter().enumerate().filter_map(|(index, (path, element))| {
         let (from, to) = annotation(element)?;
-        let id = non_empty(element.attr("id")).map_or_else(|| format!("connector-{}", index + 1), str::to_owned);
+        let id = non_empty(element.attr("id")).map_or_else(|| format!("edge-{}", index + 1), str::to_owned);
         let parent = &path[..path.len() - 1];
         let beside: Vec<Path> = if document.element(parent).name == "g" {
             polygons_within(document, parent)
                 .into_iter()
-                .filter(|polygon| polygon.len() == path.len())
+                .filter(|polygon| polygon.len() == path.len() && !taken.contains(polygon))
                 .collect()
         } else {
             Vec::new()
         };
-        Some(drawn(document, id, from, to, path.clone(), &beside))
+        let edge = drawn(document, id, from, to, path.clone(), &beside);
+        taken.extend(edge.arrowheads.iter().map(|arrowhead| arrowhead.path.clone()));
+        Some(edge)
     });
     let from_groups = groups.iter().enumerate().filter_map(|(index, (group, element))| {
         let (from, to) = annotation(element)?;
@@ -60,8 +65,8 @@ pub fn drawn_connectors(document: &Document) -> Vec<Drawn> {
             .iter()
             .filter(|(path, _)| path.len() > group.len() && path.starts_with(group))
             .min_by_key(|(path, _)| path.clone())?;
-        let id = non_empty(element.attr("id"))
-            .map_or_else(|| format!("connector-{}", shafts.len() + index + 1), str::to_owned);
+        let id =
+            non_empty(element.attr("id")).map_or_else(|| format!("edge-{}", shafts.len() + index + 1), str::to_owned);
         Some(drawn(
             document,
             id,
@@ -74,7 +79,7 @@ pub fn drawn_connectors(document: &Document) -> Vec<Drawn> {
     from_shafts.chain(from_groups).collect()
 }
 
-/// The node ids a connector joins: `data-from` and `data-to`, or the same
+/// The node ids an edge joins: `data-from` and `data-to`, or the same
 /// as `data-a` and `data-b`.
 fn annotation(element: &Element) -> Option<(&str, &str)> {
     [("data-from", "data-to"), ("data-a", "data-b")]
@@ -82,7 +87,7 @@ fn annotation(element: &Element) -> Option<(&str, &str)> {
         .find_map(|(from, to)| Some((non_empty(element.attr(from))?, non_empty(element.attr(to))?)))
 }
 
-/// Whether an element names at least one end of a connector.
+/// Whether an element names at least one end of an edge.
 pub fn names_an_end(element: &Element) -> bool {
     ["data-from", "data-to", "data-a", "data-b"]
         .iter()
@@ -112,33 +117,37 @@ fn unit(from: Point, to: Point) -> Option<Point> {
 }
 
 fn drawn(document: &Document, id: String, from: &str, to: &str, shaft: Path, polygons: &[Path]) -> Drawn {
-    let points = connector_points(document, &shaft);
-    let heads: Vec<Head> = match points.as_slice() {
+    let points = edge_points(document, &shaft);
+    let arrowheads: Vec<Arrowhead> = match points.as_slice() {
         [first, second, ..] => {
             let (last, before) = (points[points.len() - 1], points[points.len() - 2]);
             [(true, *first, *second), (false, last, before)].into_iter().fold(
                 Vec::new(),
-                |mut heads, (at_start, end, inner)| {
+                |mut arrowheads, (at_start, end, inner)| {
                     let Some(direction) = unit(inner, end) else {
-                        return heads;
+                        return arrowheads;
                     };
-                    let head = polygons
+                    let arrowhead = polygons
                         .iter()
-                        .filter(|polygon| heads.iter().all(|head: &Head| head.path != **polygon))
-                        .find_map(|polygon| head_at(document, polygon, end, direction, at_start));
-                    heads.extend(head);
-                    heads
+                        .filter(|polygon| {
+                            arrowheads
+                                .iter()
+                                .all(|arrowhead: &Arrowhead| arrowhead.path != **polygon)
+                        })
+                        .find_map(|polygon| arrowhead_at(document, polygon, end, direction, at_start));
+                    arrowheads.extend(arrowhead);
+                    arrowheads
                 },
             )
         }
         _ => Vec::new(),
     };
-    let extended = heads.iter().fold(points, |mut points, head| {
-        let index = if head.at_start { 0 } else { points.len() - 1 };
+    let extended = arrowheads.iter().fold(points, |mut points, arrowhead| {
+        let index = if arrowhead.at_start { 0 } else { points.len() - 1 };
         let end = points[index];
         points[index] = point(
-            end.x + head.direction.x * head.inset,
-            end.y + head.direction.y * head.inset,
+            end.x + arrowhead.direction.x * arrowhead.inset,
+            end.y + arrowhead.direction.y * arrowhead.inset,
         );
         points
     });
@@ -147,14 +156,20 @@ fn drawn(document: &Document, id: String, from: &str, to: &str, shaft: Path, pol
         from: from.to_owned(),
         to: to.to_owned(),
         shaft,
-        heads,
+        arrowheads,
         points: extended,
     }
 }
 
-/// The polygon as a head at `end` when its box touches that end; its tip is
+/// The polygon as an arrowhead at `end` when its box touches that end; its tip is
 /// the vertex furthest along the shaft's direction.
-fn head_at(document: &Document, polygon: &[usize], end: Point, direction: Point, at_start: bool) -> Option<Head> {
+fn arrowhead_at(
+    document: &Document,
+    polygon: &[usize],
+    end: Point,
+    direction: Point,
+    at_start: bool,
+) -> Option<Arrowhead> {
     let vertices = polygon_points(document, polygon);
     let touching = |pick: fn(&Point) -> f64, value: f64| {
         let values = vertices.iter().map(pick);
@@ -171,35 +186,35 @@ fn head_at(document: &Document, polygon: &[usize], end: Point, direction: Point,
         .iter()
         .copied()
         .reduce(|best, vertex| if along(&vertex) > along(&best) { vertex } else { best })?;
-    Some(Head {
+    Some(Arrowhead {
         path: polygon.to_vec(),
         at_start,
         tip,
         direction,
-        // To 1/1000 px as moved_head writes heads, so a slanted head's float error does not reach the shaft.
+        // To 1/1000 px as moved_head writes arrowheads, so a slanted arrowhead's float error does not reach the shaft.
         inset: round(along(&tip).max(0.0) * 1000.0) / 1000.0,
     })
 }
 
-/// The route the shaft takes when its connector follows `route`: each end
-/// with a head stops short of it as `shaft_end` says.
+/// The route the shaft takes when its edge follows `route`: each end
+/// with an arrowhead stops short of it as `shaft_end` says.
 pub fn shaft_route(drawn: &Drawn, route: &[Point]) -> Vec<Point> {
-    drawn.heads.iter().fold(route.to_vec(), |mut shaft, head| {
-        let (end, inner) = if head.at_start {
+    drawn.arrowheads.iter().fold(route.to_vec(), |mut shaft, arrowhead| {
+        let (end, inner) = if arrowhead.at_start {
             (0, 1)
         } else {
             (shaft.len() - 1, shaft.len() - 2)
         };
-        if let Some((stop, _)) = shaft_end(route[inner], route[end], head.inset) {
+        if let Some((stop, _)) = shaft_end(route[inner], route[end], arrowhead.inset) {
             shaft[end] = stop;
         }
         shaft
     })
 }
 
-/// Where a shaft running from `before` to `tip` stops for a head `inset`
+/// Where a shaft running from `before` to `tip` stops for an arrowhead `inset`
 /// long there, and the way it points: at most halfway back to `before`, so
-/// that a segment shorter than the head still leaves the shaft a direction.
+/// that a segment shorter than the arrowhead still leaves the shaft a direction.
 /// None when the segment has no length to point along.
 pub fn shaft_end(before: Point, tip: Point, inset: f64) -> Option<(Point, Point)> {
     let direction = unit(before, tip)?;
@@ -207,43 +222,43 @@ pub fn shaft_end(before: Point, tip: Point, inset: f64) -> Option<(Point, Point)
     Some((point(tip.x - direction.x * back, tip.y - direction.y * back), direction))
 }
 
-/// The head's polygon turned and moved so its tip sits at the route's end,
+/// The arrowhead's polygon turned and moved so its tip sits at the route's end,
 /// pointing along the route's last segment there.
-pub fn moved_head(document: &Document, head: &Head, route: &[Point]) -> Option<Element> {
-    let (tip, inner) = if head.at_start {
+pub fn moved_arrowhead(document: &Document, arrowhead: &Arrowhead, route: &[Point]) -> Option<Element> {
+    let (tip, inner) = if arrowhead.at_start {
         (route[0], route[1])
     } else {
         (route[route.len() - 1], route[route.len() - 2])
     };
     let direction = unit(inner, tip)?;
     let (cos, sin) = (
-        head.direction.x * direction.x + head.direction.y * direction.y,
-        head.direction.x * direction.y - head.direction.y * direction.x,
+        arrowhead.direction.x * direction.x + arrowhead.direction.y * direction.y,
+        arrowhead.direction.x * direction.y - arrowhead.direction.y * direction.x,
     );
-    let offset = translation(document, &head.path);
+    let offset = translation(document, &arrowhead.path);
     let tidy = |value: f64| format_number(round(value * 1000.0) / 1000.0);
-    let points = polygon_points(document, &head.path)
+    let points = polygon_points(document, &arrowhead.path)
         .into_iter()
         .map(|vertex| {
-            let (dx, dy) = (vertex.x - head.tip.x, vertex.y - head.tip.y);
+            let (dx, dy) = (vertex.x - arrowhead.tip.x, vertex.y - arrowhead.tip.y);
             let x = tip.x + dx * cos - dy * sin - offset.x;
             let y = tip.y + dx * sin + dy * cos - offset.y;
             format!("{},{}", tidy(x), tidy(y))
         })
         .collect::<Vec<_>>()
         .join(" ");
-    Some(document.element(&head.path).clone().with_attr("points", &points))
+    Some(document.element(&arrowhead.path).clone().with_attr("points", &points))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Given a segment 6px long running right to a tip, and a head 10px long there
+    /// Given a segment 6px long running right to a tip, and an arrowhead 10px long there
     /// When the shaft's end is found
     /// Then it stops 3px back, halfway along the segment, still pointing right
     #[test]
-    fn stops_a_shaft_halfway_along_a_segment_shorter_than_its_head() {
+    fn stops_a_shaft_halfway_along_a_segment_shorter_than_its_arrowhead() {
         assert_eq!(
             shaft_end(point(0.0, 0.0), point(6.0, 0.0), 10.0),
             Some((point(3.0, 0.0), point(1.0, 0.0)))

@@ -393,7 +393,7 @@
 
       // Test fixtures often carry no styling; give unstyled shapes readable
       // defaults (zero specificity, so a diagram's own CSS still wins) and
-      // show connector direction.
+      // show edge direction.
       const withDefaults = (svg) => {
         const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
         const root = doc.documentElement;
@@ -416,7 +416,7 @@
       const viewBoxOf = (svg, report) => {
         const match = /viewBox\s*=\s*"([^"]+)"/.exec(svg);
         if (match) return match[1];
-        const b = report.drawingBounds ?? {
+        const b = report.diagramBounds ?? {
           x: 0,
           y: 0,
           width: 300,
@@ -431,7 +431,7 @@
         for (const id of ids) {
           const node = report.diagram.nodes.find((item) => item.id === id);
           const label = report.diagram.labels.find((item) => item.id === id);
-          const connector = report.diagram.connectors.find(
+          const edge = report.diagram.edges.find(
             (item) => item.id === id,
           );
           const box = (node ?? label)?.bounds;
@@ -446,10 +446,10 @@
               }),
             );
           }
-          if (connector) {
+          if (edge) {
             shapes.push(
               svgEl("polyline", {
-                points: connector.points.map((p) => `${p.x},${p.y}`).join(" "),
+                points: edge.points.map((p) => `${p.x},${p.y}`).join(" "),
               }),
             );
           }

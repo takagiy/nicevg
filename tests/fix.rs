@@ -16,7 +16,7 @@ const NOTE_AND_RETRY_LABEL: &str = r#"<text data-label="note" x="190" y="0" text
           x="190" y="42" text-anchor="middle" font-size="14">Retry</text>"#;
 
 /// Source, an unrelated block and a target in one row, joined by a
-/// connector that runs straight through the block.
+/// edge that runs straight through the block.
 fn blocked_row(extra: &str) -> String {
     [
         r#"
@@ -62,9 +62,9 @@ fn expands_a_clipping_viewbox_without_shrinking_its_existing_extent() {
     let written = view_box(Written::parse(&result.svg).root());
 
     assert!(contains(&written, &view_box(Written::parse(svg).root())));
-    let drawing = result.report.drawing_bounds.expect("drawing bounds");
+    let drawing = result.report.diagram_bounds.expect("drawing bounds");
     assert!(contains(&written, &inflate(&drawing, 20.0)));
-    assert!(!has_issue(&result.report, "viewport-clipping"));
+    assert!(!has_issue(&result.report, "diagram-clipped"));
     assert_eq!(change_codes(&result), ["expand-viewbox"]);
 
     assert_fix_snapshots!(result);
@@ -113,12 +113,12 @@ fn scales_absolute_width_and_height_with_the_viewbox() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a clipped diagram sized to its container with a percentage width
+/// Given a clipped diagram sized to its parent with a percentage width
 ///   and no height
 /// When the diagram is fixed
 /// Then the viewBox grows but the width stays relative and no height is added
 #[test]
-fn leaves_relative_and_missing_sizes_to_the_container() {
+fn leaves_relative_and_missing_sizes_to_the_parent() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="100%">
         <g data-node="checkout">
@@ -228,9 +228,34 @@ fn expands_a_node_box_around_its_label_without_moving_the_label() {
     assert!(contains(&box_, &bounds(20.0, 20.0, 70.0, 40.0)));
     assert!(contains(&box_, &inflate(&label, 12.0)));
     assert_eq!((attr(text, "x"), attr(text, "y")), ("55", "52"));
-    assert!(!has_issue(&result.report, "text-overflow"));
+    assert!(!has_issue(&result.report, "node-label-overflows"));
 
     assert_fix_snapshots!(result);
+}
+
+/// Given an annotated node whose box lies in a group of its own inside it,
+///   too small for the label
+/// When the diagram is fixed
+/// Then that box expands round the label, as a box directly in the node does
+#[test]
+fn expands_a_node_box_nested_in_a_group_of_its_own() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 400 300">
+        <g data-node="confirm">
+          <g><rect x="20" y="20" width="70" height="40" /></g>
+          <text x="55" y="52" text-anchor="middle" font-size="14">Confirm payment</text>
+        </g>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let label = result.report.diagram.nodes[0].label_bounds[0];
+
+    assert!(contains(
+        &node_bounds(&result.report, "confirm"),
+        &inflate(&label, 12.0)
+    ));
+    assert!(!has_issue(&result.report, "node-label-overflows"));
 }
 
 /// Given a circular node whose label reaches within 12px of its circle
@@ -256,7 +281,7 @@ fn grows_a_circular_node_around_its_label_without_moving_either() {
     assert_eq!((attr(circle, "cx"), attr(circle, "cy")), ("120", "100"));
     assert!(attr(circle, "r").parse::<f64>().expect("numeric radius") > 40.0);
     assert_eq!((attr(text, "x"), attr(text, "y")), ("120", "105"));
-    assert!(!has_issue(&result.report, "text-overflow"));
+    assert!(!has_issue(&result.report, "node-label-overflows"));
 
     assert_fix_snapshots!(result);
 }
@@ -286,18 +311,18 @@ fn pushes_overlapping_nodes_apart_while_preserving_their_order() {
     assert_eq!(first, bounds(20.0, 20.0, 100.0, 56.0));
     assert!(second.x > first.x);
     assert!(gap_between(&first, &second) >= 20.0);
-    assert!(!has_issue(&result.report, "node-overlap"));
-    assert!(!has_issue(&result.report, "node-gap"));
+    assert!(!has_issue(&result.report, "node-overlaps"));
+    assert!(!has_issue(&result.report, "node-near-node"));
 
     assert_fix_snapshots!(result);
 }
 
-/// Given two nodes in a row joined by a connector whose label is wider than their gap
+/// Given two nodes in a row joined by an edge whose label is wider than their gap
 /// When the diagram is fixed
 /// Then the right node is pushed right, and the label sits beside the
-///   connector, which stays straight
+///   edge, which stays straight
 #[test]
-fn pushes_nodes_apart_to_fit_the_label_of_the_connector_between_them() {
+fn pushes_nodes_apart_to_fit_the_label_of_the_edge_between_them() {
     let svg = r#"
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 500 300">
         <g data-node="first">
@@ -320,35 +345,35 @@ fn pushes_nodes_apart_to_fit_the_label_of_the_connector_between_them() {
 
     assert_eq!(first, bounds(20.0, 20.0, 100.0, 56.0));
     assert!(gap_between(&first, &second) >= label.width + 16.0 - 0.01);
-    assert_eq!(bend_count(&connector_points(&result.report, "flow")), 0);
+    assert_eq!(bend_count(&edge_points(&result.report, "flow")), 0);
     assert!(label.x >= first.right() && label.right() <= second.x);
-    assert!(!has_issue(&result.report, "label-detached"));
-    assert!(!has_issue(&result.report, "node-gap"));
+    assert!(!has_issue(&result.report, "edge-label-detached"));
+    assert!(!has_issue(&result.report, "node-near-node"));
 
     assert_fix_snapshots!(result);
 }
 
-/// Given a horizontal connector that crosses an unrelated node
+/// Given a horizontal edge that crosses an unrelated node
 /// When the diagram is fixed
 /// Then it follows an orthogonal path with 8px obstacle clearance
 #[test]
-fn reroutes_a_connector_around_an_unrelated_node() {
+fn reroutes_a_edge_around_an_unrelated_node() {
     let svg = &blocked_row("");
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
     assert!(is_orthogonal(&points));
     assert!(!enters_box(
         &points,
         &inflate(&node_bounds(&result.report, "obstacle"), 8.0)
     ));
-    assert!(!has_issue(&result.report, "connector-node-crossing"));
+    assert!(!has_issue(&result.report, "edge-overlaps-node"));
 
     assert_fix_snapshots!(result);
 }
 
-/// Given a horizontal connector that has to detour around an unrelated node
+/// Given a horizontal edge that has to detour around an unrelated node
 /// When the diagram is fixed
 /// Then the detour's last bend stays at least 16px from the target, so an
 ///   arrowhead at the end does not sit on the bend, and the detour still
@@ -358,7 +383,7 @@ fn keeps_the_last_bend_clear_of_the_arrowhead() {
     let svg = &blocked_row("");
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
     let last = segments(&points).pop().expect("a segment");
 
     assert!(bend_count(&points) > 0);
@@ -373,13 +398,13 @@ fn keeps_the_last_bend_clear_of_the_arrowhead() {
 }
 
 /// Given an arrow drawn as a group carrying data-from and data-to around a
-///   path that stops at the tail of a 10px polygon head, straight through
+///   path that stops at the tail of a 10px polygon arrowhead, straight through
 ///   an unrelated node
 /// When the diagram is fixed
-/// Then the connector detours, the head moves to the new end on the target
+/// Then the edge detours, the arrowhead moves to the new end on the target
 ///   and points along the last segment, and the path stops 10px before it
 #[test]
-fn moves_a_polygon_arrowhead_with_its_rerouted_connector() {
+fn moves_a_polygon_arrowhead_with_its_rerouted_edge() {
     let svg = &blocked_row("").replace(
         r#"<line id="flow" data-from="source" data-to="target"
       x1="120" y1="48" x2="260" y2="48" />"#,
@@ -390,15 +415,15 @@ fn moves_a_polygon_arrowhead_with_its_rerouted_connector() {
     );
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
     let (end, before) = (points[points.len() - 1], points[points.len() - 2]);
     let written = Written::parse(&result.svg);
-    let head: Vec<f64> = attr(written.nth("polygon", 0), "points")
+    let arrowhead: Vec<f64> = attr(written.nth("polygon", 0), "points")
         .split([' ', ','])
         .map(|value| value.parse().expect("a number"))
         .collect();
-    let tip = point(head[2], head[3]);
-    let base = point((head[0] + head[4]) / 2.0, (head[1] + head[5]) / 2.0);
+    let tip = point(arrowhead[2], arrowhead[3]);
+    let base = point((arrowhead[0] + arrowhead[4]) / 2.0, (arrowhead[1] + arrowhead[5]) / 2.0);
     let shaft = attr(written.nth("path", 0), "d");
 
     assert!(bend_count(&points) > 0);
@@ -414,13 +439,45 @@ fn moves_a_polygon_arrowhead_with_its_rerouted_connector() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a connector drawn inside a group translated by (-10, 5), crossing
+/// Given two edges in one group, each a polyline with a polygon arrowhead of
+///   its own, that share their last segment and end at the same point on
+///   their target, a node standing in their way
+/// When the diagram is fixed
+/// Then each rerouted edge runs on to the tip of an arrowhead, on the
+///   target's outline: neither arrowhead is left behind
+#[test]
+fn moves_each_arrowhead_of_edges_ending_at_one_point_with_its_own_edge() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 -100 500 400">
+        <g data-node="a"><rect x="0" y="0" width="80" height="40" /></g>
+        <g data-node="c"><rect x="0" y="150" width="80" height="40" /></g>
+        <g data-node="block"><rect x="150" y="60" width="80" height="60" /></g>
+        <g data-node="b"><rect x="300" y="70" width="80" height="40" /></g>
+        <g>
+          <polyline id="ab" data-from="a" data-to="b" points="80,20 120,20 120,90 290,90" fill="none" />
+          <polyline id="cb" data-from="c" data-to="b" points="80,170 120,170 120,90 290,90" fill="none" />
+          <polygon points="290,85 300,90 290,95" />
+          <polygon points="290,85 300,90 290,95" />
+        </g>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let target = node_bounds(&result.report, "b");
+
+    for id in ["ab", "cb"] {
+        let points = edge_points(&result.report, id);
+        assert!(side_of(points[points.len() - 1], &target).is_some(), "{id}: {points:?}");
+    }
+}
+
+/// Given an edge drawn inside a group translated by (-10, 5), crossing
 ///   an unrelated node
 /// When the diagram is fixed
 /// Then the detour, read back through the translation, clears the node and
 ///   ends on the target's outline
 #[test]
-fn writes_a_rerouted_connector_in_its_translated_group_s_coordinates() {
+fn writes_a_rerouted_edge_in_its_translated_group_s_coordinates() {
     let svg = &blocked_row("").replace(
         r#"<line id="flow" data-from="source" data-to="target"
       x1="120" y1="48" x2="260" y2="48" />"#,
@@ -430,10 +487,10 @@ fn writes_a_rerouted_connector_in_its_translated_group_s_coordinates() {
     );
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
     assert_eq!(
-        connector_points(&analyze(svg), "flow"),
+        edge_points(&inspect(svg), "flow"),
         [point(120.0, 48.0), point(260.0, 48.0)]
     );
     assert!(!enters_box(
@@ -447,10 +504,10 @@ fn writes_a_rerouted_connector_in_its_translated_group_s_coordinates() {
 }
 
 /// Asserts the written arrowhead (a triangle listed base corner, tip, base
-///   corner) sits with its tip on the connector's end and points along the
+///   corner) sits with its tip on the edge's end and points along the
 ///   segment arriving there, with the shaft ending at its base 10px back.
-fn assert_head_points_along_its_end(result: &FixResult, at_start: bool) {
-    let points = connector_points(&result.report, "flow");
+fn assert_arrowhead_points_along_its_end(result: &FixResult, at_start: bool) {
+    let points = edge_points(&result.report, "flow");
     let (end, inner) = if at_start {
         (points[0], points[1])
     } else {
@@ -459,12 +516,12 @@ fn assert_head_points_along_its_end(result: &FixResult, at_start: bool) {
     let length = ((end.x - inner.x).powi(2) + (end.y - inner.y).powi(2)).sqrt();
     let direction = ((end.x - inner.x) / length, (end.y - inner.y) / length);
     let written = Written::parse(&result.svg);
-    let head: Vec<f64> = attr(written.nth("polygon", 0), "points")
+    let arrowhead: Vec<f64> = attr(written.nth("polygon", 0), "points")
         .split([' ', ','])
         .map(|value| value.parse().expect("a number"))
         .collect();
-    let tip = point(head[2], head[3]);
-    let base = point((head[0] + head[4]) / 2.0, (head[1] + head[5]) / 2.0);
+    let tip = point(arrowhead[2], arrowhead[3]);
+    let base = point((arrowhead[0] + arrowhead[4]) / 2.0, (arrowhead[1] + arrowhead[5]) / 2.0);
     let shaft = attr(written.nth("path", 0), "d");
     let base_text = format!("{} {}", base.x, base.y);
 
@@ -483,11 +540,11 @@ fn assert_head_points_along_its_end(result: &FixResult, at_start: bool) {
     );
 }
 
-/// Given an arrow whose head enters the target's right side heading left,
+/// Given an arrow whose arrowhead enters the target's right side heading left,
 ///   drawn around the top through an unrelated node
 /// When the diagram is fixed
-/// Then the connector enters the facing left side instead, and the head
-///   turns round to point right along it
+/// Then the edge enters the facing left side instead, and the arrowhead
+///   bends round to point right along it
 #[test]
 fn turns_a_polygon_arrowhead_round_when_it_enters_from_the_other_side() {
     let svg = r#"
@@ -512,22 +569,22 @@ fn turns_a_polygon_arrowhead_round_when_it_enters_from_the_other_side() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
     assert!(points[points.len() - 1].x > points[points.len() - 2].x, "{points:?}");
-    assert_head_points_along_its_end(&result, false);
+    assert_arrowhead_points_along_its_end(&result, false);
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
     assert_fix_snapshots!(result);
 }
 
-/// Given an arrow whose head is at the start of its path, pointing back
+/// Given an arrow whose arrowhead is at the start of its path, pointing back
 ///   into the source, with the path running straight through a node
 /// When the diagram is fixed
-/// Then the head moves to the new start and points into the source along
+/// Then the arrowhead moves to the new start and points into the source along
 ///   the first segment
 #[test]
-fn turns_a_polygon_arrowhead_at_the_start_of_its_connector() {
+fn turns_a_polygon_arrowhead_at_the_start_of_its_edge() {
     let svg = &blocked_row("").replace(
         r#"<line id="flow" data-from="source" data-to="target"
       x1="120" y1="48" x2="260" y2="48" />"#,
@@ -539,21 +596,21 @@ fn turns_a_polygon_arrowhead_at_the_start_of_its_connector() {
 
     let result = fix(svg);
 
-    assert!(bend_count(&connector_points(&result.report, "flow")) > 0);
-    assert_head_points_along_its_end(&result, true);
+    assert!(bend_count(&edge_points(&result.report, "flow")) > 0);
+    assert_arrowhead_points_along_its_end(&result, true);
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
     assert_fix_snapshots!(result);
 }
 
-/// Given a box with a connector to itself, a path running 10px right from its
+/// Given a box with an edge to itself, a path running 10px right from its
 ///   centre, and nothing else around
 /// When the diagram is fixed
 /// Then the loop comes back into the box along a straight run of at least
-///   16px, as a connector between two nodes does: the box itself does not
+///   16px, as an edge between two nodes does: the box itself does not
 ///   stand in the way of its own run
 #[test]
-fn leaves_a_loop_the_straight_run_into_its_node_other_connectors_get() {
+fn leaves_a_loop_the_straight_run_into_its_node_other_edges_get() {
     let svg = r#"
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140">
     <g data-node="retry">
@@ -566,20 +623,20 @@ fn leaves_a_loop_the_straight_run_into_its_node_other_connectors_get() {
 
     let result = fix(svg);
 
-    let points = connector_points(&result.report, "again");
+    let points = edge_points(&result.report, "again");
     let (end, before) = (points[points.len() - 1], points[points.len() - 2]);
     assert!(bend_count(&points) > 0, "{points:?}");
     assert!((end.x - before.x).hypot(end.y - before.y) >= 16.0, "{points:?}");
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 }
 
-/// Given a connector from a circle that comes straight down onto the middle
-///   of a box's left side, its last stretch lying on that side
+/// Given an edge from a circle that comes straight down onto the middle
+///   of a box's left side, its last segment lying on that side
 /// When the diagram is fixed
-/// Then the connector is rerouted to meet the box at a right angle, and
+/// Then the edge is rerouted to meet the box at a right angle, and
 ///   nothing is reported
 #[test]
-fn reroutes_a_connector_end_that_runs_along_its_node_s_side() {
+fn reroutes_a_edge_end_that_runs_along_its_node_s_side() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
         <g data-node="checkout"><circle cx="100" cy="70" r="50"/><text x="100" y="75" text-anchor="middle" font-size="13">Check out</text></g>
@@ -589,10 +646,10 @@ fn reroutes_a_connector_end_that_runs_along_its_node_s_side() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "order");
+    let points = edge_points(&result.report, "order");
     let orders = node_bounds(&result.report, "orders");
 
-    assert_eq!(issue_codes(&analyze(svg)), ["connector-end-along-side"]);
+    assert_eq!(issue_codes(&inspect(svg)), ["edge-overlaps-node-outline"]);
     assert!(enters_perpendicularly(&points, &orders), "{points:?}");
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
@@ -618,13 +675,13 @@ fn keeps_a_rerouted_line_unfilled_once_it_becomes_a_path() {
     assert_fix_snapshots!(result);
 }
 
-/// Given two services inside a cluster container joined by a straight line,
+/// Given two services inside a cluster parent joined by a straight line,
 ///   and a straight line from one of them to a node outside the cluster
 /// When the diagram is fixed
 /// Then both become orthogonal routes meeting their ends at right angles,
 ///   without treating the cluster around them as an obstacle
 #[test]
-fn routes_connectors_inside_and_out_of_a_container() {
+fn routes_edges_inside_and_out_of_a_parent() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 260">
         <g data-node="cluster">
@@ -651,7 +708,7 @@ fn routes_connectors_inside_and_out_of_a_container() {
     let result = fix(svg);
 
     for (id, from, to) in [("ab", "a", "b"), ("bx", "b", "ext")] {
-        let points = connector_points(&result.report, id);
+        let points = edge_points(&result.report, id);
         assert!(is_orthogonal(&points), "{id} is orthogonal");
         assert!(
             leaves_perpendicularly(&points, &node_bounds(&result.report, from)),
@@ -667,13 +724,13 @@ fn routes_connectors_inside_and_out_of_a_container() {
     assert_fix_snapshots!(result);
 }
 
-/// Given two services inside a cluster container joined by a straight line
+/// Given two services inside a cluster parent joined by a straight line
 ///   whose tied label sits at the line's midpoint
 /// When the diagram is fixed
-/// Then the label moves beside the rerouted connector, inside the cluster,
+/// Then the label moves beside the rerouted edge, inside the cluster,
 ///   and nothing is reported
 #[test]
-fn places_labels_of_connectors_inside_a_container() {
+fn places_labels_of_edges_inside_a_parent() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 260">
         <g data-node="cluster">
@@ -697,7 +754,7 @@ fn places_labels_of_connectors_inside_a_container() {
     let result = fix(svg);
     let label = label_bounds(&result.report, "calls");
 
-    assert!(distance_to_route(&label, &connector_points(&result.report, "ab")) <= 16.0);
+    assert!(distance_to_route(&label, &edge_points(&result.report, "ab")) <= 16.0);
     assert!(contains(&node_bounds(&result.report, "cluster"), &label));
     assert!(result.report.issues.is_empty());
 
@@ -732,26 +789,26 @@ fn cluster_too_narrow_for_a_label(to: &str) -> String {
     )
 }
 
-/// Given a label wider than the room beside its connector inside the
-///   cluster, on a connector inside the cluster and on one out of it, both
+/// Given a label wider than the room beside its edge inside the
+///   cluster, on an edge inside the cluster and on one out of it, both
 ///   drawn with the label across the line
 /// When the diagram is fixed
-/// Then the label moves beside its connector, across the cluster's border
+/// Then the label moves beside its edge, across the cluster's outline
 ///   where nothing else fits, rather than staying on the line or away from it
 #[test]
-fn places_a_label_across_a_container_s_border_when_neither_side_has_room() {
+fn places_a_label_across_a_parent_s_outline_when_neither_side_has_room() {
     for to in ["b", "c"] {
         let result = fix(&cluster_too_narrow_for_a_label(to));
         let label = label_bounds(&result.report, "long");
-        let route = connector_points(&result.report, "edge");
+        let route = edge_points(&result.report, "edge");
 
         assert!(distance_to_route(&label, &route) <= 16.0, "{to}: {label:?} {route:?}");
-        assert!(!has_issue(&result.report, "connector-label-clearance"), "{to}");
-        assert!(!has_issue(&result.report, "label-detached"), "{to}");
+        assert!(!has_issue(&result.report, "edge-near-label"), "{to}");
+        assert!(!has_issue(&result.report, "edge-label-detached"), "{to}");
     }
 }
 
-/// Given a connector that must detour around a node between its ends
+/// Given an edge that must detour around a node between its ends
 /// When the diagram is fixed
 /// Then it leaves the source side and enters the target side at right
 ///   angles, and no segment runs along a side of either node
@@ -760,7 +817,7 @@ fn leaves_and_enters_node_sides_perpendicularly_when_detouring() {
     let svg = &blocked_row("");
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
     let source = node_bounds(&result.report, "source");
     let target = node_bounds(&result.report, "target");
 
@@ -773,14 +830,14 @@ fn leaves_and_enters_node_sides_perpendicularly_when_detouring() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a connector from inside a circular node to a facing box whose
+/// Given an edge from inside a circular node to a facing box whose
 ///   middle sits so much lower than the circle's centre that the port on
 ///   the circle's side moves down to meet it
 /// When the diagram is fixed
-/// Then the connector stays orthogonal and starts on the circle itself,
+/// Then the edge stays orthogonal and starts on the circle itself,
 ///   not on its bounding box
 #[test]
-fn ends_a_rerouted_connector_on_a_circular_node_s_circle() {
+fn ends_a_rerouted_edge_on_a_circular_node_s_circle() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
         <g data-node="start">
@@ -797,7 +854,7 @@ fn ends_a_rerouted_connector_on_a_circular_node_s_circle() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
     assert!(is_orthogonal(&points));
     assert!(distance_from_circle(points[0], &node_bounds(&result.report, "start")) <= 0.5);
@@ -807,13 +864,13 @@ fn ends_a_rerouted_connector_on_a_circular_node_s_circle() {
     assert_fix_snapshots!(result);
 }
 
-/// Given two connectors from inside a circular node to two boxes stacked
+/// Given two edges from inside a circular node to two boxes stacked
 ///   on its right
 /// When the diagram is fixed
 /// Then both leave the circle's right half from separate points on the
 ///   circle, without overlapping
 #[test]
-fn spreads_connectors_on_one_side_of_a_circle_each_ending_on_it() {
+fn spreads_edges_on_one_side_of_a_circle_each_ending_on_it() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
         <g data-node="hub">
@@ -837,8 +894,8 @@ fn spreads_connectors_on_one_side_of_a_circle_each_ending_on_it() {
 
     let result = fix(svg);
     let hub = node_bounds(&result.report, "hub");
-    let upper = connector_points(&result.report, "to-upper");
-    let lower = connector_points(&result.report, "to-lower");
+    let upper = edge_points(&result.report, "to-upper");
+    let lower = edge_points(&result.report, "to-lower");
 
     for route in [&upper, &lower] {
         assert!(is_orthogonal(route));
@@ -852,7 +909,7 @@ fn spreads_connectors_on_one_side_of_a_circle_each_ending_on_it() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a connector whose ends sit inside two nodes too far apart in
+/// Given an edge whose ends sit inside two nodes too far apart in
 ///   height to share a port coordinate
 /// When the diagram is fixed
 /// Then it becomes an orthogonal path meeting both nodes at right angles
@@ -874,7 +931,7 @@ fn reroutes_between_offset_ports_orthogonally_instead_of_diagonally() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
     assert!(is_orthogonal(&points));
     assert!(leaves_perpendicularly(&points, &node_bounds(&result.report, "source")));
@@ -887,9 +944,9 @@ fn reroutes_between_offset_ports_orthogonally_instead_of_diagonally() {
 /// Given a tall source facing a target whose left side midpoint sits at a
 ///   different height from the source's right side midpoint
 /// When the diagram is fixed
-/// Then the connector to the facing target is a single straight segment
+/// Then the edge to the facing target is a single straight segment
 #[test]
-fn aligns_ports_on_facing_sides_so_the_connector_stays_straight() {
+fn aligns_ports_on_facing_sides_so_the_edge_stays_straight() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
         <g data-node="source">
@@ -912,7 +969,7 @@ fn aligns_ports_on_facing_sides_so_the_connector_stays_straight() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "to-upper");
+    let points = edge_points(&result.report, "to-upper");
 
     assert_eq!(points.len(), 2);
     assert!(is_orthogonal(&points));
@@ -930,10 +987,10 @@ fn aligns_ports_on_facing_sides_so_the_connector_stays_straight() {
 }
 
 /// Given a target whose bottom is blocked by a node right below it, so
-///   its left side takes two connectors, and a facing source whose port
+///   its left side takes two edges, and a facing source whose port
 ///   would land 9px from the target's other port
 /// When the diagram is fixed
-/// Then the source port moves instead, and the connector stays straight
+/// Then the source port moves instead, and the edge stays straight
 #[test]
 fn keeps_aligned_ports_at_least_10px_from_other_ports_on_the_side() {
     let svg = r#"
@@ -963,11 +1020,9 @@ fn keeps_aligned_ports_at_least_10px_from_other_ports_on_the_side() {
 
     let result = fix(svg);
     let target = node_bounds(&result.report, "target");
-    let facing = connector_points(&result.report, "facing");
+    let facing = edge_points(&result.report, "facing");
     let facing_end = *facing.last().expect("facing end");
-    let climbing_end = *connector_points(&result.report, "climbing")
-        .last()
-        .expect("climbing end");
+    let climbing_end = *edge_points(&result.report, "climbing").last().expect("climbing end");
 
     assert_eq!(facing.len(), 2);
     assert!(is_orthogonal(&facing));
@@ -982,7 +1037,7 @@ fn keeps_aligned_ports_at_least_10px_from_other_ports_on_the_side() {
 /// Given a target below and to the right, where right-to-left ports need
 ///   a two-bend jog
 /// When the diagram is fixed
-/// Then the connector reaches the target with a single bend
+/// Then the edge reaches the target with a single bend
 #[test]
 fn switches_to_another_side_when_it_saves_bends() {
     let svg = r#"
@@ -1001,7 +1056,7 @@ fn switches_to_another_side_when_it_saves_bends() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
     assert!(is_orthogonal(&points));
     assert_eq!(bend_count(&points), 1);
@@ -1013,13 +1068,13 @@ fn switches_to_another_side_when_it_saves_bends() {
 }
 
 /// Given eight nodes from a data flow diagram where the fewest-bend routes
-///   would bunch several connectors onto the same node sides, leaving one
+///   would bunch several edges onto the same node sides, leaving one
 ///   label no slot clear of them
 /// When the diagram is fixed
-/// Then the connectors spread over less crowded sides and every label sits
-///   clear of every connector
+/// Then the edges spread over less crowded sides and every label sits
+///   clear of every edge
 #[test]
-fn keeps_connectors_off_crowded_sides_so_every_label_finds_a_slot() {
+fn keeps_edges_off_crowded_sides_so_every_label_finds_a_slot() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2306 1060">
         <g data-node="aml">
@@ -1079,26 +1134,26 @@ fn keeps_connectors_off_crowded_sides_so_every_label_finds_a_slot() {
 
     let result = fix(svg);
 
-    for connector in &result.report.diagram.connectors {
-        assert!(is_orthogonal(&connector.points));
+    for edge in &result.report.diagram.edges {
+        assert!(is_orthogonal(&edge.points));
     }
-    assert!(!has_issue(&result.report, "connector-label-clearance"));
+    assert!(!has_issue(&result.report, "edge-near-label"));
     assert!(result.report.issues.is_empty());
 
     assert_fix_snapshots!(result);
 }
 
-/// Given a label tied to a connector by data-label-for, left at the old
-///   midpoint after the connector has to detour
+/// Given a label tied to an edge by data-label-for, left at the old
+///   midpoint after the edge has to detour
 /// When the diagram is fixed
 /// Then the label sits centred above the detour's longest segment
 #[test]
-fn moves_a_connector_s_label_beside_its_rerouted_path() {
+fn moves_a_edge_s_label_beside_its_rerouted_path() {
     let svg = &blocked_row(RETRY_LABEL);
 
     let result = fix(svg);
     let label = label_bounds(&result.report, "retry");
-    let (from, to) = longest_segment(&connector_points(&result.report, "flow"));
+    let (from, to) = longest_segment(&edge_points(&result.report, "flow"));
 
     assert_eq!(from.y, to.y);
     assert!((label.x + label.width / 2.0 - (from.x + to.x) / 2.0).abs() < 0.5);
@@ -1109,11 +1164,11 @@ fn moves_a_connector_s_label_beside_its_rerouted_path() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a straight connector whose tied label floats 45px above it
+/// Given a straight edge whose tied label floats 45px above it
 /// When the diagram is fixed
-/// Then the label sits beside the connector and nothing is reported
+/// Then the label sits beside the edge and nothing is reported
 #[test]
-fn brings_a_detached_label_back_beside_its_connector() {
+fn brings_a_detached_label_back_beside_its_edge() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
         <g data-node="source">
@@ -1135,7 +1190,7 @@ fn brings_a_detached_label_back_beside_its_connector() {
 
     let distance = distance_to_route(
         &label_bounds(&result.report, "retry"),
-        &connector_points(&result.report, "flow"),
+        &edge_points(&result.report, "flow"),
     );
     assert!(distance <= 16.0);
     assert!(result.report.issues.is_empty());
@@ -1143,12 +1198,12 @@ fn brings_a_detached_label_back_beside_its_connector() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a connector drawn as a sound two-bend path whose tied label
+/// Given an edge drawn as a sound two-bend path whose tied label
 ///   floats far from it, with nothing else wrong
 /// When the diagram is fixed
-/// Then the connector keeps its path and only the label moves beside it
+/// Then the edge keeps its path and only the label moves beside it
 #[test]
-fn moves_only_a_detached_label_leaving_its_sound_connector_as_drawn() {
+fn moves_only_a_detached_label_leaving_its_sound_edge_as_drawn() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
         <g data-node="source">
@@ -1167,9 +1222,9 @@ fn moves_only_a_detached_label_leaving_its_sound_connector_as_drawn() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
-    assert_eq!(points, connector_points(&analyze(svg), "flow"));
+    assert_eq!(points, edge_points(&inspect(svg), "flow"));
     assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
     assert_eq!(change_codes(&result), ["move-label"]);
     assert!(result.report.issues.is_empty());
@@ -1177,13 +1232,13 @@ fn moves_only_a_detached_label_leaving_its_sound_connector_as_drawn() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a straight connector whose tied label sits close to it but on top
+/// Given a straight edge whose tied label sits close to it but on top
 ///   of a node beside the line
 /// When the diagram is fixed
-/// Then the connector keeps its path and only the label moves to a free
+/// Then the edge keeps its path and only the label moves to a free
 ///   spot beside it, off the node
 #[test]
-fn moves_a_label_off_a_node_to_a_free_spot_beside_its_connector() {
+fn moves_a_label_off_a_node_to_a_free_spot_beside_its_edge() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -40 440 180">
         <g data-node="source">
@@ -1205,10 +1260,10 @@ fn moves_a_label_off_a_node_to_a_free_spot_beside_its_connector() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
-    assert_eq!(issue_codes(&analyze(svg)), ["label-node-overlap"]);
-    assert_eq!(points, connector_points(&analyze(svg), "flow"));
+    assert_eq!(issue_codes(&inspect(svg)), ["label-overlaps-node"]);
+    assert_eq!(points, edge_points(&inspect(svg), "flow"));
     assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
     assert_eq!(change_codes(&result), ["move-label"]);
     assert!(result.report.issues.is_empty());
@@ -1216,10 +1271,10 @@ fn moves_a_label_off_a_node_to_a_free_spot_beside_its_connector() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a sound connector whose detached label sets its anchor in the
+/// Given a sound edge whose detached label sets its anchor in the
 ///   style attribute
 /// When the diagram is fixed
-/// Then the label sits beside its connector with the anchor it was placed
+/// Then the label sits beside its edge with the anchor it was placed
 ///   with, so nothing is reported
 #[test]
 fn moves_a_label_whose_anchor_is_set_in_its_style() {
@@ -1241,21 +1296,21 @@ fn moves_a_label_whose_anchor_is_set_in_its_style() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
-    assert_eq!(points, connector_points(&analyze(svg), "flow"));
+    assert_eq!(points, edge_points(&inspect(svg), "flow"));
     assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
     assert_fix_snapshots!(result);
 }
 
-/// Given a straight connector whose detached label has a central baseline
+/// Given a straight edge whose detached label has a central baseline
 /// When the diagram is fixed
-/// Then the label moves beside the connector, keeping its clearance, and
+/// Then the label moves beside the edge, keeping its clearance, and
 ///   nothing is reported
 #[test]
-fn moves_a_label_with_a_central_baseline_beside_its_connector() {
+fn moves_a_label_with_a_central_baseline_beside_its_edge() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
         <g data-node="source">
@@ -1273,7 +1328,7 @@ fn moves_a_label_with_a_central_baseline_beside_its_connector() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
     assert_eq!(change_codes(&result), ["move-label"]);
     assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
@@ -1282,8 +1337,8 @@ fn moves_a_label_with_a_central_baseline_beside_its_connector() {
     assert_fix_snapshots!(result);
 }
 
-/// A sound two-bend connector with a three-line label written by `label`.
-fn connector_with_label(label: &str) -> String {
+/// A sound two-bend edge with a three-line label written by `label`.
+fn edge_with_label(label: &str) -> String {
     format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
           <g data-node="source">
@@ -1303,9 +1358,9 @@ fn connector_with_label(label: &str) -> String {
 
 /// Moving a label as a whole keeps the size of the box around its lines.
 fn assert_moved_as_one_block(svg: &str, result: &FixResult) {
-    let before = label_bounds(&analyze(svg), "retry");
+    let before = label_bounds(&inspect(svg), "retry");
     let after = label_bounds(&result.report, "retry");
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
     assert_eq!(change_codes(result), ["move-label"]);
     assert_eq!((after.width, after.height), (before.width, before.height));
@@ -1315,10 +1370,10 @@ fn assert_moved_as_one_block(svg: &str, result: &FixResult) {
 
 /// Given a detached label written as three texts sharing one data-label
 /// When the diagram is fixed
-/// Then all three lines move together beside the connector
+/// Then all three lines move together beside the edge
 #[test]
 fn moves_every_text_of_a_label_split_across_texts() {
-    let svg = connector_with_label(
+    let svg = edge_with_label(
         r#"<text data-label="retry" data-label-for="flow" x="310" y="-40" font-size="14">Retry</text>
           <text data-label="retry" data-label-for="flow" x="310" y="-23" font-size="14">with backoff</text>
           <text data-label="retry" data-label-for="flow" x="310" y="-6" font-size="14">3 times</text>"#,
@@ -1333,10 +1388,10 @@ fn moves_every_text_of_a_label_split_across_texts() {
 /// Given a label written as one text with a tspan per line, whose lower
 ///   lines lie on the target node
 /// When the diagram is fixed
-/// Then all three lines move together beside the connector, off the node
+/// Then all three lines move together beside the edge, off the node
 #[test]
 fn moves_every_tspan_line_of_a_label() {
-    let svg = connector_with_label(
+    let svg = edge_with_label(
         r#"<text data-label="retry" data-label-for="flow" x="200" y="140" font-size="14">
             <tspan x="200">Retry</tspan>
             <tspan x="200" dy="17">with backoff</tspan>
@@ -1346,7 +1401,7 @@ fn moves_every_tspan_line_of_a_label() {
 
     let result = fix(&svg);
 
-    assert_eq!(issue_codes(&analyze(&svg)), ["label-node-overlap"]);
+    assert_eq!(issue_codes(&inspect(&svg)), ["label-overlaps-node"]);
     assert_moved_as_one_block(&svg, &result);
     assert_fix_snapshots!(result);
 }
@@ -1354,10 +1409,10 @@ fn moves_every_tspan_line_of_a_label() {
 /// Given a detached label written as a group carrying data-label around
 ///   three plain texts
 /// When the diagram is fixed
-/// Then all three lines move together beside the connector
+/// Then all three lines move together beside the edge
 #[test]
 fn moves_every_text_of_a_labelled_group() {
-    let svg = connector_with_label(
+    let svg = edge_with_label(
         r#"<g data-label="retry" data-label-for="flow">
             <text x="310" y="-40" font-size="14">Retry</text>
             <text x="310" y="-23" font-size="14">with backoff</text>
@@ -1371,13 +1426,13 @@ fn moves_every_text_of_a_labelled_group() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a straight connector whose detached label would naturally go just
-///   above it, where another connector runs 14px above that spot
+/// Given a straight edge whose detached label would naturally go just
+///   above it, where another edge runs 14px above that spot
 /// When the diagram is fixed
-/// Then the label goes below its connector instead, at least 20px from the
-///   other one, so it is clear which connector it belongs to
+/// Then the label goes below its edge instead, at least 20px from the
+///   other one, so it is clear which edge it belongs to
 #[test]
-fn keeps_a_moved_label_clear_of_connectors_it_does_not_belong_to() {
+fn keeps_a_moved_label_clear_of_edges_it_does_not_belong_to() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -100 640 440">
         <g data-node="a1"><rect x="20" y="76" width="100" height="48"/><text x="70" y="105" text-anchor="middle" font-size="14">A1</text></g>
@@ -1394,9 +1449,9 @@ fn keeps_a_moved_label_clear_of_connectors_it_does_not_belong_to() {
     let label = label_bounds(&result.report, "retry");
 
     assert_eq!(change_codes(&result), ["move-label"]);
-    assert!(distance_to_route(&label, &connector_points(&result.report, "flow")) <= 16.0);
+    assert!(distance_to_route(&label, &edge_points(&result.report, "flow")) <= 16.0);
     assert!(
-        distance_to_route(&label, &connector_points(&result.report, "other")) >= 20.0,
+        distance_to_route(&label, &edge_points(&result.report, "other")) >= 20.0,
         "{label:?}"
     );
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
@@ -1404,14 +1459,14 @@ fn keeps_a_moved_label_clear_of_connectors_it_does_not_belong_to() {
     assert_fix_snapshots!(result);
 }
 
-/// Given two parallel vertical connectors 44px apart, where the left one's
+/// Given two parallel vertical edges 44px apart, where the left one's
 ///   label sits between them, 9px from its own line but only 14px from the
 ///   other, with free space on the far side of its own line
 /// When the diagram is fixed
 /// Then the label moves to where it is at least 20px from the other
-///   connector, still beside its own
+///   edge, still beside its own
 #[test]
-fn moves_a_label_away_from_a_connector_it_does_not_belong_to() {
+fn moves_a_label_away_from_a_edge_it_does_not_belong_to() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 440">
         <g data-node="order"><rect x="160" y="20" width="160" height="48"/><text x="240" y="49" text-anchor="middle" font-size="14">Order</text></g>
@@ -1423,21 +1478,16 @@ fn moves_a_label_away_from_a_connector_it_does_not_belong_to() {
       </svg>
     "#;
 
-    let before = analyze(svg);
+    let before = inspect(svg);
     let result = fix(svg);
     let label = label_bounds(&result.report, "sql-label");
 
     assert!(before.issues.is_empty(), "{:?}", before.issues);
-    assert!(
-        distance_to_route(
-            &label_bounds(&before, "sql-label"),
-            &connector_points(&before, "events")
-        ) < 20.0
-    );
+    assert!(distance_to_route(&label_bounds(&before, "sql-label"), &edge_points(&before, "events")) < 20.0);
     assert_eq!(change_codes(&result), ["move-label"]);
-    assert!(distance_to_route(&label, &connector_points(&result.report, "sql")) <= 16.0);
+    assert!(distance_to_route(&label, &edge_points(&result.report, "sql")) <= 16.0);
     assert!(
-        distance_to_route(&label, &connector_points(&result.report, "events")) >= 20.0,
+        distance_to_route(&label, &edge_points(&result.report, "events")) >= 20.0,
         "{label:?}"
     );
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
@@ -1445,14 +1495,14 @@ fn moves_a_label_away_from_a_connector_it_does_not_belong_to() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a straight connector with another connector running parallel 10px
+/// Given a straight edge with another edge running parallel 10px
 ///   above most of it, and its label detached
 /// When the diagram is fixed
-/// Then the label sits below the middle of its connector: its own line lies
-///   between it and the other connector, so it is clear which one it
-///   belongs to, and the other connector does not push it towards an end
+/// Then the label sits below the middle of its edge: its own line lies
+///   between it and the other edge, so it is clear which one it
+///   belongs to, and the other edge does not push it towards an end
 #[test]
-fn places_a_label_beside_the_middle_when_a_parallel_connector_is_across_its_own() {
+fn places_a_label_beside_the_middle_when_a_parallel_edge_is_across_its_own() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -100 640 440">
         <g data-node="a1"><rect x="20" y="76" width="100" height="48"/><text x="70" y="105" text-anchor="middle" font-size="14">A1</text></g>
@@ -1470,8 +1520,8 @@ fn places_a_label_beside_the_middle_when_a_parallel_connector_is_across_its_own(
     let middle = 310.0;
 
     assert_eq!(change_codes(&result), ["move-label"]);
-    assert!(distance_to_route(&label, &connector_points(&result.report, "flow")) <= 16.0);
-    assert!(label.y > 100.0, "{label:?} is not below its connector");
+    assert!(distance_to_route(&label, &edge_points(&result.report, "flow")) <= 16.0);
+    assert!(label.y > 100.0, "{label:?} is not below its edge");
     assert!(
         (label.x + label.width / 2.0 - middle).abs() <= 40.0,
         "{label:?} is pushed away from the middle"
@@ -1481,14 +1531,14 @@ fn places_a_label_beside_the_middle_when_a_parallel_connector_is_across_its_own(
     assert_fix_snapshots!(result);
 }
 
-/// Given a straight connector with a reply running 13px below it, so its
-///   label goes above, where another connector runs 19px above the label
-///   over the left half and turns up
+/// Given a straight edge with a reply running 13px below it, so its
+///   label goes above, where another edge runs 19px above the label
+///   over the left half and bends up
 /// When the diagram is fixed
-/// Then the label still sits at the middle of its connector: twice as far
-///   from the other connector as from its own, it reads as its own
+/// Then the label still sits at the middle of its edge: twice as far
+///   from the other edge as from its own, it reads as its own
 #[test]
-fn keeps_a_label_at_the_middle_when_another_connector_runs_a_little_further_off() {
+fn keeps_a_label_at_the_middle_when_another_edge_runs_a_little_further_off() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
         <g data-node="customer"><rect x="40" y="276" width="120" height="52"/><text x="100" y="307" text-anchor="middle" font-size="13">Customer</text></g>
@@ -1505,7 +1555,7 @@ fn keeps_a_label_at_the_middle_when_another_connector_runs_a_little_further_off(
     let label = label_bounds(&result.report, "details-label");
     let middle = 330.0;
 
-    assert!(distance_to_route(&label, &connector_points(&result.report, "details")) <= 16.0);
+    assert!(distance_to_route(&label, &edge_points(&result.report, "details")) <= 16.0);
     assert!(
         (label.x + label.width / 2.0 - middle).abs() <= 20.0,
         "{label:?} is pushed away from the middle"
@@ -1515,13 +1565,13 @@ fn keeps_a_label_at_the_middle_when_another_connector_runs_a_little_further_off(
     assert_fix_snapshots!(result);
 }
 
-/// Given a straight connector whose label fits on either side, with
-///   another connector running 24px from the spot above and nothing near
+/// Given a straight edge whose label fits on either side, with
+///   another edge running 24px from the spot above and nothing near
 ///   the spot below
 /// When the diagram is fixed
-/// Then the label goes below, further from the other connector
+/// Then the label goes below, further from the other edge
 #[test]
-fn places_a_label_on_the_side_further_from_other_connectors() {
+fn places_a_label_on_the_side_further_from_other_edges() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400">
         <g data-node="a"><rect x="20" y="176" width="100" height="48"/><text x="70" y="205" text-anchor="middle" font-size="14">A</text></g>
@@ -1537,21 +1587,21 @@ fn places_a_label_on_the_side_further_from_other_connectors() {
     let result = fix(svg);
     let label = label_bounds(&result.report, "flow-label");
 
-    assert!(distance_to_route(&label, &connector_points(&result.report, "flow")) <= 16.0);
-    assert!(label.y > 200.0, "{label:?} is not below its connector");
+    assert!(distance_to_route(&label, &edge_points(&result.report, "flow")) <= 16.0);
+    assert!(label.y > 200.0, "{label:?} is not below its edge");
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
     assert_fix_snapshots!(result);
 }
 
-/// Given a long straight connector crossed through its middle by another
-///   connector, with its label detached
+/// Given a long straight edge crossed through its middle by another
+///   edge, with its label detached
 /// When the diagram is fixed
-/// Then the label moves beside its connector as far as it can from the
-///   crossing and from the connector's ends: midway between the crossing
+/// Then the label moves beside its edge as far as it can from the
+///   crossing and from the edge's ends: midway between the crossing
 ///   and one end, not beside the crossing nor at an arrowhead
 #[test]
-fn places_a_label_away_from_where_another_connector_crosses() {
+fn places_a_label_away_from_where_another_edge_crosses() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -60 640 340">
         <g data-node="a1"><rect x="20" y="76" width="100" height="48"/><text x="70" y="105" text-anchor="middle" font-size="14">A1</text></g>
@@ -1576,7 +1626,7 @@ fn places_a_label_away_from_where_another_connector_crosses() {
         .fold(f64::INFINITY, f64::min);
 
     assert_eq!(change_codes(&result), ["move-label"]);
-    assert!(distance_to_route(&label, &connector_points(&result.report, "flow")) <= 16.0);
+    assert!(distance_to_route(&label, &edge_points(&result.report, "flow")) <= 16.0);
     assert!(
         nearest >= 75.0,
         "{label:?} only {nearest}px from the crossing or an end"
@@ -1586,14 +1636,14 @@ fn places_a_label_away_from_where_another_connector_crosses() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a straight connector with its label beside its middle, and another
-///   connector cutting through a node that, once rerouted, crosses the
+/// Given a straight edge with its label beside its middle, and another
+///   edge cutting through a node that, once rerouted, crosses the
 ///   first one 65px from the label
 /// When the diagram is fixed
 /// Then the label moves to where it is furthest from the new crossing and
-///   the connector's ends: the crossing it was placed against has changed
+///   the edge's ends: the crossing it was placed against has changed
 #[test]
-fn places_a_label_again_when_the_crossings_on_its_connector_change() {
+fn places_a_label_again_when_the_crossings_on_its_edge_change() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -60 660 320">
         <g data-node="a1"><rect x="20" y="76" width="100" height="48"/><text x="70" y="105" text-anchor="middle" font-size="14">A1</text></g>
@@ -1606,25 +1656,25 @@ fn places_a_label_again_when_the_crossings_on_its_connector_change() {
       </svg>
     "#;
 
-    let before = analyze(svg);
+    let before = inspect(svg);
     let result = fix(svg);
-    let flow = connector_points(&result.report, "flow");
+    let flow = edge_points(&result.report, "flow");
     let label = label_bounds(&result.report, "retry");
     let gap = |p: Point| {
         ((label.x - p.x).max(p.x - (label.x + label.width)).max(0.0))
             .hypot((label.y - p.y).max(p.y - (label.y + label.height)).max(0.0))
     };
-    let crossing = point(connector_points(&result.report, "cross")[0].x, 100.0);
+    let crossing = point(edge_points(&result.report, "cross")[0].x, 100.0);
     let nearest = [crossing, flow[0], flow[flow.len() - 1]]
         .into_iter()
         .map(gap)
         .fold(f64::INFINITY, f64::min);
 
     assert!(!crosses_route(
-        &connector_points(&before, "flow"),
-        &connector_points(&before, "cross")
+        &edge_points(&before, "flow"),
+        &edge_points(&before, "cross")
     ));
-    assert!(crosses_route(&flow, &connector_points(&result.report, "cross")));
+    assert!(crosses_route(&flow, &edge_points(&result.report, "cross")));
     assert!(distance_to_route(&label, &flow) <= 16.0);
     assert!(
         nearest >= 75.0,
@@ -1635,12 +1685,12 @@ fn places_a_label_again_when_the_crossings_on_its_connector_change() {
     assert_fix_snapshots!(result);
 }
 
-/// Given two connectors entering the left of a node, one turning 1px beside
-///   where the other turns, so the two read as one line turning
+/// Given two edges entering the left of a node, one bending 1px beside
+///   where the other bends, so the two read as one line bending
 /// When the diagram is fixed
 /// Then they are rerouted to keep apart, and nothing is reported
 #[test]
-fn reroutes_connectors_that_turn_just_beside_each_other() {
+fn reroutes_edges_that_bend_just_beside_each_other() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="200 560 440 500">
         <g data-node="credit"><rect x="330" y="600" width="100" height="48"/><text x="380" y="629" text-anchor="middle" font-size="14">Credit</text></g>
@@ -1651,26 +1701,26 @@ fn reroutes_connectors_that_turn_just_beside_each_other() {
       </svg>
     "#;
 
-    let before = analyze(svg);
+    let before = inspect(svg);
     let result = fix(svg);
 
-    assert!(has_issue(&before, "connector-near-miss"));
-    assert!(is_orthogonal(&connector_points(&result.report, "score")));
-    assert!(is_orthogonal(&connector_points(&result.report, "model")));
+    assert!(has_issue(&before, "edge-bend-near-edge"));
+    assert!(is_orthogonal(&edge_points(&result.report, "score")));
+    assert!(is_orthogonal(&edge_points(&result.report, "model")));
     assert_eq!(near_misses(&result.report), Vec::<(String, String)>::new());
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
     assert_fix_snapshots!(result);
 }
 
-/// Given two boxes side by side with two vertical connectors standing
-///   between them, and a connector drawn between the boxes that needs
+/// Given two boxes side by side with two vertical edges standing
+///   between them, and an edge drawn between the boxes that needs
 ///   rerouting
 /// When the diagram is fixed
-/// Then the connector goes around the vertical ones rather than crossing
+/// Then the edge goes around the vertical ones rather than crossing
 ///   them: a detour of a few hundred pixels beats two crossings
 #[test]
-fn detours_around_connectors_rather_than_crossing_them() {
+fn detours_around_edges_rather_than_crossing_them() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420">
         <g data-node="a"><rect x="20" y="176" width="100" height="48"/><text x="70" y="205" text-anchor="middle" font-size="14">A</text></g>
@@ -1686,15 +1736,12 @@ fn detours_around_connectors_rather_than_crossing_them() {
     "#;
 
     let result = fix(svg);
-    let flow = connector_points(&result.report, "flow");
+    let flow = edge_points(&result.report, "flow");
 
     assert!(is_orthogonal(&flow));
+    assert!(!crosses_route(&flow, &edge_points(&result.report, "first")), "{flow:?}");
     assert!(
-        !crosses_route(&flow, &connector_points(&result.report, "first")),
-        "{flow:?}"
-    );
-    assert!(
-        !crosses_route(&flow, &connector_points(&result.report, "second")),
+        !crosses_route(&flow, &edge_points(&result.report, "second")),
         "{flow:?}"
     );
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
@@ -1705,29 +1752,29 @@ fn detours_around_connectors_rather_than_crossing_them() {
 /// Given the C4 container diagram, where the dispatch and payment services
 ///   face each other across a narrow gap at the same height
 /// When the diagram is fixed
-/// Then no connector turns on or just beside another: the call into the
+/// Then no edge bends on or just beside another: the call into the
 ///   payments and the one out of dispatch do not meet at one corner
 #[test]
-fn routes_no_connector_to_turn_just_beside_another() {
+fn routes_no_edge_to_bend_just_beside_another() {
     let svg = include_str!("fixtures/c4-food-delivery-containers.svg");
 
     let result = fix(svg);
 
     assert!(
-        !has_issue(&result.report, "connector-near-miss"),
+        !has_issue(&result.report, "edge-bend-near-edge"),
         "{:?}",
         result.report.issues
     );
     assert_eq!(near_misses(&result.report), Vec::<(String, String)>::new());
 }
 
-/// Given a box with two connectors leaving its left side for two nodes far
+/// Given a box with two edges leaving its left side for two nodes far
 ///   below it, past a column of nodes in between, so both run down the left
 /// When the diagram is fixed
-/// Then the two connectors do not cross: the one leaving lower turns down
+/// Then the two edges do not cross: the one leaving lower bends down
 ///   inside the other
 #[test]
-fn trades_ports_on_a_side_so_two_connectors_leaving_it_do_not_cross() {
+fn trades_ports_on_a_side_so_two_edges_leaving_it_do_not_cross() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 900">
         <g data-node="intake"><rect x="260" y="20" width="120" height="48"/><text x="320" y="49" text-anchor="middle" font-size="13">Intake</text></g>
@@ -1747,8 +1794,8 @@ fn trades_ports_on_a_side_so_two_connectors_leaving_it_do_not_cross() {
     "#;
 
     let result = fix(svg);
-    let terms = connector_points(&result.report, "terms");
-    let receipt = connector_points(&result.report, "receipt");
+    let terms = edge_points(&result.report, "terms");
+    let receipt = edge_points(&result.report, "receipt");
 
     assert!(is_orthogonal(&terms) && is_orthogonal(&receipt));
     assert!(!crosses_route(&terms, &receipt), "{terms:?} crosses {receipt:?}");
@@ -1757,13 +1804,13 @@ fn trades_ports_on_a_side_so_two_connectors_leaving_it_do_not_cross() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a connector drawn as a staircase of segments all shorter than its
+/// Given an edge drawn as a staircase of segments all shorter than its
 ///   tied label, which floats far away
 /// When the diagram is fixed
-/// Then the connector is rerouted so the label can sit beside it, and
+/// Then the edge is rerouted so the label can sit beside it, and
 ///   nothing is reported
 #[test]
-fn reroutes_a_connector_when_its_detached_label_has_no_room_beside_it() {
+fn reroutes_a_edge_when_its_detached_label_has_no_room_beside_it() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
         <g data-node="source">
@@ -1782,7 +1829,7 @@ fn reroutes_a_connector_when_its_detached_label_has_no_room_beside_it() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
     assert!(is_orthogonal(&points));
     assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
@@ -1813,11 +1860,11 @@ fn keeps_a_moved_label_clear_of_other_labels() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a crossing connector whose shortest detour is taken by a bus line
+/// Given a crossing edge whose shortest detour is taken by a bus line
 /// When the diagram is fixed
-/// Then the connector detours on the free side instead of overlapping
+/// Then the edge detours on the free side instead of overlapping
 #[test]
-fn does_not_reroute_a_connector_onto_another_connector() {
+fn does_not_reroute_a_edge_onto_another_edge() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
         <g data-node="west">
@@ -1848,8 +1895,8 @@ fn does_not_reroute_a_connector_onto_another_connector() {
     "#;
 
     let result = fix(svg);
-    let bus = connector_points(&result.report, "bus");
-    let flow = connector_points(&result.report, "flow");
+    let bus = edge_points(&result.report, "bus");
+    let flow = edge_points(&result.report, "flow");
 
     assert_eq!(bus, [point(0.0, 12.0), point(400.0, 12.0)]);
     assert!(is_orthogonal(&flow));
@@ -1859,7 +1906,7 @@ fn does_not_reroute_a_connector_onto_another_connector() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a short connector segment on the detour's shortest leg, lying
+/// Given a short edge segment on the detour's shortest segment, lying
 ///   between two neighbouring grid lines
 /// When the diagram is fixed
 /// Then the detour takes the other side instead of overlapping it
@@ -1891,11 +1938,11 @@ fn does_not_reroute_onto_a_short_segment_between_grid_lines() {
     "#;
 
     let result = fix(svg);
-    let flow = connector_points(&result.report, "flow");
+    let flow = edge_points(&result.report, "flow");
 
     assert!(is_orthogonal(&flow));
-    assert!(!overlaps_route(&flow, &connector_points(&result.report, "tick")));
-    assert!(!has_issue(&result.report, "connector-overlap"));
+    assert!(!overlaps_route(&flow, &edge_points(&result.report, "tick")));
+    assert!(!has_issue(&result.report, "edge-overlaps"));
 
     assert_fix_snapshots!(result);
 }
@@ -1903,7 +1950,7 @@ fn does_not_reroute_onto_a_short_segment_between_grid_lines() {
 /// Given a row of equally tall nodes, so the only detour lines run 8px
 ///   above and below them, and two buses already occupying both lines
 /// When the diagram is fixed
-/// Then the crossing connector detours in a lane beside a bus instead of
+/// Then the crossing edge detours in a lane beside a bus instead of
 ///   staying a straight line through the obstacle
 #[test]
 fn detours_in_a_parallel_lane_when_both_detour_lanes_are_taken() {
@@ -1949,7 +1996,7 @@ fn detours_in_a_parallel_lane_when_both_detour_lanes_are_taken() {
     "#;
 
     let result = fix(svg);
-    let flow = connector_points(&result.report, "flow");
+    let flow = edge_points(&result.report, "flow");
 
     assert!(is_orthogonal(&flow));
     assert!(!enters_box(&flow, &node_bounds(&result.report, "obstacle")));
@@ -1959,12 +2006,12 @@ fn detours_in_a_parallel_lane_when_both_detour_lanes_are_taken() {
 }
 
 /// Given a request and a reply drawn on the same diagonal between a circle
-///   and a box below and to its right, so both must turn a corner
+///   and a box below and to its right, so both must bend a corner
 /// When the diagram is fixed
 /// Then the two routes nest around the corner instead of crossing, and
 ///   nothing is reported
 #[test]
-fn nests_a_request_and_reply_that_turn_the_same_corner() {
+fn nests_a_request_and_reply_that_bend_the_same_corner() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
         <g data-node="ship">
@@ -1981,8 +2028,8 @@ fn nests_a_request_and_reply_that_turn_the_same_corner() {
     "#;
 
     let result = fix(svg);
-    let shipment = connector_points(&result.report, "shipment");
-    let tracking = connector_points(&result.report, "tracking");
+    let shipment = edge_points(&result.report, "shipment");
+    let tracking = edge_points(&result.report, "tracking");
 
     assert!(bend_count(&shipment) > 0 && bend_count(&tracking) > 0);
     assert!(is_orthogonal(&shipment) && is_orthogonal(&tracking));
@@ -2020,8 +2067,8 @@ fn nests_a_request_and_reply_that_both_detour_in_a_u_shape() {
     "#;
 
     let result = fix(svg);
-    let query = connector_points(&result.report, "query");
-    let details = connector_points(&result.report, "details");
+    let query = edge_points(&result.report, "query");
+    let details = edge_points(&result.report, "details");
 
     assert!(bend_count(&query) > 1 && bend_count(&details) > 1);
     assert!(is_orthogonal(&query) && is_orthogonal(&details));
@@ -2033,7 +2080,7 @@ fn nests_a_request_and_reply_that_both_detour_in_a_u_shape() {
 
 /// Given a request and a reply that overlap between the same two nodes
 /// When the diagram is fixed
-/// Then their endpoints are spread along the node edges and no overlap remains
+/// Then their ends are spread along the node edges and no overlap remains
 #[test]
 fn separates_a_request_and_reply_drawn_on_the_same_line() {
     let svg = r#"
@@ -2054,8 +2101,8 @@ fn separates_a_request_and_reply_drawn_on_the_same_line() {
     "#;
 
     let result = fix(svg);
-    let request = connector_points(&result.report, "request");
-    let reply = connector_points(&result.report, "reply");
+    let request = edge_points(&result.report, "request");
+    let reply = edge_points(&result.report, "reply");
     let client = node_bounds(&result.report, "client");
     let server = node_bounds(&result.report, "server");
 
@@ -2070,9 +2117,9 @@ fn separates_a_request_and_reply_drawn_on_the_same_line() {
     assert_fix_snapshots!(result);
 }
 
-/// Given a 3x3 grid of nodes and a connector between opposite corners
+/// Given a 3x3 grid of nodes and an edge between opposite corners
 /// When the diagram is fixed
-/// Then the connector becomes an orthogonal path that crosses no node
+/// Then the edge becomes an orthogonal path that crosses no node
 #[test]
 fn reroutes_with_several_bends_when_one_detour_cannot_clear_the_obstacles() {
     let svg = r#"
@@ -2120,23 +2167,23 @@ fn reroutes_with_several_bends_when_one_detour_cannot_clear_the_obstacles() {
     "#;
 
     let result = fix(svg);
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
 
     assert!(is_orthogonal(&points));
     assert!(leaves_perpendicularly(&points, &node_bounds(&result.report, "n20")));
     assert!(enters_perpendicularly(&points, &node_bounds(&result.report, "n02")));
-    assert!(!has_issue(&result.report, "connector-node-crossing"));
+    assert!(!has_issue(&result.report, "edge-overlaps-node"));
 
     assert_fix_snapshots!(result);
 }
 
 /// Given a straight line from A to B passing just under the label of
-///   another connector, a label with room on the far side of its own line
+///   another edge, a label with room on the far side of its own line
 /// When the diagram is fixed
 /// Then the line stays straight and the label moves aside, above its own
 ///   line, leaving nothing reported
 #[test]
-fn pushes_another_connector_s_label_aside_to_keep_a_line_straight() {
+fn pushes_another_edge_s_label_aside_to_keep_a_line_straight() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 260">
         <g data-node="a"><rect x="20" y="150" width="100" height="60" /></g>
@@ -2149,25 +2196,21 @@ fn pushes_another_connector_s_label_aside_to_keep_a_line_straight() {
           font-size="12">events</text>
       </svg>
     "#;
-    let before = analyze(svg);
-    assert!(
-        has_issue(&before, "connector-label-clearance"),
-        "{:?}",
-        issue_codes(&before)
-    );
+    let before = inspect(svg);
+    assert!(has_issue(&before, "edge-near-label"), "{:?}", issue_codes(&before));
 
     let result = fix(svg);
     let label = label_bounds(&result.report, "events");
 
-    assert_eq!(bend_count(&connector_points(&result.report, "ab")), 0);
+    assert_eq!(bend_count(&edge_points(&result.report, "ab")), 0);
     assert!(label.bottom() <= 150.0, "{label:?}");
     assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
 }
 
 /// `article` with the port "author" on its bottom, left of the middle, and `user`
 /// below and to the right with the port "id" on its left, joined by
-/// `connector` (none when empty).
-fn tables_with_ports(connector: &str) -> String {
+/// `edge` (none when empty).
+fn tables_with_ports(edge: &str) -> String {
     format!(
         r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 360">
@@ -2183,26 +2226,26 @@ fn tables_with_ports(connector: &str) -> String {
             <circle data-port="id" cx="0" cy="38" r="0"/>
           </g>
         </g>
-        {connector}
+        {edge}
       </svg>
     "#
     )
 }
 
-/// Given a connector from the port "author" at the bottom of `article` to
+/// Given an edge from the port "author" at the bottom of `article` to
 ///   the port "id" on the left of `user`, drawn as a straight line between
 ///   their centres
 /// When the diagram is fixed
 /// Then it leaves "author" downwards and reaches "id" from the left
 #[test]
-fn routes_a_connector_from_and_to_the_ports_it_names() {
+fn routes_a_edge_from_and_to_the_ports_it_names() {
     let svg = tables_with_ports(
         r#"<path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="id" d="M 80 68 L 360 248"/>"#,
     );
 
     let result = fix(&svg);
 
-    let points = connector_points(&result.report, "wrote");
+    let points = edge_points(&result.report, "wrote");
     let (start, next) = (points[0], points[1]);
     let (end, last) = (points[points.len() - 1], points[points.len() - 2]);
     assert_eq!(start, Point { x: 50.0, y: 116.0 });
@@ -2211,25 +2254,55 @@ fn routes_a_connector_from_and_to_the_ports_it_names() {
     assert!(last.y == end.y && last.x < end.x, "{points:?}");
 }
 
-/// Given a connector leaving the port "author" of `article` and drawn into
+/// Given an edge leaving the port "author" of `article` and drawn into
 ///   the left of `user` 12px below its port "id", with no other issue
 /// When the diagram is fixed
 /// Then it is rerouted to reach "id"
 #[test]
-fn reroutes_a_connector_reaching_its_node_off_the_port_it_names() {
+fn reroutes_a_edge_reaching_its_node_off_the_port_it_names() {
     let svg = tables_with_ports(
         r#"<path id="wrote" data-from="article" data-from-port="author" data-to="user" data-to-port="id" d="M 50 116 L 50 250 L 300 250"/>"#,
     );
-    assert!(has_issue(&analyze(&svg), "connector-end-off-port"));
+    assert!(has_issue(&inspect(&svg), "edge-end-detached-port"));
 
     let result = fix(&svg);
 
-    let points = connector_points(&result.report, "wrote");
+    let points = edge_points(&result.report, "wrote");
     assert_eq!(points[points.len() - 1], Point { x: 300.0, y: 238.0 }, "{points:?}");
 }
 
+/// Given a custom node whose port "out" is drawn 3px above its top side,
+///   joined from that port by a straight line to a node above it, a third
+///   node standing between the two
+/// When the diagram is fixed
+/// Then the edge leaves the port upwards, the way of the side nearest to
+///   it, and runs round the node between in horizontal and vertical segments
+#[test]
+fn routes_a_edge_from_a_port_drawn_off_its_node_s_outline() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -250 400 400">
+        <g data-node="a" data-custom="true">
+          <rect data-bounds="true" x="0" y="0" width="100" height="40"/>
+          <circle data-port="out" cx="50" cy="-3" r="2"/>
+        </g>
+        <g data-node="b"><rect x="0" y="-200" width="100" height="40"/></g>
+        <g data-node="between"><rect x="30" y="-100" width="40" height="30"/></g>
+        <line id="up" data-from="a" data-from-port="out" data-to="b" x1="50" y1="-3" x2="50" y2="-160"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+
+    let points = edge_points(&result.report, "up");
+    let (start, next) = (points[0], points[1]);
+    assert_eq!(start, Point { x: 50.0, y: -3.0 });
+    assert!(next.x == start.x && next.y < start.y, "{points:?}");
+    assert!(is_orthogonal(&points), "{points:?}");
+    assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
+}
+
 /// Given `article` marking its port "author" on its left and then on its
-///   right, and a connector from "author" to `user` to the right, drawn as
+///   right, and an edge from "author" to `user` to the right, drawn as
 ///   a straight line between their centres
 /// When the diagram is fixed
 /// Then it leaves from the right one, which needs no way round `article`
@@ -2255,16 +2328,16 @@ fn routes_from_the_place_of_a_port_that_makes_the_better_route() {
 
     let result = fix(svg);
 
-    let points = connector_points(&result.report, "wrote");
+    let points = edge_points(&result.report, "wrote");
     assert_eq!(points[0], Point { x: 140.0, y: 82.0 }, "{points:?}");
 }
 
 /// Given `user` with the port "id" near the top of its left side, a
-///   connector into "id" from `article` far below, and one from `editor`,
+///   edge into "id" from `article` far below, and one from `editor`,
 ///   to the left and above `article`, into `user` at no port, both drawn
 ///   as straight lines between centres
 /// When the diagram is fixed
-/// Then `editor`'s connector meets the left of `user` at the even slot the
+/// Then `editor`'s edge meets the left of `user` at the even slot the
 ///   end at "id" leaves free, instead of the one beside it
 #[test]
 fn spreads_a_free_end_around_one_its_port_holds_on_the_same_side() {
@@ -2291,15 +2364,15 @@ fn spreads_a_free_end_around_one_its_port_holds_on_the_same_side() {
     let result = fix(svg);
 
     let (wrote, edited) = (
-        connector_points(&result.report, "wrote"),
-        connector_points(&result.report, "edited"),
+        edge_points(&result.report, "wrote"),
+        edge_points(&result.report, "edited"),
     );
     assert_eq!(wrote[wrote.len() - 1], Point { x: 300.0, y: 190.0 }, "{wrote:?}");
     assert_eq!(edited[edited.len() - 1], Point { x: 300.0, y: 224.0 }, "{edited:?}");
 }
 
-/// Given a connector into a port "email" that `user` does not declare, and
-///   the same connector naming no port, both drawn as a straight line
+/// Given an edge into a port "email" that `user` does not declare, and
+///   the same edge naming no port, both drawn as a straight line
 ///   between centres
 /// When each diagram is fixed
 /// Then both take the same route
@@ -2315,18 +2388,18 @@ fn routes_an_end_naming_an_unknown_port_as_one_naming_none() {
     let (unknown, none) = (fix(&unknown), fix(&none));
 
     assert_eq!(
-        connector_points(&unknown.report, "wrote"),
-        connector_points(&none.report, "wrote")
+        edge_points(&unknown.report, "wrote"),
+        edge_points(&none.report, "wrote")
     );
 }
 
-/// Given two connectors from `follows` to `user`, both drawn as a straight
+/// Given two edges from `follows` to `user`, both drawn as a straight
 ///   line between their centres
 /// When the diagram is fixed
 /// Then each is rerouted to run from side to side, and no end is left
 ///   inside a node
 #[test]
-fn reroutes_each_of_two_connectors_joining_the_same_nodes() {
+fn reroutes_each_of_two_edges_joining_the_same_nodes() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200">
         <g data-node="follows"><rect x="20" y="20" width="120" height="56"/><text x="80" y="53" text-anchor="middle" font-size="14">Follows</text></g>
@@ -2339,23 +2412,23 @@ fn reroutes_each_of_two_connectors_joining_the_same_nodes() {
     let result = fix(svg);
 
     for id in ["follower", "followee"] {
-        let points = connector_points(&result.report, id);
+        let points = edge_points(&result.report, id);
         assert!(is_orthogonal(&points), "{id}: {points:?}");
     }
     assert!(
-        !has_issue(&result.report, "connector-endpoint-inside"),
+        !has_issue(&result.report, "edge-overlaps-node"),
         "{:?}",
         issue_codes(&result.report)
     );
 }
 
-/// Given a connector drawn between `source` and `target` whose ends stop
+/// Given an edge drawn between `source` and `target` whose ends stop
 ///   40px short of both
 /// When the diagram is fixed
 /// Then it is rerouted to start on the outline of `source` and end on the
 ///   outline of `target`
 #[test]
-fn reroutes_a_connector_whose_ends_stop_away_from_its_nodes() {
+fn reroutes_a_edge_whose_ends_stop_away_from_its_nodes() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
         <g data-node="source"><rect x="20" y="20" width="100" height="56"/><text x="70" y="53" text-anchor="middle" font-size="14">Source</text></g>
@@ -2366,7 +2439,7 @@ fn reroutes_a_connector_whose_ends_stop_away_from_its_nodes() {
 
     let result = fix(svg);
 
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
     assert!(
         side_of(points[0], &node_bounds(&result.report, "source")).is_some(),
         "{points:?}"
@@ -2377,13 +2450,13 @@ fn reroutes_a_connector_whose_ends_stop_away_from_its_nodes() {
     );
 }
 
-/// Given `ext` 10px to the left of the container `box`, and a connector
+/// Given `ext` 10px to the left of the parent `box`, and an edge
 ///   from `ext` to `inner`, a node inside `box`, ending on its left side
 /// When the diagram is fixed, moving `box` right to leave a 20px gap
-/// Then the connector is rerouted to end on the outline of `inner` where
+/// Then the edge is rerouted to end on the outline of `inner` where
 ///   it has moved to
 #[test]
-fn reroutes_connectors_into_a_container_moved_to_keep_a_gap() {
+fn reroutes_edges_into_a_parent_moved_to_keep_a_gap() {
     let svg = r#"
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 240">
         <g data-node="ext"><rect x="20" y="100" width="100" height="56"/><text x="70" y="133" text-anchor="middle" font-size="14">Ext</text></g>
@@ -2402,7 +2475,7 @@ fn reroutes_connectors_into_a_container_moved_to_keep_a_gap() {
         "{:?}",
         change_codes(&result)
     );
-    let points = connector_points(&result.report, "flow");
+    let points = edge_points(&result.report, "flow");
     assert!(
         side_of(points[points.len() - 1], &node_bounds(&result.report, "inner")).is_some(),
         "{points:?} {:?}",
@@ -2416,7 +2489,7 @@ fn reroutes_connectors_into_a_container_moved_to_keep_a_gap() {
 /// Then every one reaches "id" along an orthogonal route, merging with the
 ///   others on the way in, and no issue is left
 #[test]
-fn routes_every_connector_into_a_port_they_share() {
+fn routes_every_edge_into_a_port_they_share() {
     let tables: Vec<(String, f64, f64)> = (0..8)
         .map(|k| {
             (
@@ -2447,7 +2520,7 @@ fn routes_every_connector_into_a_port_they_share() {
     let result = fix(&svg);
 
     for (id, _, _) in &tables {
-        let points = connector_points(&result.report, &format!("{id}-user"));
+        let points = edge_points(&result.report, &format!("{id}-user"));
         assert!(is_orthogonal(&points), "{id}: {points:?}");
         assert_eq!(
             points[points.len() - 1],
@@ -2458,11 +2531,11 @@ fn routes_every_connector_into_a_port_they_share() {
     assert_eq!(issue_codes(&result.report), Vec::<String>::new());
 }
 
-/// Given a connector drawn straight across to a node lower down
+/// Given an edge drawn straight across to a node lower down
 /// When the diagram is fixed
 /// Then it follows an orthogonal path and is no longer slanted
 #[test]
-fn reroutes_a_slanted_connector_orthogonally() {
+fn reroutes_a_slanted_edge_orthogonally() {
     let svg = r#"
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 400">
     <g data-node="source">
@@ -2478,14 +2551,14 @@ fn reroutes_a_slanted_connector_orthogonally() {
 
     let result = fix(svg);
 
-    assert!(is_orthogonal(&connector_points(&result.report, "flow")));
-    assert!(!has_issue(&result.report, "connector-slanted"));
+    assert!(is_orthogonal(&edge_points(&result.report, "flow")));
+    assert!(!has_issue(&result.report, "edge-slanted"));
 }
 
 /// Given a round node 13px under a box, too close for a route straight up
-/// between them, joined to it by a slanted connector
+/// between them, joined to it by a slanted edge
 /// When the diagram is fixed
-/// Then the connector leaves the circle's side and turns back into the
+/// Then the edge leaves the circle's side and bends back into the
 /// box's side, orthogonal, and is no longer slanted
 #[test]
 fn routes_round_into_a_box_too_close_to_reach_straight() {
@@ -2504,13 +2577,13 @@ fn routes_round_into_a_box_too_close_to_reach_straight() {
 
     let result = fix(svg);
 
-    assert!(is_orthogonal(&connector_points(&result.report, "f")));
-    assert!(!has_issue(&result.report, "connector-slanted"));
+    assert!(is_orthogonal(&edge_points(&result.report, "f")));
+    assert!(!has_issue(&result.report, "edge-slanted"));
 }
 
 /// A VPC holding a queue, a worker beside it and, below them, a cluster
 /// reaching out past its right side; outside the VPC, a gateway lies across
-/// the cluster's top border, joined from the queue by a slanted connector.
+/// the cluster's top outline, joined from the queue by a slanted edge.
 /// The VPC is custom, so fixing leaves the cluster reaching out of it rather
 /// than growing it round the cluster and pushing the gateway away.
 const GATEWAY_ACROSS_A_CLUSTER: &str = r#"
@@ -2540,15 +2613,15 @@ const GATEWAY_ACROSS_A_CLUSTER: &str = r#"
     <path id="sms" data-from="queue" data-to="gateway" d="M 162 128 L 760 190" />
 </svg>"#;
 
-/// Given a gateway lying across a cluster's top border, below and to the
+/// Given a gateway lying across a cluster's top outline, below and to the
 /// right of a queue, with a worker blocking the way across from the queue
 /// When the diagram is fixed
-/// Then the connector leaves the queue's bottom, turns once, and enters the
+/// Then the edge leaves the queue's bottom, bends once, and enters the
 /// gateway's left side through the cluster
 #[test]
-fn routes_into_a_node_across_a_container_border_through_the_container() {
+fn routes_into_a_node_across_a_parent_outline_through_the_parent() {
     let result = fix(GATEWAY_ACROSS_A_CLUSTER);
-    let points = connector_points(&result.report, "sms");
+    let points = edge_points(&result.report, "sms");
     let queue = node_bounds(&result.report, "queue");
     let gateway = node_bounds(&result.report, "gateway");
 
@@ -2578,7 +2651,7 @@ fn grows_a_parent_on_the_side_a_child_pokes_out_of() {
 
     assert_eq!(node_bounds(&result.report, "group"), bounds(20.0, 20.0, 222.0, 120.0));
     assert!(
-        !has_issue(&result.report, "node-outside-parent"),
+        !has_issue(&result.report, "node-overflows-parent"),
         "{:?}",
         result.report.issues
     );
@@ -2603,12 +2676,12 @@ fn grows_a_parent_round_the_inner_parent_it_grew() {
   </svg>
 "#;
 
-    let result = fix_with_passes(svg, 1);
+    let result = fix_with_steps(svg, 1);
 
     assert_eq!(node_bounds(&result.report, "inner").right(), 242.0);
     assert_eq!(node_bounds(&result.report, "outer").right(), 254.0);
     assert!(
-        !has_issue(&result.report, "node-outside-parent"),
+        !has_issue(&result.report, "node-overflows-parent"),
         "{:?}",
         result.report.issues
     );
@@ -2633,7 +2706,7 @@ fn leaves_a_custom_parent_its_size() {
 
     assert_eq!(node_bounds(&result.report, "picture"), bounds(20.0, 20.0, 200.0, 120.0));
     assert_eq!(
-        issues_with_code(&result.report, "node-outside-parent"),
+        issues_with_code(&result.report, "node-overflows-parent"),
         [["out", "picture"]]
     );
 }
@@ -2687,14 +2760,14 @@ fn moves_a_child_off_its_parent_s_text() {
     assert_eq!(under.y, title.bottom() + 12.0);
     assert_eq!(node_bounds(&result.report, "group").y, 20.0);
     assert!(
-        !has_issue(&result.report, "parent-text-overlap"),
+        !has_issue(&result.report, "node-overlaps-parent-label"),
         "{:?}",
         result.report.issues
     );
 }
 
-/// Given icons 14px a side, smaller than the margins ports keep from corners, joined by connectors
-/// When the diagram is fixed and arranged
+/// Given icons 14px a side, smaller than the margins ports keep from corners, joined by edges
+/// When the diagram is fixed and laid out
 /// Then both succeed
 #[test]
 fn fixes_nodes_smaller_than_the_port_margins() {
@@ -2724,7 +2797,7 @@ fn fixes_nodes_smaller_than_the_port_margins() {
     .concat();
 
     fix(&svg);
-    arrange(&svg);
+    layout(&svg);
 }
 
 /// Given numbers no diagram holds: polygon points that are no number, translates summing past what an f64 holds, and a NaN padding

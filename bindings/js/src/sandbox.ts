@@ -65,9 +65,11 @@ function fromSandbox<T>(text: string, valid: (value: unknown) => value is T): T 
 const isRecord = (value: unknown): value is { request: unknown; stack: string } =>
   typeof value === "object" && value !== null && "request" in value && "stack" in value && typeof value.stack === "string";
 
+/** What the names of the sandbox's own modules start with, and no other module's: a script and a file it imports are named by a relative path. */
+const OWN = "/nicevg:";
 /** The sandbox's own modules: `nicevg` as a diagram script sees it, and the files it imports. */
 // Named without their extension: the package runs from src/*.ts on Bun and from dist/*.js on Node.
-const PACKAGE: Record<string, string> = { nicevg: "nicevg:guest", "nicevg/style/simple": "nicevg:style/simple" };
+const PACKAGE: Record<string, string> = { nicevg: `${OWN}guest`, "nicevg/style/simple": `${OWN}style/simple` };
 const SOURCE = dirname(fileURLToPath(import.meta.url));
 /** What the guest `nicevg` leaves for the host (see guest.ts). */
 const RECORD = "__nicevgRender";
@@ -113,8 +115,8 @@ function normalize(root: string, script: Script, base: string, requested: string
   if (requested in PACKAGE) {
     return PACKAGE[requested]!;
   }
-  if (base.startsWith("nicevg:")) {
-    return `nicevg:${posix.join(posix.dirname(base.slice("nicevg:".length)), requested).replace(/\.[jt]s$/, "")}`;
+  if (base.startsWith(OWN)) {
+    return `${OWN}${posix.join(posix.dirname(base.slice(OWN.length)), requested).replace(/\.[jt]s$/, "")}`;
   }
   const file = base.split("#")[0]!;
   if (requested.startsWith("#")) {
@@ -151,9 +153,9 @@ function load(root: string, script: Script, name: string): string {
   if (name.startsWith(REFUSED)) {
     throw new Error(name.slice(REFUSED.length));
   }
-  if (name.startsWith("nicevg:")) {
+  if (name.startsWith(OWN)) {
     // The package's own code, trusted, may use TypeScript that only compiles to JavaScript.
-    const path = join(SOURCE, name.slice("nicevg:".length));
+    const path = join(SOURCE, name.slice(OWN.length));
     const source = existsSync(`${path}.ts`) ? `${path}.ts` : `${path}.js`;
     return amaro.transformSync(readFileSync(source, "utf8"), { mode: "transform" }).code;
   }

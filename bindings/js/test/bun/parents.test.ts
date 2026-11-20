@@ -167,7 +167,7 @@ describe("parents a style draws", () => {
     });
 
     const port = image.report.diagram.nodes.find((node) => node.id === "group")!.ports![0]!;
-    const edge = image.report.diagram.connectors[0]!;
+    const edge = image.report.diagram.edges[0]!;
     expect(edge.points.at(-1)).toEqual(port.point);
     expect(image.report.issues).toEqual([]);
   });
@@ -213,7 +213,7 @@ describe("parents a style draws", () => {
    *   is drawn, 12px, then 40px, then 68px
    * When the sketch is rendered
    * Then after laying it out once more, the parent is reported as drawn
-   *   with its texts elsewhere than it was laid out by
+   *   with its labels elsewhere than it was laid out by
    */
   test("reports a parent still drawn otherwise than laid out after laying out again", () => {
     const { image, calls } = titledAt((call) => 12 + 28 * (call - 1));
@@ -222,7 +222,7 @@ describe("parents a style draws", () => {
     expect(image.report.issues.filter((issue) => issue.code === "parent-drawn-differently")).toEqual([
       {
         code: "parent-drawn-differently",
-        message: 'The style of parent "group" drew it with its texts elsewhere than it was laid out by.',
+        message: 'The style of parent "group" drew it with its labels elsewhere than it was laid out by.',
         elements: ["group"],
       },
     ]);
@@ -324,5 +324,25 @@ describe("parents a style draws", () => {
     const title = group.labelBounds[0]!;
     expect(group.bounds.x + group.bounds.width - (title.x + title.width)).toBeGreaterThanOrEqual(12);
     expect(image.report.issues).toEqual([]);
+  });
+
+  /**
+   * Given parents whose ids are "constructor" and "__proto__", names of
+   *   members every JavaScript object has
+   * When the sketch is rendered
+   * Then each is drawn round its child, as a parent of any other id is
+   */
+  test("draws a parent whose id names a member of every object", () => {
+    for (const id of ["constructor", "__proto__"]) {
+      const image = render({
+        nodes: [
+          { id, children: ["a"], class: "box" },
+          { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
+        ],
+        style: { box },
+      });
+
+      expect(image.report.diagram.nodes.find((node) => node.id === id)!.bounds).toEqual({ x: 88, y: 88, width: 104, height: 64 });
+    }
   });
 });

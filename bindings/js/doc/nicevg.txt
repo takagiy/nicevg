@@ -21,25 +21,24 @@ CONTENTS                                                     *nicevg-contents*
    4.3 Built-in styles ........................... |nicevg-dsl-builtin-styles|
 5. Layout engine ............................................. |nicevg-engine|
    5.1 Issues .......................................... |nicevg-engine-issue|
-       |nicevg-engine-issue-viewport-clipping|
-       |nicevg-engine-issue-text-overflow|
-       |nicevg-engine-issue-node-overlap|
-       |nicevg-engine-issue-node-gap|
-       |nicevg-engine-issue-node-outside-parent|
-       |nicevg-engine-issue-parent-text-overlap|
-       |nicevg-engine-issue-node-duplicate-id|
-       |nicevg-engine-issue-connector-unknown-node|
-       |nicevg-engine-issue-connector-node-crossing|
-       |nicevg-engine-issue-connector-overlap|
-       |nicevg-engine-issue-connector-near-miss|
-       |nicevg-engine-issue-connector-slanted|
-       |nicevg-engine-issue-connector-endpoint-inside|
-       |nicevg-engine-issue-connector-endpoint-detached|
-       |nicevg-engine-issue-connector-end-along-side|
-       |nicevg-engine-issue-label-overlap|
-       |nicevg-engine-issue-label-node-overlap|
-       |nicevg-engine-issue-connector-label-clearance|
-       |nicevg-engine-issue-label-detached|
+       |nicevg-engine-issue-diagram-clipped|
+       |nicevg-engine-issue-node-label-overflows|
+       |nicevg-engine-issue-node-overlaps|
+       |nicevg-engine-issue-node-near-node|
+       |nicevg-engine-issue-node-overflows-parent|
+       |nicevg-engine-issue-node-overlaps-parent-label|
+       |nicevg-engine-issue-node-id-duplicated|
+       |nicevg-engine-issue-unknown-node|
+       |nicevg-engine-issue-edge-overlaps-node|
+       |nicevg-engine-issue-edge-overlaps|
+       |nicevg-engine-issue-edge-bend-near-edge|
+       |nicevg-engine-issue-edge-slanted|
+       |nicevg-engine-issue-edge-end-detached|
+       |nicevg-engine-issue-edge-overlaps-node-outline|
+       |nicevg-engine-issue-label-overlaps|
+       |nicevg-engine-issue-label-overlaps-node|
+       |nicevg-engine-issue-edge-near-label|
+       |nicevg-engine-issue-edge-label-detached|
 
 ==============================================================================
 1. Introduction                                                 *nicevg-intro*
@@ -135,7 +134,7 @@ directory: >
 	  ],
 	  "remainingIssues": [
 	    { "file": "docs/README.md", "line": 30,
-	      "code": "label-detached", "message": "..." }
+	      "code": "edge-label-detached", "message": "..." }
 	  ]
 	}
 <
@@ -200,7 +199,7 @@ relative to the current directory: >
 	    { "message": "...", "error": "..." }
 	  ],
 	  "remainingIssues": [
-	    { "code": "label-detached", "message": "..." }
+	    { "code": "edge-label-detached", "message": "..." }
 	  ],
 	  "console.log": ["flow.ts:3:12: ..."]
 	}
@@ -310,10 +309,10 @@ text(s, size)	A <text> of `size` (14 unless given); `\n` splits
 		`cx`, `right` and one of `top`, `cy`, `bottom`.
 
 A node lies round what its style draws, or round the <rect> or <circle> its
-style marks `data-bounds="true"`. Edges meet that border. nicevg does not
+style marks `data-bounds="true"`. Edges meet that outline. nicevg does not
 check that texts fit inside a node a style draws.
 
-A parent's children keep 12px inside its border, or what its style marks as
+A parent's children keep 12px inside its outline, or what its style marks as
 `data-padding` on the `data-bounds` element.
 
 ------------------------------------------------------------------------------
@@ -337,7 +336,7 @@ strokeDasharray	Its outline's dashes.
 labelPosition	`"top-left"` to write the label at the top left, as a
 		parent's title: `"center"` unless given.
 padding		How far the label, and a parent's children, keep inside
-		its border: 12px unless given.
+		its outline: 12px unless given.
 
 ==============================================================================
 5. Layout engine                                               *nicevg-engine*
@@ -348,81 +347,81 @@ padding		How far the label, and a parent's children, keep inside
 Each issue is a problem nicevg could not repair in a drawn diagram. Fix it
 by changing the layout in the script as below, and draw it again.
 
-viewport-clipping                      *nicevg-engine-issue-viewport-clipping*
-	The drawing runs past the edge of the image.
+diagram-clipped                          *nicevg-engine-issue-diagram-clipped*
+	The diagram runs past the edge of the image.
 	Fix: move the nodes near that edge inwards.
 
-text-overflow                              *nicevg-engine-issue-text-overflow*
+node-label-overflows                *nicevg-engine-issue-node-label-overflows*
 	A node's label does not fit inside it.
 	Fix: give the node a larger `width` and `height`, or leave them out.
 
-node-overlap                                *nicevg-engine-issue-node-overlap*
+node-overlaps                              *nicevg-engine-issue-node-overlaps*
 	Two nodes overlap.
 	Fix: move them apart, or set `allowOverlap: true` if they overlap on
 	purpose.
 
-node-gap                                        *nicevg-engine-issue-node-gap*
+node-near-node                            *nicevg-engine-issue-node-near-node*
 	Two nodes side by side are closer than 20px, or than the label of an
 	edge between them needs.
 	Fix: move them apart.
 
-node-outside-parent                  *nicevg-engine-issue-node-outside-parent*
+node-overflows-parent              *nicevg-engine-issue-node-overflows-parent*
 	A node does not fit inside its parent.
 	Fix: move the node inside its parent.
 
-parent-text-overlap                  *nicevg-engine-issue-parent-text-overlap*
-	A node lies on a text its parent draws, such as its title.
-	Fix: move the node below or to the right of the text.
+node-overlaps-parent-label    *nicevg-engine-issue-node-overlaps-parent-label*
+	A node lies on a label its parent draws, such as its title.
+	Fix: move the node below or to the right of the label.
 
-node-duplicate-id                      *nicevg-engine-issue-node-duplicate-id*
+node-id-duplicated                    *nicevg-engine-issue-node-id-duplicated*
 	Two nodes share an id.
 	Fix: give each node its own id.
 
-connector-unknown-node            *nicevg-engine-issue-connector-unknown-node*
+unknown-node                                *nicevg-engine-issue-unknown-node*
 	An edge's `from` or `to` names no node.
 	Fix: name a node in `nodes`.
 
-connector-node-crossing          *nicevg-engine-issue-connector-node-crossing*
-	An edge passes through a node it does not join.
-	Fix: move that node out of the way between the edge's two nodes.
+edge-overlaps-node                    *nicevg-engine-issue-edge-overlaps-node*
+	An edge passes through a node it does not join, or ends inside its
+	node.
+	Fix: move that node out of the way between the edge's two nodes. If
+	the edge ends inside its node, leave out the edge's `points`, or end
+	them on the node's outline.
 
-connector-overlap                      *nicevg-engine-issue-connector-overlap*
+edge-overlaps                              *nicevg-engine-issue-edge-overlaps*
 	Two edges run along the same segment.
 	Fix: move one of the nodes they join so they leave different sides.
 
-connector-near-miss                  *nicevg-engine-issue-connector-near-miss*
-	Two edges come close where one turns.
+edge-bend-near-edge                  *nicevg-engine-issue-edge-bend-near-edge*
+	Two edges come close where one bends.
 	Fix: move one of the nodes they join a little.
 
-connector-slanted                      *nicevg-engine-issue-connector-slanted*
+edge-slanted                                *nicevg-engine-issue-edge-slanted*
 	An edge has a segment neither horizontal nor vertical.
 	Fix: leave out the edge's `points`, or give points in straight lines.
 
-connector-endpoint-inside      *nicevg-engine-issue-connector-endpoint-inside*
-	An edge ends inside its node.
-	Fix: leave out the edge's `points`, or end them on the node's border.
-
-connector-endpoint-detached  *nicevg-engine-issue-connector-endpoint-detached*
+edge-end-detached                      *nicevg-engine-issue-edge-end-detached*
 	An edge ends more than 16px away from its node.
-	Fix: leave out the edge's `points`, or end them on the node's border.
+	Fix: leave out the edge's `points`, or end them on the node's outline.
 
-connector-end-along-side        *nicevg-engine-issue-connector-end-along-side*
+                      *nicevg-engine-issue-edge-overlaps-node-outline*
+edge-overlaps-node-outline
 	An edge's last segment runs along a side of its node.
 	Fix: leave out the edge's `points`, or meet the side square.
 
-label-overlap                              *nicevg-engine-issue-label-overlap*
+label-overlaps                            *nicevg-engine-issue-label-overlaps*
 	Two labels overlap.
 	Fix: move apart the nodes their edges join.
 
-label-node-overlap                    *nicevg-engine-issue-label-node-overlap*
+label-overlaps-node                  *nicevg-engine-issue-label-overlaps-node*
 	An edge's label overlaps a node.
 	Fix: move that node away from the edge.
 
-connector-label-clearance      *nicevg-engine-issue-connector-label-clearance*
+edge-near-label                          *nicevg-engine-issue-edge-near-label*
 	An edge passes within 8px of another edge's label.
 	Fix: move the nodes so the edge passes further from the label.
 
-label-detached                            *nicevg-engine-issue-label-detached*
+edge-label-detached                  *nicevg-engine-issue-edge-label-detached*
 	An edge's label sits more than 16px from its edge: there was no room
 	beside it.
 	Fix: move apart the nodes the edge joins.

@@ -5,7 +5,7 @@ expression: "support :: quality_of(& result.report)"
 {
   "badness": 60.0,
   "bends": 1,
-  "bentConnectors": 1,
+  "bentEdges": 1,
   "cornerShortfall": 0.0,
   "crossings": 0,
   "crossingsNearEnds": 0,

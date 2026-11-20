@@ -17,17 +17,17 @@ const twoBoxes = {
     { id: "order", class: "box", x: 20, y: 20, width: 120, height: 56, label: "Order" },
     { id: "bill", class: "box", x: 300, y: 160, width: 120, height: 56, label: "Bill" },
   ],
-  connectors: [{ from: "order", to: "bill", label: "invoice" }],
+  edges: [{ from: "order", to: "bill", label: "invoice" }],
   style: { box },
 };
 
-/** A connector that bends where moving `mail` up would straighten it. */
+/** An edge that bends where moving `mail` up would straighten it. */
 const bent = {
   nodes: [
     { id: "notify", class: "box", x: 30, y: 100, width: 120, height: 56, label: "Notify" },
     { id: "mail", class: "box", x: 280, y: 52, width: 120, height: 56, label: "Mail" },
   ],
-  connectors: [
+  edges: [
     {
       from: "notify",
       to: "mail",
@@ -47,30 +47,30 @@ const isOrthogonal = (points: { x: number; y: number }[]) =>
 
 describe("render on Node", () => {
   /**
-   * Given a sketch of two boxes and a labelled connector with no route
+   * Given a sketch of two boxes and a labelled edge with no route
    * When it is rendered
-   * Then an Svg comes back, from which both nodes, the connector's orthogonal route (found by its ends) and its label's box read, with no issue left
+   * Then an Svg comes back, from which both nodes, the edge's orthogonal route (found by its ends) and its label's box read, with no issue left
    */
   test("turns a sketch into an Svg with nodes, routes and label boxes", () => {
     const svg = render(twoBoxes);
 
     assert.ok(svg instanceof Svg);
     assert.deepEqual(svg.report.diagram.nodes.map((node) => node.id).sort(), ["bill", "order"]);
-    const flow = svg.report.diagram.connectors.find((c) => c.from === "order" && c.to === "bill")!;
+    const flow = svg.report.diagram.edges.find((c) => c.from === "order" && c.to === "bill")!;
     assert.ok(isOrthogonal(flow.points));
-    assert.ok(svg.report.diagram.labels.some((label) => label.connector === flow.id));
+    assert.ok(svg.report.diagram.labels.some((label) => label.edge === flow.id));
     assert.deepEqual(svg.report.issues, []);
   });
 
   /**
-   * Given a connector that bends where moving a node would straighten it
+   * Given an edge that bends where moving a node would straighten it
    * When it is rendered
-   * Then one of its nodes moves and the connector runs straight
+   * Then one of its nodes moves and the edge runs straight
    */
-  test("moves a node to straighten a bent connector", () => {
+  test("moves a node to straighten a bent edge", () => {
     const svg = render(bent);
 
-    const email = svg.report.diagram.connectors.find((c) => c.from === "notify" && c.to === "mail")!;
+    const email = svg.report.diagram.edges.find((c) => c.from === "notify" && c.to === "mail")!;
     assert.equal(email.points.length, 2);
     const given = Object.fromEntries(bent.nodes.map((node) => [node.id, { x: node.x, y: node.y }]));
     const moved = svg.report.diagram.nodes.filter((node) => node.bounds.x !== given[node.id]!.x || node.bounds.y !== given[node.id]!.y);
@@ -95,7 +95,7 @@ describe("render on Node", () => {
   /**
    * Given the SVG text of an example diagram
    * When it is rendered on Node
-   * Then the result is the same SVG as on any other runtime: arranged, with no issue left
+   * Then the result is the same SVG as on any other runtime: laid out, with no issue left
    */
   test("takes SVG text too", () => {
     const svg = render({ svg: readFileSync(join(fixtures, "order-checkout-dfd.svg"), "utf8") });
@@ -105,7 +105,7 @@ describe("render on Node", () => {
   });
 
   /**
-   * Given a node without its class, and a connector to a node the sketch lacks
+   * Given a node without its class, and an edge to a node the sketch lacks
    * When each is rendered
    * Then each throws a NicevgError saying what is wrong and where
    */
@@ -113,13 +113,13 @@ describe("render on Node", () => {
     const missingClass = { nodes: [{ id: "a", x: 0, y: 0, width: 100, height: 50 }] } as unknown as Sketch;
     const dangling = {
       nodes: [{ id: "a", class: "box", x: 0, y: 0, width: 100, height: 50 }],
-      connectors: [{ from: "a", to: "ghost" }],
+      edges: [{ from: "a", to: "ghost" }],
       style: { box },
     };
 
     assert.throws(() => render(missingClass), NicevgError);
     assert.throws(() => render(missingClass), /nodes\[0\].class/);
-    assert.throws(() => render(dangling), /connectors\[0\]\.to.*"ghost"/);
+    assert.throws(() => render(dangling), /edges\[0\]\.to.*"ghost"/);
   });
 
   /**

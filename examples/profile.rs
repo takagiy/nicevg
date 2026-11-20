@@ -1,4 +1,4 @@
-//! Profiles fixing or arranging an SVG diagram: where the time goes, span
+//! Profiles fixing or layout an SVG diagram: where the time goes, span
 //! by span, with the sizes each span worked on.
 //!
 //! ```text
@@ -9,7 +9,7 @@
 //! It prints a table of spans: how often each ran, its total and self time
 //! (time not spent in its child spans), and the sums and maxima of the
 //! numbers recorded on it, such as grid sizes. Time in spans entered on
-//! several threads at once (the arrange evaluations) is summed over the
+//! several threads at once (the lay out evaluations) is summed over the
 //! threads, so it can exceed the wall-clock time.
 //!
 //! `--chrome` writes a trace to open in https://ui.perfetto.dev, and
@@ -38,7 +38,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 struct Args {
     /// The SVG diagram to process.
     input: PathBuf,
-    /// Only fix the diagram; arranging is the default, as in the CLI.
+    /// Only fix the diagram; layout is the default, as in the CLI.
     #[arg(long)]
     fix: bool,
     /// Write a Chrome trace (JSON) here.
@@ -182,12 +182,12 @@ fn main() {
         .with(flame)
         .init();
 
-    let report = nicevg::analyze(&svg).expect("the input is an SVG diagram");
+    let report = nicevg::inspect(&svg).expect("the input is an SVG diagram");
     let started = Instant::now();
     let result = if args.fix {
         nicevg::fix(&svg)
     } else {
-        nicevg::arrange(&svg)
+        nicevg::layout(&svg)
     }
     .expect("the input is an SVG diagram");
     let wall = started.elapsed();
@@ -196,11 +196,11 @@ fn main() {
     }
 
     println!(
-        "{} {}: {} nodes, {} connectors, {} labels; {:.1} ms wall, {} changes, {} issues left",
+        "{} {}: {} nodes, {} edges, {} labels; {:.1} ms wall, {} changes, {} issues left",
         if args.fix { "fix" } else { "arrange" },
         args.input.display(),
         report.diagram.nodes.len(),
-        report.diagram.connectors.len(),
+        report.diagram.edges.len(),
         report.diagram.labels.len(),
         milliseconds(wall),
         result.changes.len(),

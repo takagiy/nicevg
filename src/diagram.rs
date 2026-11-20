@@ -1,4 +1,4 @@
-//! What a document means as a diagram: nodes, connectors, labels and the
+//! What a document means as a diagram: nodes, edges, labels and the
 //! shapes left unsupported, read without changing anything.
 
 use std::collections::HashMap;
@@ -7,7 +7,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 
-use crate::arrow::{drawn_connectors, names_an_end};
+use crate::arrow::{drawn_edges, names_an_end};
 use crate::geometry::{Bounds, Point, enclosing, finite_number, parse_number, point, point_list, points_bounds};
 use crate::inspect::PARENT_PADDING;
 use crate::pathdata;
@@ -38,10 +38,10 @@ pub struct DiagramNode {
     /// checked to fit, since its drawing decides its size.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub custom: bool,
-    /// The named points its picture marks for connector ends to meet.
+    /// The named points its picture marks for edge ends to meet.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub ports: Vec<Port>,
-    /// How far its children keep inside its border, as its `data-padding`
+    /// How far its children keep inside its outline, as its `data-padding`
     /// says, when it says.
     #[serde(skip)]
     pub padding: Option<f64>,
@@ -51,12 +51,12 @@ pub struct DiagramNode {
     pub redrawn: bool,
 }
 
-/// A point a custom node's picture marks `data-port` for connector ends.
+/// A point a custom node's picture marks `data-port` for edge ends.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Port {
     pub name: String,
     pub point: Point,
-    /// The side of the node's bounds it lies on, which connectors leave it out of.
+    /// The side of the node's bounds it lies on, which edges leave it out of.
     pub side: Side,
 }
 
@@ -72,7 +72,7 @@ impl DiagramNode {
         (!self.custom || self.redrawn) && !self.is_circle()
     }
 
-    /// How far its children keep inside its border: its `data-padding`,
+    /// How far its children keep inside its outline: its `data-padding`,
     /// else 12px.
     pub fn child_padding(&self) -> f64 {
         self.padding.unwrap_or(PARENT_PADDING)
@@ -86,7 +86,7 @@ impl DiagramNode {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DiagramConnector {
+pub struct DiagramEdge {
     pub id: String,
     pub from: String,
     pub to: String,
@@ -104,7 +104,7 @@ pub struct DiagramLabel {
     pub id: String,
     pub bounds: Bounds,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub connector: Option<String>,
+    pub edge: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -118,7 +118,7 @@ pub struct UnsupportedElement {
 #[serde(rename_all = "camelCase")]
 pub struct Diagram {
     pub nodes: Vec<DiagramNode>,
-    pub connectors: Vec<DiagramConnector>,
+    pub edges: Vec<DiagramEdge>,
     pub labels: Vec<DiagramLabel>,
     pub unsupported_elements: Vec<UnsupportedElement>,
 }
@@ -128,28 +128,24 @@ impl Diagram {
         self.nodes.iter().find(|node| node.id == id)
     }
 
-    pub fn connector(&self, id: &str) -> Option<&DiagramConnector> {
-        self.connectors.iter().find(|connector| connector.id == id)
+    pub fn edge(&self, id: &str) -> Option<&DiagramEdge> {
+        self.edges.iter().find(|edge| edge.id == id)
     }
 
-    /// The box around every node, label and connector.
-    pub fn drawing_bounds(&self) -> Option<Bounds> {
+    /// The box around every node, label and edge.
+    pub fn diagram_bounds(&self) -> Option<Bounds> {
         let bounds: Vec<Bounds> = self
             .nodes
             .iter()
             .map(|node| node.bounds)
             .chain(self.labels.iter().map(|label| label.bounds))
-            .chain(
-                self.connectors
-                    .iter()
-                    .filter_map(|connector| points_bounds(&connector.points)),
-            )
+            .chain(self.edges.iter().filter_map(|edge| points_bounds(&edge.points)))
             .collect();
         enclosing(&bounds)
     }
 }
 
-/// Ids of the containers around a node, nearest first.
+/// Ids of the parents around a node, nearest first.
 pub fn ancestor_ids<'a>(nodes: &'a [DiagramNode], id: &str) -> Vec<&'a str> {
     let parent_of = |id: &str| {
         nodes
@@ -162,11 +158,11 @@ pub fn ancestor_ids<'a>(nodes: &'a [DiagramNode], id: &str) -> Vec<&'a str> {
         .collect()
 }
 
-/// Whether a node is one of the connector's ends, a container around one,
-/// or a container one lies across the border of: the connector
+/// Whether a node is one of the edge's ends, a parent around one,
+/// or a parent one lies across the outline of: the edge
 /// legitimately reaches into each.
-pub fn holds_end(nodes: &[DiagramNode], connector: &DiagramConnector, node: &DiagramNode) -> bool {
-    let is_container = || {
+pub fn holds_end(nodes: &[DiagramNode], edge: &DiagramEdge, node: &DiagramNode) -> bool {
+    let is_parent = || {
         nodes
             .iter()
             .any(|child| child.parent_id.as_deref() == Some(node.id.as_str()))
@@ -174,14 +170,14 @@ pub fn holds_end(nodes: &[DiagramNode], connector: &DiagramConnector, node: &Dia
     let lies_across = || {
         nodes
             .iter()
-            .filter(|end| end.id == connector.from || end.id == connector.to)
+            .filter(|end| end.id == edge.from || end.id == edge.to)
             .any(|end| crate::geometry::intersection(&end.bounds, &node.bounds).is_some())
     };
-    node.id == connector.from
-        || node.id == connector.to
-        || ancestor_ids(nodes, &connector.from).contains(&node.id.as_str())
-        || ancestor_ids(nodes, &connector.to).contains(&node.id.as_str())
-        || (is_container() && lies_across())
+    node.id == edge.from
+        || node.id == edge.to
+        || ancestor_ids(nodes, &edge.from).contains(&node.id.as_str())
+        || ancestor_ids(nodes, &edge.to).contains(&node.id.as_str())
+        || (is_parent() && lies_across())
 }
 
 static TRANSLATE: LazyLock<Regex> = LazyLock::new(|| {
@@ -237,6 +233,22 @@ pub fn is_node_shape(element: &Element) -> bool {
     element.name == "rect" || element.name == "circle"
 }
 
+/// The shape a node's group draws it as: the first in the group, which holds
+/// it directly unless it is annotated `data-node`.
+pub fn node_shape(document: &Document, group: &[usize]) -> Option<Path> {
+    if document.element(group).attr("data-node").is_empty() {
+        child_element_paths(document, group)
+            .into_iter()
+            .find(|child| is_node_shape(document.element(child)))
+    } else {
+        document
+            .descendants(group)
+            .into_iter()
+            .find(|(_, element)| is_node_shape(element))
+            .map(|(shape, _)| shape)
+    }
+}
+
 fn shape_bounds(document: &Document, path: &[usize]) -> Bounds {
     if document.element(path).name == "circle" {
         circle_bounds(document, path)
@@ -245,7 +257,7 @@ fn shape_bounds(document: &Document, path: &[usize]) -> Bounds {
     }
 }
 
-pub(crate) fn connector_points(document: &Document, path: &[usize]) -> Vec<Point> {
+pub(crate) fn edge_points(document: &Document, path: &[usize]) -> Vec<Point> {
     let element = document.element(path);
     let offset = translation(document, path);
     let shifted = |p: Point| point(p.x + offset.x, p.y + offset.y);
@@ -286,7 +298,7 @@ pub fn node_group(document: &Document, id: &str) -> Option<Path> {
 
 /// The lines, then the polylines, then the paths of a document, each in
 /// document order, from one walk.
-pub fn connector_elements(document: &Document) -> Vec<(Path, &Element)> {
+pub fn edge_elements(document: &Document) -> Vec<(Path, &Element)> {
     let names = ["line", "polyline", "path"];
     let mut elements: Vec<(Path, &Element)> = document
         .elements()
@@ -379,7 +391,7 @@ pub fn content_bounds(document: &Document, path: &[usize]) -> Option<Bounds> {
                 })
             }
             // shortcut: a curve or arc counts by its end points only, so a bulge past them sits outside the bounds; measure curves if custom shapes need them.
-            "line" | "polyline" | "path" => points_bounds(&connector_points(document, path)),
+            "line" | "polyline" | "path" => points_bounds(&edge_points(document, path)),
             "polygon" => {
                 let offset = translation(document, path);
                 let points: Vec<Point> = point_list(element.attr("points"))
@@ -452,27 +464,14 @@ fn recognize(document: &Document, custom: &[&Path], index: usize, path: &Path, g
     {
         return None;
     }
-    let children = child_element_paths(document, path);
-    let direct_shape = children
-        .iter()
-        .find(|child| is_node_shape(document.element(child)))
-        .cloned();
-    let labels: Vec<Path> = children
+    let labels: Vec<Path> = child_element_paths(document, path)
         .into_iter()
         .filter(|child| document.element(child).name == "text")
         .collect();
-    if !annotated && (direct_shape.is_none() || labels.is_empty()) {
+    if !annotated && labels.is_empty() {
         return None;
     }
-    let shape_path = if annotated {
-        document
-            .descendants(path)
-            .into_iter()
-            .find(|(_, element)| is_node_shape(element))
-            .map(|(candidate, _)| candidate)
-    } else {
-        direct_shape
-    }?;
+    let shape_path = node_shape(document, path)?;
     Some(Recognized {
         path: path.clone(),
         id,
@@ -585,12 +584,12 @@ pub(crate) fn read_nodes(document: &Document, before: Option<(&ReadNodes, &[Path
 
 /// The diagram of a document whose nodes are already read.
 pub(crate) fn read_around(document: &Document, nodes: Vec<DiagramNode>) -> Diagram {
-    let phase = tracing::info_span!("read_connectors").entered();
-    let connectors = drawn_connectors(document)
+    let phase = tracing::info_span!("read_edges").entered();
+    let edges = drawn_edges(document)
         .into_iter()
         .map(|drawn| {
             let shaft = document.element(&drawn.shaft);
-            DiagramConnector {
+            DiagramEdge {
                 from_port: non_empty(shaft.attr("data-from-port")).map(str::to_owned),
                 to_port: non_empty(shaft.attr("data-to-port")).map(str::to_owned),
                 id: drawn.id,
@@ -624,8 +623,8 @@ pub(crate) fn read_around(document: &Document, nodes: Vec<DiagramNode>) -> Diagr
             let id = element.attr("data-label");
             match labels.iter_mut().find(|label| label.id == id) {
                 Some(label) => {
-                    label.connector = label
-                        .connector
+                    label.edge = label
+                        .edge
                         .take()
                         .or_else(|| non_empty(element.attr("data-label-for")).map(str::to_owned));
                 }
@@ -634,7 +633,7 @@ pub(crate) fn read_around(document: &Document, nodes: Vec<DiagramNode>) -> Diagr
                         labels.push(DiagramLabel {
                             id: id.to_owned(),
                             bounds,
-                            connector: non_empty(element.attr("data-label-for")).map(str::to_owned),
+                            edge: non_empty(element.attr("data-label-for")).map(str::to_owned),
                         });
                     }
                 }
@@ -665,7 +664,7 @@ pub(crate) fn read_around(document: &Document, nodes: Vec<DiagramNode>) -> Diagr
 
     Diagram {
         nodes,
-        connectors,
+        edges,
         labels,
         unsupported_elements,
     }

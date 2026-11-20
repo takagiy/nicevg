@@ -5,14 +5,14 @@
 コア部分は、入力 SVG から修正後 SVG までを純粋関数のパイプラインとして構成している。
 
 - `xml`: SVG を値としての DOM に読み書きする。更新は新しい文書を返す
-- `diagram`: 文書からノード・コネクタ・ラベルを読み取る
+- `diagram`: 文書からノード・辺・ラベルを読み取る
 - `inspect`: 図から問題を求める検査を順に合成する
-- `route`: 辺と端点の選択、直交経路の探索、ラベルの置き場所を求める
-- `fix`: ノードの拡張 → ノードの分離 → コネクタの引き直しとラベルの移動 → `viewBox` の拡張、の各段階を下書きから新しい下書きへの関数として順に適用する
-- `arrange`: 修正結果を出発点に、ノードの小さな移動を候補ごとに修正して採点し、最も良い移動を採用することを繰り返す
-- `sketch`: ノードとコネクタの配列で渡した図を、[SVG の約束](../reference/svg-contract.md) どおりの SVG に組み立てる
+- `route`: サイドと端点の選択、直交経路の探索、ラベルの置き場所を求める
+- `fix`: ノードの拡張 → ノードの分離 → 辺の引き直しとラベルの移動 → `viewBox` の拡張、の各段階を下書きから新しい下書きへの関数として順に適用する
+- `layout`: 修正結果を出発点に、ノードの小さな移動候補ごとに修正して採点し、最も良い移動を採用することを繰り返す
+- `sketch`: ノードと辺の配列で渡した図を、[SVG の約束](../reference/svg-contract.md) どおりの SVG に組み立てる
 
-`nicevg` コマンドは `bindings/js/src/cli.ts` にある。標準入力の SVG を TypeScript ライブラリの `render()` に渡し、ネイティブライブラリの `arrange` で修正と配置調整をする。Rust のクレートは CLI を持たない（[ADR](../adr/cli-on-node.md)）。
+`nicevg` コマンドは `bindings/js/src/cli.ts` にある。標準入力の SVG を TypeScript ライブラリの `render()` に渡し、ネイティブライブラリの `layout` で修正とレイアウトをする。Rust のクレートは CLI を持たない（[ADR](../adr/cli-on-node.md)）。
 
 ## テスト
 
@@ -27,9 +27,9 @@ cargo fmt --check
 cargo run --example fix-gallery
 ```
 
-単体テストは出力の座標を固定せず、Given/When/Then の Then が約束する性質（直交している、ノードを貫通しない、辺から垂直に出入りする など）を `tests/support/mod.rs` の述語で確かめる。
+単体テストは出力の座標を固定せず、Given/When/Then の Then が約束する性質（直交している、ノードを貫通しない、サイドから垂直に出入りする など）を `tests/support/mod.rs` の述語で確かめる。
 
-修正のテストは、Then の性質に加えて、修正後の SVG そのものと、その品質（残る問題・折れ曲がり・斜めの線分・コネクタから離れたラベルの数・並走するコネクタの密度・ジョグ・短い端・交差・角に寄った端子・遠回り、それらを人が見比べた判断から決めた重みで合計した悪さ。どれも悪いほど大きい）を [insta](https://insta.rs) のスナップショットとして `tests/snapshots/` に記録する。個々の期待値が固定していない形の変化も、スナップショットの差分として検出される。品質の差分を見れば、その変化が改善か後退かを判断できる。改善も差分として失敗するので、意図した変化は差分を確認してから記録し直す。
+修正のテストは、Then の性質に加えて、修正後の SVG そのものと、その品質（残る問題・屈折・斜めの線分・辺から離れたラベルの数・並走する辺の密度・ジョグ・短い端・交差・角に寄った端子・遠回り、それらを人が見比べた判断から決めた重みで合計した悪さ。どれも悪いほど大きい）を [insta](https://insta.rs) のスナップショットとして `tests/snapshots/` に記録する。個々の期待値が固定していない形の変化も、スナップショットの差分として検出される。品質の差分を見れば、その変化が改善か後退かを判断できる。改善も差分として失敗するので、意図した変化は差分を確認してから記録し直す。
 
 ```sh
 cargo insta review
@@ -50,9 +50,9 @@ cargo run --release --example profile -- input.svg --fix --chrome trace.json --f
 ## CI とリリース
 
 - CI（`.github/workflows/ci.yml`）は main への push とプルリクエストで、整形と lint と、Linux・macOS・Windows それぞれで Rust のテストと TypeScript ライブラリのビルドとテスト（Bun と Node）を回す。Rust のビルドは [Swatinem/rust-cache](https://github.com/Swatinem/rust-cache) で、Bun の依存は `bun.lock` をキーにキャッシュし、キャッシュは main の実行でだけ保存する。
-- `v*` のタグを push すると、`.github/workflows/npm.yml` が npm に公開する。[takagiy/homebrew-tap](https://github.com/takagiy/homebrew-tap) は 1 時間ごとに npm の `latest` を見て、新しい版があれば formula をその tarball と sha256 に書き換え、入れてテストできたら tap 自身の token で commit する（tap の `.github/workflows/bump-nicevg.yml`）。このリポジトリに tap への token は要らない。formula は Node でそのパッケージを入れる。
+- `v*` のタグを push すると、`.github/workflows/npm.yml` が npm に公開する。[takagiy/homebrew-tap](https://github.com/takagiy/homebrew-tap) は 1 時間ごとに npm の `latest` を見て、新しいバージョンがあれば formula をその tarball と sha256 に書き換え、入れてテストできたら tap 自身の token で commit する（tap の `.github/workflows/bump-nicevg.yml`）。このリポジトリに tap への token は要らない。formula は Node でそのパッケージを入れる。
 - GitHub は、公開リポジトリで 60 日動きがないと定期実行のワークフローを止める。60 日以上リリースがなかったあとは、tap で `gh workflow enable bump-nicevg.yml` してから `gh workflow run bump-nicevg.yml` を実行する。
-- リリースでは、ルートと `bindings/js` の `Cargo.toml`、`bindings/js/package.json` の版を揃えて上げる。
+- リリースでは、ルートと `bindings/js` の `Cargo.toml`、`bindings/js/package.json` のバージョンを揃えて上げる。
 
 ## TypeScript ライブラリ
 
@@ -69,14 +69,14 @@ bun run typecheck
 
 パッケージは Bun には `src/` の TypeScript を、Node には `dist/` の JavaScript と型定義を渡す（`package.json` の `exports`）。ネイティブライブラリは `NICEVG_LIBRARY` 環境変数、`native/<platform>-<arch>/`（`bun run build` が置く場所で、公開するパッケージでは全環境ぶん）、リポジトリの `target/release/` の順に探す。
 
-`v*` のタグを push すると、`.github/workflows/npm.yml` が各環境のネイティブライブラリを作ってパッケージに入れ、Bun と Node でテストしてから npm に公開する。タグの版と `package.json` の `version` が違えば止まる。手で実行すると、公開せずにビルドとパックだけを確かめられる。
+`v*` のタグを push すると、`.github/workflows/npm.yml` が各環境のネイティブライブラリを作ってパッケージに入れ、Bun と Node でテストしてから npm に公開する。タグのバージョンと `package.json` の `version` が違えば止まる。手で実行すると、公開せずにビルドとパックだけを確かめられる。
 
-公開は npm の Trusted Publishing（GitHub Actions の OIDC）で、npm のトークンを使わず、配布元の証明（provenance）も自動で付く。npm のパッケージページは `bindings/js/README.md` で、公開した版ごとに保存されるので、README の変更は次の公開で反映される。
+公開は npm の Trusted Publishing（GitHub Actions の OIDC）で、npm のトークンを使わず、配布元の証明（provenance）も自動で付く。npm のパッケージページは `bindings/js/README.md` で、公開したバージョンごとに保存されるので、README の変更は次の公開で反映される。
 
 Trusted Publisher はすでに npm にあるパッケージにしか登録できないので、最初の 1 回だけは手元から公開する。npm のアカウントで 2FA を有効にしたうえで、次のようにする。
 
 1. Actions の「Publish to npm」を手で実行する（手での実行は公開しない）。全環境のライブラリをそれぞれの環境でテストし、まとめたパッケージが、成果物 `npm-package` に残る。
-2. それを手元に落として公開する（2FA のワンタイムコードを聞かれる）。手元からの公開なので、この版には配布元の証明が付かない。
+2. それを手元に落として公開する（2FA のワンタイムコードを聞かれる）。手元からの公開なので、このバージョンには配布元の証明が付かない。
    ```sh
    gh run download <run-id> -n npm-package
    npm publish ./nicevg-<version>.tgz

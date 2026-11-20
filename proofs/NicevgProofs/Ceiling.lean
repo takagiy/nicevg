@@ -3,7 +3,7 @@
 
 `place_label` (src/route.rs) scores every spot that fits a label and keeps
 the first with the best score. A spot's score is how clear it is of its
-connector's crossings, bends and ends, less what other connectors near it
+edge's crossings, bends and ends, less what other edges near it
 take off (`crowding`, a sum of `max(0.0)` terms). So the clearance alone is
 a ceiling on the score.
 

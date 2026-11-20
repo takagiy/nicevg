@@ -1,27 +1,27 @@
 /-!
-# Candidates rerouting the same connectors share one evaluation
+# Candidates rerouting the same edges share one evaluation
 
-Arranging tries candidates that reroute the connectors of some nodes in
-place (`evaluate` with a zero step, src/arrange.rs). Such a candidate hands
+Layout tries candidates that reroute the edges of some nodes in
+place (`evaluate` with a zero step, src/layout.rs). Such a candidate hands
 fixing the state's own document with the nodes it names marked as moved.
 The marks are read in one place only: `pick_reroutes` (src/fix.rs), which
-reroutes the connectors with an issue and those with an end at a marked
+reroutes the edges with an issue and those with an end at a marked
 node or inside one. The steps before it read no mark, so they change the
 draft alike for every candidate, and everything after works from the
-connectors picked.
+edges picked.
 
-So two candidates that mark the same connectors (`rerouted_with`) are
+So two candidates that mark the same edges (`rerouted_with`) are
 evaluated to the same result, and `evaluate_all` evaluates only the first
 of them. `same_marked_same_picked` is the first half: marking the same
-connectors picks the same connectors. `shared_eq` is the second: giving
+edges picks the same edges. `shared_eq` is the second: giving
 every candidate the result of the first one with its key gives each its
 own result.
 
 Checked in the Rust code (2026-11-19): `moved_node_ids` is read only by
 `pick_reroutes`. `separate_nodes` adds the nodes it moves to the marks, the
-same ones for every candidate, which marks the same connectors more for
+same ones for every candidate, which marks the same edges more for
 each. Whatever takes a state's draft further
-(`evaluate`, `fix_further`, `spread_close_runs`) sets the marks anew.
+(`evaluate`, `fix_further`, `spread_parallel_runs`) sets the marks anew.
 -/
 
 namespace Nicevg.Shared
@@ -54,16 +54,16 @@ theorem agree_of_filter_eq (p q : α → Bool) :
       · rw [hp, hq]
       · exact ih h x hx
 
-/-- The connectors `pick_reroutes` picks: those with an issue rerouting
+/-- The edges `pick_reroutes` picks: those with an issue rerouting
 fixes and those `marked`, with an end at a moved node or inside one. -/
-def picked (issue marked : γ → Bool) (connectors : List γ) : List γ :=
-  connectors.filter (fun c => issue c || marked c)
+def picked (issue marked : γ → Bool) (edges : List γ) : List γ :=
+  edges.filter (fun c => issue c || marked c)
 
-/-- Marking the same connectors picks the same connectors. -/
-theorem same_marked_same_picked (issue m1 m2 : γ → Bool) (connectors : List γ)
-    (h : connectors.filter m1 = connectors.filter m2) :
-    picked issue m1 connectors = picked issue m2 connectors := by
-  have agree := agree_of_filter_eq m1 m2 connectors h
+/-- Marking the same edges picks the same edges. -/
+theorem same_marked_same_picked (issue m1 m2 : γ → Bool) (edges : List γ)
+    (h : edges.filter m1 = edges.filter m2) :
+    picked issue m1 edges = picked issue m2 edges := by
+  have agree := agree_of_filter_eq m1 m2 edges h
   unfold picked
   apply List.filter_congr
   intro c hc
@@ -88,14 +88,14 @@ theorem shared_eq [BEq κ] [LawfulBEq κ] (key : α → κ) (f : α → β) (xs 
     have := List.find?_some hfind
     exact h y x (by simpa using this)
 
-/-- Together: the result is worked out from the connectors picked, so the
-candidates may share by the connectors they mark. -/
-theorem shared_by_marked [DecidableEq γ] (issue : γ → Bool) (connectors : List γ) (marks : α → γ → Bool)
+/-- Together: the result is worked out from the edges picked, so the
+candidates may share by the edges they mark. -/
+theorem shared_by_marked [DecidableEq γ] (issue : γ → Bool) (edges : List γ) (marks : α → γ → Bool)
     (result : List γ → β) (xs : List α) :
-    shared (fun x => connectors.filter (marks x)) (fun x => result (picked issue (marks x) connectors)) xs
-      = xs.map (fun x => result (picked issue (marks x) connectors)) := by
+    shared (fun x => edges.filter (marks x)) (fun x => result (picked issue (marks x) edges)) xs
+      = xs.map (fun x => result (picked issue (marks x) edges)) := by
   apply shared_eq
   intro x y hkey
-  rw [same_marked_same_picked issue (marks x) (marks y) connectors hkey]
+  rw [same_marked_same_picked issue (marks x) (marks y) edges hkey]
 
 end Nicevg.Shared

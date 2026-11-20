@@ -79,9 +79,9 @@ theorem floor_sound (cost floor : α → Int) (margin : Int) (hmargin : 0 ≤ ma
 
 /-- The distance between a route's ends is a floor under its price: its
 length, and bends and what it costs other routes, never negative. -/
-theorem floor_le_price (start : Nicevg.Point) (rest : List Nicevg.Point) (bends others : Int)
-    (hb : 0 ≤ bends) (ho : 0 ≤ others) :
-    Nicevg.dist start (Nicevg.lastOr start rest) ≤ Nicevg.length (start :: rest) + bends + others := by
+theorem floor_le_price (start : Nicevg.Point) (rest : List Nicevg.Point) (bendsCost others : Int)
+    (hb : 0 ≤ bendsCost) (ho : 0 ≤ others) :
+    Nicevg.dist start (Nicevg.lastOr start rest) ≤ Nicevg.length (start :: rest) + bendsCost + others := by
   have := Nicevg.dist_le_length start rest
   omega
 

@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { NicevgError, type Sketch, type SketchConnector, type Style, render, svg, text } from "nicevg";
+import { NicevgError, type Sketch, type SketchEdge, type Style, render, svg, text } from "nicevg";
 import { box } from "nicevg/style/simple";
 
 /** A data store open on its right: its id, a dividing line, then its name. */
@@ -112,19 +112,19 @@ describe("render with style", () => {
     const sep = text("D1").width + 24;
     expect([node.bounds.width, node.bounds.height]).toEqual([sep + text("注文").width + 24, text("注文").height + 20]);
     expect(String(image)).toContain(`<line x1="${sep}" y1="0" x2="${sep}"`);
-    const edge = image.report.diagram.connectors.find((c) => c.from === "order" && c.to === "orders")!;
+    const edge = image.report.diagram.edges.find((c) => c.from === "order" && c.to === "orders")!;
     expect(edge.points.slice(1).every((p, i) => p.x === edge.points[i]!.x || p.y === edge.points[i]!.y)).toBe(true);
     expect(image.report.issues).toEqual([]);
   });
 
   /**
-   * Given a node whose class has no style, and a sketch with both edges and connectors
+   * Given a node whose class has no style, and a sketch giving its edges as connectors, their name before
    * When it is rendered
    * Then each throws a NicevgError saying what is wrong
    */
   test("rejects a class with no style and edges given twice", () => {
     expect(() => render({ ...dfd, style: {} as never })).toThrow('nodes[0].class: no style named "box"');
-    expect(() => render({ ...dfd, connectors: dfd.edges })).toThrow(NicevgError);
+    expect(() => render({ ...dfd, connectors: dfd.edges } as Sketch)).toThrow(NicevgError);
   });
 
     /**
@@ -133,7 +133,7 @@ describe("render with style", () => {
      * Then only the edge with no arrow given is drawn with a head
      */
     test("draws an edge's head unless it says arrow none", () => {
-      const heads = (edge: SketchConnector) => String(render({ ...dfd, edges: [edge] })).match(/<polygon/g)?.length ?? 0;
+      const heads = (edge: SketchEdge) => String(render({ ...dfd, edges: [edge] })).match(/<polygon/g)?.length ?? 0;
 
       expect(heads({ from: "order", to: "orders" })).toBe(1);
       expect(heads({ from: "order", to: "orders", arrow: "none" })).toBe(0);
@@ -147,7 +147,7 @@ describe("render with style", () => {
       test("draws an edge and its head in its colour", () => {
         const image = String(render({ ...dfd, edges: [{ from: "order", to: "orders", color: "#c00" }] }));
 
-        expect(image).toMatch(/<path id="connector-0"[^>]* stroke="#c00"/);
+        expect(image).toMatch(/<path id="edge-0"[^>]* stroke="#c00"/);
         expect(image).toMatch(/<polygon fill="#c00"/);
       });
 
@@ -159,7 +159,7 @@ describe("render with style", () => {
         test("draws an edge at its stroke width and dashes", () => {
           const image = String(render({ ...dfd, edges: [{ from: "order", to: "orders", strokeWidth: 2, strokeDasharray: "6 4" }] }));
 
-          expect(image).toMatch(/<path id="connector-0"[^>]* stroke-width="2" stroke-dasharray="6 4"/);
+          expect(image).toMatch(/<path id="edge-0"[^>]* stroke-width="2" stroke-dasharray="6 4"/);
         });
 
   /**

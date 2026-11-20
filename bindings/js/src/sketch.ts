@@ -21,16 +21,17 @@ export interface Asked {
 export type StepReply<Result> = { ok: Result } | { draw: Asked[]; state: unknown } | { error: string };
 
 /**
- * A sketch as the native library reads it, nodes drawn by their styles and
- * edges as connectors, and how to draw its parents' pictures when asked: a
+ * A sketch as the native library reads it, nodes drawn by their styles,
+ * and how to draw its parents' pictures when asked: a
  * parent goes without one, for the native library to ask its style for at
  * the sizes laying out needs.
  */
-export function sketchRequest<Node extends SketchNode>({ nodes, edges, connectors, style, rootAttrs }: Sketch<Node>) {
+export function sketchRequest<Node extends SketchNode>({ nodes, edges, style, rootAttrs, ...others }: Sketch<Node>) {
   // Each style is called only with nodes of its own class.
   const styles = (style ?? {}) as Record<string, Style>;
-  if (edges && connectors) {
-    throw new NicevgError("edges and connectors are the same; pass one of them");
+  // The name edges had before: said, as edges left out would only go missing.
+  if ("connectors" in others) {
+    throw new NicevgError("connectors: it is named edges now");
   }
   const ids = new Set(nodes.map((node) => node.id));
   const parentOf = parentsOf(nodes);
@@ -68,9 +69,9 @@ export function sketchRequest<Node extends SketchNode>({ nodes, edges, connector
       }
       return { id, x, y, parent, allowOverlap, svg: String(styleOf(node, index)(node)) };
     }),
-    connectors: (edges ?? connectors)?.map(({ from, to, ...connector }) => {
+    edges: edges?.map(({ from, to, ...edge }) => {
       const [start, finish] = [end(from), end(to)];
-      return { ...connector, from: start.node, fromPort: start.port, to: finish.node, toPort: finish.port };
+      return { ...edge, from: start.node, fromPort: start.port, to: finish.node, toPort: finish.port };
     }),
     rootAttrs: rootAttrs && Object.fromEntries(Object.entries(rootAttrs).map(([name, value]) => [name, String(value)])),
   };
@@ -135,7 +136,8 @@ nodes.forEach(({ id }, index) => {
 export function* layOutSketch<Result>(
   sketch: unknown,
 ): Generator<{ native: unknown } | { draw: Asked[] }, Result, StepReply<Result> | string[]> {
-  const pictures: Record<string, string[]> = {};
+  // Without a prototype, so that an id such as "constructor" is a key like any other.
+  const pictures: Record<string, string[]> = Object.create(null);
   let state: unknown = null;
   for (;;) {
     const reply = (yield { native: { sketch, pictures, state } }) as StepReply<Result>;

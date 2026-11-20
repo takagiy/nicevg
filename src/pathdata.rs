@@ -1,4 +1,4 @@
-//! Path data to the absolute end points of its commands, the way connector
+//! Path data to the absolute end points of its commands, the way edge
 //! routes are read: horizontal, vertical and closing commands become lines,
 //! curves and arcs contribute their end points, and malformed data yields
 //! no points at all.
