@@ -4,8 +4,10 @@ name: Publish to npm
 # prebuilt for each platform inside it, so installing runs no script.
 # takagiy/homebrew-tap moves its formula to the published package itself.
 #
-# A `v*` tag publishes; running it by hand only builds, tests and packs.
-# Either way the packed package is kept as the run's `npm-package` artifact,
+# A `v*` tag publishes a release, and a push to main a beta of the next patch
+# version under the tag `beta`, which `npm install nicevg@beta` takes;
+# running it by hand only builds, tests and packs.
+# Each way the packed package is kept as the run's `npm-package` artifact,
 # for the first publish, which has to be done by hand (see
 # docs/guide/development.md).
 #
@@ -15,6 +17,7 @@ name: Publish to npm
 on:
   push:
     tags: ["v*"]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -116,6 +119,13 @@ jobs:
       - name: Check the tag matches the package version
         if: startsWith(github.ref, 'refs/tags/')
         run: test "v$(node -p 'require("./package.json").version')" = "${GITHUB_REF_NAME}"
+      # Semver orders a beta of the next patch version after the last release
+      # and before the next; the run's number tells main's betas apart.
+      - name: Name main's package a beta of the next patch version
+        if: github.event_name == 'push' && github.ref_type == 'branch'
+        run: |
+          next=$(node -p 'const [major, minor, patch] = require("./package.json").version.split("."); `${major}.${minor}.${Number(patch) + 1}`')
+          npm version --no-git-tag-version "$next-beta.$GITHUB_RUN_NUMBER"
       - run: bun install --frozen-lockfile --ignore-scripts
       - run: bun run build:js
       - run: bun run typecheck
@@ -127,6 +137,7 @@ jobs:
           name: npm-package
           path: bindings/js/nicevg-*.tgz
           if-no-files-found: error
-      # The package just packed and tested, published with no token.
-      - if: startsWith(github.ref, 'refs/tags/')
-        run: npm publish ./nicevg-*.tgz
+      # The package just packed and tested, published with no token: a tag's
+      # as `latest`, main's as `beta`, which leaves `latest` on the release.
+      - if: github.event_name == 'push'
+        run: npm publish ./nicevg-*.tgz --tag ${{ github.ref_type == 'tag' && 'latest' || 'beta' }}
