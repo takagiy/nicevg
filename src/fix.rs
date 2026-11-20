@@ -11,7 +11,8 @@ use serde::Serialize;
 use crate::arrow::{drawn_edges, moved_arrowhead, shaft_route};
 use crate::diagram::{
     Diagram, DiagramEdge, DiagramLabel, DiagramNode, ReadNodes, ancestor_ids, child_element_paths, circle_bounds,
-    holds_end, is_node_shape, node_group, non_empty, number_attribute, read_nodes, rect_bounds, translation,
+    holds_end, is_node_shape, node_group, node_shape, non_empty, number_attribute, read_nodes, rect_bounds,
+    translation,
 };
 use crate::geometry::{
     Bounds, Point, distance_to_route, enclosing, format_number, intersection, point, route_is_clear, segments,
@@ -258,12 +259,8 @@ fn expand_nodes(draft: Draft) -> Draft {
             let Some(group) = node_group(document, &node_id) else {
                 return draft;
             };
-            let children = child_element_paths(document, &group);
-            let shape = children
-                .iter()
-                .find(|child| is_node_shape(document.element(child)))
-                .cloned();
-            let labels: Vec<_> = children
+            let shape = node_shape(document, &group);
+            let labels: Vec<_> = child_element_paths(document, &group)
                 .into_iter()
                 .filter(|child| document.element(child).name == "text")
                 .collect();

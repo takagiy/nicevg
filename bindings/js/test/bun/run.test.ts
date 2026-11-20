@@ -164,6 +164,22 @@ describe("nicevg run", () => {
   });
 
   /**
+   * [x] When the script file does not exist, it can say so and exit 2.
+   * Given no file named missing.ts
+   * When nicevg run runs on it
+   * Then it exits 2 with no report, naming the file on stderr
+   */
+  test("refuses a script that does not exist", () => {
+    const root = repository({});
+
+    const { exitCode, stdout, stderr } = run(root, ["missing.ts"]);
+
+    expect(exitCode).toBe(2);
+    expect(stdout).toBe("");
+    expect(stderr).toMatch(/^error: .*missing\.ts/);
+  });
+
+  /**
    * [x] When run in a subdirectory of the sandbox, the report's paths can be relative to the current directory.
    * Given docs/flow.ts logging a line, run from docs
    * When nicevg run runs on flow.ts there

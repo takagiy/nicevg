@@ -158,6 +158,8 @@ pub fn edge_ports(source: &Bounds, target: &Bounds) -> Ports {
     }
 }
 
+/// The side of `bounds` that `port` lies on, or the nearest to a port that a
+/// picture draws off the outline.
 pub fn side_of(port: Point, bounds: &Bounds) -> Side {
     if port.x == bounds.x {
         Side::Left
@@ -166,7 +168,7 @@ pub fn side_of(port: Point, bounds: &Bounds) -> Side {
     } else if port.y == bounds.y {
         Side::Top
     } else {
-        Side::Bottom
+        Side::nearest(bounds, port)
     }
 }
 

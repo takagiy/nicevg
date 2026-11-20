@@ -81,6 +81,22 @@ describe("nicevg doc", () => {
   });
 
   /**
+   * Given a block whose first line is `<!-- nicevg` alone
+   * When nicevg doc runs
+   * Then its SVG is embedded, with no title
+   */
+  test("embeds the SVG of a block whose first line names nothing", () => {
+    const root = repository({ "guide.md": `<!-- nicevg\n${ORDER_FLOW}-->\n` });
+
+    const { exitCode } = doc(root, ["guide.md"]);
+
+    const markdown = read(root, "guide.md");
+    expect(exitCode).toBe(0);
+    expect(markdown).toMatch(/<!-- nicevg:output -->\n<svg/);
+    expect(markdown).not.toContain("<title>");
+  });
+
+  /**
    * Given blocks naming their SVG, one with a description after the path and one
    *   with a quoted path holding a space
    * When nicevg doc runs
@@ -99,6 +115,21 @@ describe("nicevg doc", () => {
     expect(markdown).toContain("![The order flow](a.svg)");
     expect(markdown).toContain("![café](<with space/café.svg>)");
     expect(read(root, "with space/café.svg")).toContain("<svg");
+  });
+
+  /**
+   * Given a block whose quoted path is no JSON string: a backslash in it
+   *   starts no escape
+   * When nicevg doc runs
+   * Then the SVG is written to the path as written between the quotes
+   */
+  test("takes a quoted path that is no JSON string as it is written", () => {
+    const root = repository({ "guide.md": `<!-- nicevg "out\\d.svg"\n${ORDER_FLOW}-->\n` });
+
+    const { exitCode } = doc(root, ["guide.md"]);
+
+    expect(exitCode).toBe(0);
+    expect(read(root, "out\\d.svg")).toContain("<svg");
   });
 
   /**
@@ -327,6 +358,22 @@ describe("nicevg doc diagram scripts", () => {
 
     expect(failure.message).toBe("The diagram script imports what it may not");
     expect(failure.error).toContain("it leads outside the sandbox directory");
+  });
+
+  /**
+   * Given a markdown file named nicevg:x.md, as the sandbox names its own
+   *   modules, whose block imports a file outside the repository
+   * When nicevg doc runs
+   * Then it fails as in any other file, saying the import lies outside the
+   *   sandbox directory
+   */
+  test("refuses an import leading outside from a file named like the sandbox's own modules", () => {
+    const root = repository({ "nicevg:x.md": oneBlock(`import "../outside.ts";`) });
+
+    const [failure] = doc(root, ["nicevg:x.md"]).result.failures;
+
+    expect(failure.message).toBe("The diagram script imports what it may not");
+    expect(failure.error).toContain("it lies outside the sandbox directory");
   });
 
   /**
@@ -609,18 +656,19 @@ const nodes = [{ id: "a", class: "box", x: 0, y: 0, label: "A" }];
   });
 
   /**
-   * Given files of two git repositories, a file in no repository, and a file that is no markdown
+   * Given files of two git repositories, a file in no repository, a file that
+   *   is no markdown, and a markdown file that does not exist
    * When nicevg doc runs on each case
    * Then it draws nothing, prints no JSON and exits with 2, saying why on
    *   stderr; with --sandbox-dir the file in no repository is drawn
    */
-  test("refuses files of two repositories, outside any without --sandbox-dir, or not markdown", () => {
+  test("refuses files of two repositories, outside any without --sandbox-dir, not markdown, or missing", () => {
     const first = repository({ "a.md": oneBlock(ORDER_FLOW) });
     const second = repository({ "b.md": oneBlock(ORDER_FLOW) });
     const loose = mkdtempSync(join(tmpdir(), "nicevg-loose-"));
     writeFileSync(join(loose, "c.md"), oneBlock(ORDER_FLOW));
 
-    for (const args of [[join(first, "a.md"), join(second, "b.md")], [join(loose, "c.md")], [join(first, "notes.txt")]]) {
+    for (const args of [[join(first, "a.md"), join(second, "b.md")], [join(loose, "c.md")], [join(first, "notes.txt")], [join(first, "missing.md")]]) {
       const { exitCode, stdout, stderr } = Bun.spawnSync([process.execPath, cli, "doc", ...args]);
       expect(exitCode).toBe(2);
       expect(stdout.toString()).toBe("");

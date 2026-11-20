@@ -1059,6 +1059,8 @@ fn uneven_sides(diagram: &Diagram) -> Vec<(&str, usize, f64)> {
     }
     sides
         .into_iter()
+        // A side of no length has no room to spread ends over.
+        .filter(|(_, (low, high, _))| low < high)
         .map(|((id, _), (low, high, mut positions))| {
             positions.sort_by(f64::total_cmp);
             let even = (high - low) / (positions.len() + 1) as f64;

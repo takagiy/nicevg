@@ -233,6 +233,31 @@ fn expands_a_node_box_around_its_label_without_moving_the_label() {
     assert_fix_snapshots!(result);
 }
 
+/// Given an annotated node whose box lies in a group of its own inside it,
+///   too small for the label
+/// When the diagram is fixed
+/// Then that box expands round the label, as a box directly in the node does
+#[test]
+fn expands_a_node_box_nested_in_a_group_of_its_own() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 400 300">
+        <g data-node="confirm">
+          <g><rect x="20" y="20" width="70" height="40" /></g>
+          <text x="55" y="52" text-anchor="middle" font-size="14">Confirm payment</text>
+        </g>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let label = result.report.diagram.nodes[0].label_bounds[0];
+
+    assert!(contains(
+        &node_bounds(&result.report, "confirm"),
+        &inflate(&label, 12.0)
+    ));
+    assert!(!has_issue(&result.report, "node-label-overflows"));
+}
+
 /// Given a circular node whose label reaches within 12px of its circle
 /// When the diagram is fixed
 /// Then the radius grows until the label fits, while the centre and the
@@ -412,6 +437,38 @@ fn moves_a_polygon_arrowhead_with_its_rerouted_edge() {
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
     assert_fix_snapshots!(result);
+}
+
+/// Given two edges in one group, each a polyline with a polygon arrowhead of
+///   its own, that share their last segment and end at the same point on
+///   their target, a node standing in their way
+/// When the diagram is fixed
+/// Then each rerouted edge runs on to the tip of an arrowhead, on the
+///   target's outline: neither arrowhead is left behind
+#[test]
+fn moves_each_arrowhead_of_edges_ending_at_one_point_with_its_own_edge() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 -100 500 400">
+        <g data-node="a"><rect x="0" y="0" width="80" height="40" /></g>
+        <g data-node="c"><rect x="0" y="150" width="80" height="40" /></g>
+        <g data-node="block"><rect x="150" y="60" width="80" height="60" /></g>
+        <g data-node="b"><rect x="300" y="70" width="80" height="40" /></g>
+        <g>
+          <polyline id="ab" data-from="a" data-to="b" points="80,20 120,20 120,90 290,90" fill="none" />
+          <polyline id="cb" data-from="c" data-to="b" points="80,170 120,170 120,90 290,90" fill="none" />
+          <polygon points="290,85 300,90 290,95" />
+          <polygon points="290,85 300,90 290,95" />
+        </g>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let target = node_bounds(&result.report, "b");
+
+    for id in ["ab", "cb"] {
+        let points = edge_points(&result.report, id);
+        assert!(side_of(points[points.len() - 1], &target).is_some(), "{id}: {points:?}");
+    }
 }
 
 /// Given a edge drawn inside a group translated by (-10, 5), crossing
@@ -2212,6 +2269,36 @@ fn reroutes_a_edge_reaching_its_node_off_the_port_it_names() {
 
     let points = edge_points(&result.report, "wrote");
     assert_eq!(points[points.len() - 1], Point { x: 300.0, y: 238.0 }, "{points:?}");
+}
+
+/// Given a custom node whose port "out" is drawn 3px above its top side,
+///   joined from that port by a straight line to a node above it, a third
+///   node standing between the two
+/// When the diagram is fixed
+/// Then the edge leaves the port upwards, the way of the side nearest to
+///   it, and runs round the node between in horizontal and vertical segments
+#[test]
+fn routes_a_edge_from_a_port_drawn_off_its_node_s_outline() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -250 400 400">
+        <g data-node="a" data-custom="true">
+          <rect data-bounds="true" x="0" y="0" width="100" height="40"/>
+          <circle data-port="out" cx="50" cy="-3" r="2"/>
+        </g>
+        <g data-node="b"><rect x="0" y="-200" width="100" height="40"/></g>
+        <g data-node="between"><rect x="30" y="-100" width="40" height="30"/></g>
+        <line id="up" data-from="a" data-from-port="out" data-to="b" x1="50" y1="-3" x2="50" y2="-160"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+
+    let points = edge_points(&result.report, "up");
+    let (start, next) = (points[0], points[1]);
+    assert_eq!(start, Point { x: 50.0, y: -3.0 });
+    assert!(next.x == start.x && next.y < start.y, "{points:?}");
+    assert!(is_orthogonal(&points), "{points:?}");
+    assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
 }
 
 /// Given `article` marking its port "author" on its left and then on its

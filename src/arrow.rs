@@ -40,6 +40,9 @@ pub fn drawn_edges(document: &Document) -> Vec<Drawn> {
         .into_iter()
         .filter(|(_, group)| annotation(group).is_some())
         .collect();
+    // The arrowheads earlier shafts took, which later shafts skip: of two
+    // shafts ending at one point, each takes an arrowhead of its own.
+    let mut taken: Vec<Path> = Vec::new();
     let from_shafts = shafts.iter().enumerate().filter_map(|(index, (path, element))| {
         let (from, to) = annotation(element)?;
         let id = non_empty(element.attr("id")).map_or_else(|| format!("connector-{}", index + 1), str::to_owned);
@@ -47,12 +50,14 @@ pub fn drawn_edges(document: &Document) -> Vec<Drawn> {
         let beside: Vec<Path> = if document.element(parent).name == "g" {
             polygons_within(document, parent)
                 .into_iter()
-                .filter(|polygon| polygon.len() == path.len())
+                .filter(|polygon| polygon.len() == path.len() && !taken.contains(polygon))
                 .collect()
         } else {
             Vec::new()
         };
-        Some(drawn(document, id, from, to, path.clone(), &beside))
+        let edge = drawn(document, id, from, to, path.clone(), &beside);
+        taken.extend(edge.arrowheads.iter().map(|arrowhead| arrowhead.path.clone()));
+        Some(edge)
     });
     let from_groups = groups.iter().enumerate().filter_map(|(index, (group, element))| {
         let (from, to) = annotation(element)?;

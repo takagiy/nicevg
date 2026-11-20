@@ -135,7 +135,8 @@ nodes.forEach(({ id }, index) => {
 export function* layOutSketch<Result>(
   sketch: unknown,
 ): Generator<{ native: unknown } | { draw: Asked[] }, Result, StepReply<Result> | string[]> {
-  const pictures: Record<string, string[]> = {};
+  // Without a prototype, so that an id such as "constructor" is a key like any other.
+  const pictures: Record<string, string[]> = Object.create(null);
   let state: unknown = null;
   for (;;) {
     const reply = (yield { native: { sketch, pictures, state } }) as StepReply<Result>;

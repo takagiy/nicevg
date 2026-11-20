@@ -325,4 +325,24 @@ describe("parents a style draws", () => {
     expect(group.bounds.x + group.bounds.width - (title.x + title.width)).toBeGreaterThanOrEqual(12);
     expect(image.report.issues).toEqual([]);
   });
+
+  /**
+   * Given parents whose ids are "constructor" and "__proto__", names of
+   *   members every JavaScript object has
+   * When the sketch is rendered
+   * Then each is drawn round its child, as a parent of any other id is
+   */
+  test("draws a parent whose id names a member of every object", () => {
+    for (const id of ["constructor", "__proto__"]) {
+      const image = render({
+        nodes: [
+          { id, children: ["a"], class: "box" },
+          { id: "a", class: "box", x: 100, y: 100, width: 80, height: 40 },
+        ],
+        style: { box },
+      });
+
+      expect(image.report.diagram.nodes.find((node) => node.id === id)!.bounds).toEqual({ x: 88, y: 88, width: 104, height: 64 });
+    }
+  });
 });

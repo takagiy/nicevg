@@ -124,6 +124,37 @@ fn moves_a_node_a_little_to_straighten_its_edge() {
     assert_fix_snapshots!(result);
 }
 
+/// Given the two boxes above, whose edge laying out straightens, and
+///   elsewhere a box joined to a node drawn as a circle of radius 0
+/// When the diagram is laid out
+/// Then the edge between the two boxes comes out straight all the same
+#[test]
+fn lays_out_a_diagram_holding_a_node_of_no_size() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 420">
+        <g data-node="notify">
+          <rect x="20" y="100" width="130" height="56" />
+          <text x="85" y="133" text-anchor="middle" font-size="13">Notify</text>
+        </g>
+        <g data-node="mail">
+          <rect x="280" y="52" width="130" height="56" />
+          <text x="345" y="85" text-anchor="middle" font-size="13">Email service</text>
+        </g>
+        <path id="email" data-from="notify" data-to="mail" d="M 150 128 L 220 128 L 220 80 L 280 80" />
+        <g data-node="log">
+          <rect x="500" y="240" width="130" height="56" />
+          <text x="565" y="273" text-anchor="middle" font-size="13">Log</text>
+        </g>
+        <g data-node="dot"><circle cx="565" cy="370" r="0" /></g>
+        <path id="logged" data-from="log" data-to="dot" d="M 565 296 L 565 370" />
+      </svg>
+    "#;
+
+    let result = layout(svg);
+
+    assert_eq!(bend_count(&edge_points(&result.report, "email")), 0);
+}
+
 /// Given two boxes of one height in a row, joined by a straight edge
 ///   that runs 12px above the middle of the sides it leaves and enters
 /// When the diagram is laid out

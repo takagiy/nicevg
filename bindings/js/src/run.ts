@@ -1,10 +1,9 @@
 // `nicevg run`: draws the diagram one DSL script renders, in the sandbox as
 // `nicevg doc` draws a block (see doc.ts), and writes its SVG.
 
-import { readFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 
-import { UsageError, cutAt, drawScript, gitRoot, outside, replace, shown } from "./doc.ts";
+import { UsageError, cutAt, drawScript, gitRoot, outside, readInput, replace, shown } from "./doc.ts";
 
 export interface RunOptions {
   /** The script's file, or its code with `inline`. */
@@ -56,7 +55,7 @@ export async function runScript(options: RunOptions): Promise<{ report: RunRepor
     const place = call.place?.replace(/^(.*)(:\d+:\d+)$/, (_, file: string, at: string) => here(file) + at);
     (console[`console.${call.method}`] ??= []).push(place ? `${place}: ${text}` : text);
   });
-  const code = options.inline ? options.script : readFileSync(path, "utf8");
+  const code = options.inline ? options.script : readInput(path);
   const drawn = await drawScript(
     root,
     { file: shown(root, path), line: 1, code, modules: new Map() },

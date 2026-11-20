@@ -234,6 +234,22 @@ pub fn is_node_shape(element: &Element) -> bool {
     element.name == "rect" || element.name == "circle"
 }
 
+/// The shape a node's group draws it as: the first in the group, which holds
+/// it directly unless it is annotated `data-node`.
+pub fn node_shape(document: &Document, group: &[usize]) -> Option<Path> {
+    if document.element(group).attr("data-node").is_empty() {
+        child_element_paths(document, group)
+            .into_iter()
+            .find(|child| is_node_shape(document.element(child)))
+    } else {
+        document
+            .descendants(group)
+            .into_iter()
+            .find(|(_, element)| is_node_shape(element))
+            .map(|(shape, _)| shape)
+    }
+}
+
 fn shape_bounds(document: &Document, path: &[usize]) -> Bounds {
     if document.element(path).name == "circle" {
         circle_bounds(document, path)
@@ -449,27 +465,14 @@ fn recognize(document: &Document, custom: &[&Path], index: usize, path: &Path, g
     {
         return None;
     }
-    let children = child_element_paths(document, path);
-    let direct_shape = children
-        .iter()
-        .find(|child| is_node_shape(document.element(child)))
-        .cloned();
-    let labels: Vec<Path> = children
+    let labels: Vec<Path> = child_element_paths(document, path)
         .into_iter()
         .filter(|child| document.element(child).name == "text")
         .collect();
-    if !annotated && (direct_shape.is_none() || labels.is_empty()) {
+    if !annotated && labels.is_empty() {
         return None;
     }
-    let shape_path = if annotated {
-        document
-            .descendants(path)
-            .into_iter()
-            .find(|(_, element)| is_node_shape(element))
-            .map(|(candidate, _)| candidate)
-    } else {
-        direct_shape
-    }?;
+    let shape_path = node_shape(document, path)?;
     Some(Recognized {
         path: path.clone(),
         id,

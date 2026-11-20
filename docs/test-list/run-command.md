@@ -10,6 +10,7 @@
 - [x] When `-s <code>` is given, it can draw that DSL to `out.svg` in the current directory.
 - [x] When `-s -` is given, it can read the DSL from stdin.
 - [x] When both or neither of `<script>` and `-s` are given, it can print the usage and exit 2.
+- [x] When the script file does not exist, it can say so and exit 2.
 - [x] When the SVG would overwrite the script, it can refuse and exit 2.
 - [x] When run in a subdirectory of the sandbox, the report's paths can be relative to the current directory.
 

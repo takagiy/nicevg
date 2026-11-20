@@ -32,7 +32,7 @@ export interface DocResult {
 /** Arguments `nicevg doc` cannot work from, such as files outside any git repository. */
 export class UsageError extends Error { }
 
-const BLOCK = /^<!--[ \t]*nicevg(-module)?(?=[ \t\r\n])/;
+const BLOCK = /^<!--[ \t]*nicevg(-module)?(?=[ \t\r\n]|$)/;
 const OUTPUT_START = "<!-- nicevg:output -->";
 const OUTPUT_END = "<!-- /nicevg:output -->";
 const CHILD = fileURLToPath(new URL(`./render-child${extname(fileURLToPath(import.meta.url))}`, import.meta.url));
@@ -61,6 +61,15 @@ export function gitRoot(path: string): string | undefined {
     if (dirname(dir) === dir) {
       return undefined;
     }
+  }
+}
+
+/** The text of a file the arguments name; one that cannot be read is a wrong argument. */
+export function readInput(path: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    throw new UsageError((error as Error).message);
   }
 }
 
@@ -119,10 +128,19 @@ function block(markdown: string, node: Html): Block | undefined {
   };
 }
 
+/** A quoted path: the JSON string the help asks for, or, when it is none, what stands between its quotes. */
+function unquoted(text: string): string {
+  try {
+    return JSON.parse(text) as string;
+  } catch {
+    return text.slice(1, -1);
+  }
+}
+
 /** A block's first line read: the SVG it is drawn to, if any, and the text describing it. */
 function header(text: string): { output?: string; description: string } {
   const quoted = /^"(?:[^"\\]|\\.)*"/.exec(text);
-  const first = quoted ? (JSON.parse(quoted[0]) as string) : text.split(/\s+/)[0]!;
+  const first = quoted ? unquoted(quoted[0]) : text.split(/\s+/)[0]!;
   const rest = text.slice(quoted ? quoted[0].length : first.length).trim();
   if (first.endsWith(".svg")) {
     return { output: first, description: rest || basename(first, ".svg") };
@@ -299,7 +317,7 @@ export async function doc(files: string[], options: DocOptions, print: (text: st
   const changed = (path: string) => result.changedFiles.push(shown(root, path));
 
   const documents = paths.map((path) => {
-    const markdown = readFileSync(path, "utf8");
+    const markdown = readInput(path);
     return { path, file: shown(root, path), markdown, ...blocksOf(markdown) };
   });
   // Every block writing each SVG, as `file:line`, to fail those that share one.
