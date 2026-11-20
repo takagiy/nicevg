@@ -251,7 +251,7 @@ fn with_arrowheads(mut result: FixResult, sketch: &Sketch) -> FixResult {
             .edges
             .iter()
             .find(|drawn| drawn.id == id)
-            .expect("every connector read back")
+            .expect("every edge read back")
             .points;
         let (shaft, arrowheads) = shaft_and_arrowheads(route, edge.arrow);
         if arrowheads.is_empty() {
@@ -262,7 +262,7 @@ fn with_arrowheads(mut result: FixResult, sketch: &Sketch) -> FixResult {
             .into_iter()
             .find(|(_, element)| element.attr("id") == id)
             .map(|(path, element)| (path, element.clone()))
-            .expect("the connector's line");
+            .expect("the edge's line");
         let color = line.attr("stroke").to_owned();
         let arrowheads = arrowheads.iter().map(|points| {
             Element::new("polygon")
@@ -446,7 +446,7 @@ fn differences_between(before: &Picture, last: &Picture, frame: Bounds) -> Vec<&
         what.push("at another size");
     }
     if before.texts.len() != last.texts.len() || !before.texts.iter().zip(&last.texts).all(|(a, b)| same(a, b)) {
-        what.push("with its texts elsewhere");
+        what.push("with its labels elsewhere");
     }
     if before.ports.len() != last.ports.len()
         || !before

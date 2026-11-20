@@ -443,7 +443,7 @@ fn separate_nodes(draft: Draft) -> Draft {
     step(draft, 0)
 }
 
-/// Moves each child lying on a text of its parent the nearer way off it,
+/// Moves each child lying on a label of its parent the nearer way off it,
 /// down or right, to the parent's padding from the text: the parent grows
 /// round it after, as round any child. Never up or left, which would grow
 /// the parent past its top left, where its texts start from: a style draws
@@ -482,7 +482,7 @@ fn clear_parent_texts(draft: Draft) -> Draft {
         else {
             return draft;
         };
-        let message = format!("Moved node \"{id}\" off a text of its parent.");
+        let message = format!("Moved node \"{id}\" off a label of its parent.");
         match moved(&draft, &id, by, message) {
             Some(moved) => step(moved, attempt + 1),
             None => draft,
@@ -644,7 +644,7 @@ fn pick_reroutes<'a>(
         .iter()
         .filter_map(|issue| match issue.code.as_str() {
             "edge-label-detached" => Some((issue.elements.first()?.as_str(), issue.elements.get(1)?.as_str())),
-            "edge-label-overlaps-node" => {
+            "label-overlaps-node" => {
                 let label = diagram
                     .labels
                     .iter()
@@ -688,7 +688,7 @@ fn pick_reroutes<'a>(
 
     let reroute_codes = [
         "edge-overlaps-node",
-        "edge-near-edge-label",
+        "edge-near-label",
         "edge-end-detached",
         "edge-slanted",
         "edge-end-detached-port",
@@ -790,7 +790,7 @@ fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_ro
                         None => document,
                     },
                 );
-            let message = format!("Rerouted connector \"{}\" around diagram obstacles.", edge.id);
+            let message = format!("Rerouted edge \"{}\" around diagram obstacles.", edge.id);
             let edited: Vec<&[usize]> = std::iter::once(shaft.as_slice())
                 .chain(drawn.arrowheads.iter().map(|arrowhead| arrowhead.path.as_slice()))
                 .collect();
@@ -1364,7 +1364,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
                 placement.bounds,
                 placement.anchor,
             );
-            let message = format!("Moved label \"{}\" beside connector \"{edge_id}\".", label.id);
+            let message = format!("Moved label \"{}\" beside edge \"{edge_id}\".", label.id);
             let edited: Vec<&[usize]> = texts.iter().map(Vec::as_slice).collect();
             let draft = draft.changed_beside_nodes(updated, "move-label", message, &[&label.id, &edge_id], &edited);
             (draft, [obstacles, vec![placement.bounds]].concat(), stuck)
@@ -1651,12 +1651,12 @@ fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
             );
             let message = if stale {
                 format!(
-                    "Moved label \"{}\" away from where \"{}\" now crosses, turns or ends.",
+                    "Moved label \"{}\" away from where \"{}\" now crosses, bends or ends.",
                     label.id, edge.id
                 )
             } else {
                 format!(
-                    "Moved label \"{}\" clear of connectors other than \"{}\".",
+                    "Moved label \"{}\" clear of edges other than \"{}\".",
                     label.id, edge.id
                 )
             };
@@ -2230,7 +2230,7 @@ fn scale_size(draft: Draft, before: &Bounds, after: &Bounds) -> Draft {
             .fold(root, |root, (name, _, value)| root.with_attr(name, value))
     });
     let message = format!(
-        "Scaled the SVG {} to keep the drawing scale.",
+        "Scaled the SVG {} to keep the diagram's scale.",
         scaled
             .iter()
             .map(|(name, from, to)| format!("{name} from {from} to {to}"))

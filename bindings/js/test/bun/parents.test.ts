@@ -213,7 +213,7 @@ describe("parents a style draws", () => {
    *   is drawn, 12px, then 40px, then 68px
    * When the sketch is rendered
    * Then after laying it out once more, the parent is reported as drawn
-   *   with its texts elsewhere than it was laid out by
+   *   with its labels elsewhere than it was laid out by
    */
   test("reports a parent still drawn otherwise than laid out after laying out again", () => {
     const { image, calls } = titledAt((call) => 12 + 28 * (call - 1));
@@ -222,7 +222,7 @@ describe("parents a style draws", () => {
     expect(image.report.issues.filter((issue) => issue.code === "parent-drawn-differently")).toEqual([
       {
         code: "parent-drawn-differently",
-        message: 'The style of parent "group" drew it with its texts elsewhere than it was laid out by.',
+        message: 'The style of parent "group" drew it with its labels elsewhere than it was laid out by.',
         elements: ["group"],
       },
     ]);

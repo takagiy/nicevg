@@ -48,7 +48,7 @@ fn reports_the_side_and_required_bounds_when_the_viewbox_clips_content() {
         issues_json(&report),
         [json!({
             "code": "diagram-clipped",
-            "message": "Drawing exceeds the safe viewBox on the right side.",
+            "message": "The diagram exceeds the safe viewBox on the right side.",
             "elements": ["svg"],
             "details": {
                 "sides": ["right"],
@@ -206,7 +206,7 @@ fn reports_a_edge_crossing_an_unrelated_node() {
 
     assert!(issues_json(&report).contains(&json!({
         "code": "edge-overlaps-node",
-        "message": "Connector \"flow\" crosses unrelated node \"obstacle\".",
+        "message": "Edge \"flow\" crosses unrelated node \"obstacle\".",
         "elements": ["flow", "obstacle"],
     })));
 }
@@ -269,8 +269,8 @@ fn reports_a_edge_passing_within_8px_of_a_free_label() {
     let report = inspect(svg);
 
     assert!(issues_json(&report).contains(&json!({
-        "code": "edge-near-edge-label",
-        "message": "Connector \"flow\" passes within 8px of label \"retry\".",
+        "code": "edge-near-label",
+        "message": "Edge \"flow\" passes within 8px of label \"retry\".",
         "elements": ["flow", "retry"],
         "details": { "requiredClearance": 8 },
     })));
@@ -307,13 +307,13 @@ fn reports_edge_ends_placed_inside_their_nodes() {
         [
             json!({
                 "code": "edge-overlaps-node",
-                "message": "Connector \"flow\" starts inside node \"source\".",
+                "message": "Edge \"flow\" starts inside node \"source\".",
                 "elements": ["flow", "source"],
                 "details": { "endpoint": "start" },
             }),
             json!({
                 "code": "edge-overlaps-node",
-                "message": "Connector \"flow\" ends inside node \"target\".",
+                "message": "Edge \"flow\" ends inside node \"target\".",
                 "elements": ["flow", "target"],
                 "details": { "endpoint": "end" },
             }),
@@ -356,13 +356,13 @@ fn reports_edge_ends_away_from_their_nodes() {
         [
             json!({
                 "code": "edge-end-detached",
-                "message": "Connector \"flow\" starts 40px away from node \"source\".",
+                "message": "Edge \"flow\" starts 40px away from node \"source\".",
                 "elements": ["flow", "source"],
                 "details": { "endpoint": "start", "distance": 40 },
             }),
             json!({
                 "code": "edge-end-detached",
-                "message": "Connector \"flow\" ends 40px away from node \"target\".",
+                "message": "Edge \"flow\" ends 40px away from node \"target\".",
                 "elements": ["flow", "target"],
                 "details": { "endpoint": "end", "distance": 40 },
             }),
@@ -438,16 +438,16 @@ fn reports_labels_that_cover_nodes() {
     assert_eq!(
         issues_json(&report)
             .into_iter()
-            .filter(|issue| issue["code"] == "edge-label-overlaps-node")
+            .filter(|issue| issue["code"] == "label-overlaps-node")
             .collect::<Vec<_>>(),
         [
             json!({
-                "code": "edge-label-overlaps-node",
+                "code": "label-overlaps-node",
                 "message": "Label \"over-box\" overlaps node \"box\".",
                 "elements": ["over-box", "box"],
             }),
             json!({
-                "code": "edge-label-overlaps-node",
+                "code": "label-overlaps-node",
                 "message": "Label \"over-disc\" overlaps node \"disc\".",
                 "elements": ["over-disc", "disc"],
             }),
@@ -479,7 +479,7 @@ fn ignores_labels_inside_a_parent_unless_they_cover_a_child() {
     let report = inspect(svg);
 
     assert_eq!(
-        issues_with_code(&report, "edge-label-overlaps-node"),
+        issues_with_code(&report, "label-overlaps-node"),
         [["over-child", "service"]]
     );
 }
@@ -499,7 +499,7 @@ fn includes_free_labels_when_checking_the_safe_viewbox() {
 
     assert!(issues_json(&report).contains(&json!({
         "code": "diagram-clipped",
-        "message": "Drawing exceeds the safe viewBox on the right side.",
+        "message": "The diagram exceeds the safe viewBox on the right side.",
         "elements": ["svg"],
         "details": {
             "sides": ["right"],
@@ -534,7 +534,7 @@ fn reports_edges_that_run_along_the_same_segment() {
 
     assert!(issues_json(&report).contains(&json!({
         "code": "edge-overlaps",
-        "message": "Connectors \"request\" and \"reply\" overlap along a segment.",
+        "message": "Edges \"request\" and \"reply\" overlap along a segment.",
         "elements": ["request", "reply"],
     })));
 }
@@ -584,7 +584,7 @@ fn reports_a_edge_bending_just_beside_another() {
 
     assert!(issues_json(&report).contains(&json!({
         "code": "edge-bend-near-edge",
-        "message": "Connectors \"score\" and \"model\" come within 5px of each other where one turns.",
+        "message": "Edges \"score\" and \"model\" come within 5px of each other where one bends.",
         "elements": ["score", "model"],
     })));
 }
@@ -847,7 +847,7 @@ fn reports_a_edge_end_off_the_port_it_names() {
             .collect::<Vec<_>>(),
         [json!({
             "code": "edge-end-detached-port",
-            "message": "Connector \"wrote\" ends off port \"id\" of node \"user\".",
+            "message": "Edge \"wrote\" ends off port \"id\" of node \"user\".",
             "elements": ["wrote", "user"],
             "details": { "endpoint": "end", "port": "id" },
         })]
@@ -870,7 +870,7 @@ fn reports_a_edge_end_naming_a_port_its_node_lacks() {
             .collect::<Vec<_>>(),
         [json!({
             "code": "unknown-port",
-            "message": "Connector \"wrote\" ends at port \"email\", which node \"user\" does not have.",
+            "message": "Edge \"wrote\" ends at port \"email\", which node \"user\" does not have.",
             "elements": ["wrote", "user"],
             "details": { "endpoint": "end", "port": "email" },
         })]
@@ -1004,7 +1004,7 @@ fn reports_a_edge_end_naming_a_node_the_diagram_lacks() {
             .collect::<Vec<_>>(),
         [json!({
           "code": "unknown-node",
-          "message": "Connector \"typo\" ends at node \"ghost\", which the diagram does not have.",
+          "message": "Edge \"typo\" ends at node \"ghost\", which the diagram does not have.",
           "elements": ["typo"],
           "details": { "endpoint": "end", "node": "ghost" },
         })]

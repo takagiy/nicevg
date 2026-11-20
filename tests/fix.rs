@@ -803,7 +803,7 @@ fn places_a_label_across_a_parent_s_outline_when_neither_side_has_room() {
         let route = edge_points(&result.report, "edge");
 
         assert!(distance_to_route(&label, &route) <= 16.0, "{to}: {label:?} {route:?}");
-        assert!(!has_issue(&result.report, "edge-near-edge-label"), "{to}");
+        assert!(!has_issue(&result.report, "edge-near-label"), "{to}");
         assert!(!has_issue(&result.report, "edge-label-detached"), "{to}");
     }
 }
@@ -1137,7 +1137,7 @@ fn keeps_edges_off_crowded_sides_so_every_label_finds_a_slot() {
     for edge in &result.report.diagram.edges {
         assert!(is_orthogonal(&edge.points));
     }
-    assert!(!has_issue(&result.report, "edge-near-edge-label"));
+    assert!(!has_issue(&result.report, "edge-near-label"));
     assert!(result.report.issues.is_empty());
 
     assert_fix_snapshots!(result);
@@ -1262,7 +1262,7 @@ fn moves_a_label_off_a_node_to_a_free_spot_beside_its_edge() {
     let result = fix(svg);
     let points = edge_points(&result.report, "flow");
 
-    assert_eq!(issue_codes(&inspect(svg)), ["edge-label-overlaps-node"]);
+    assert_eq!(issue_codes(&inspect(svg)), ["label-overlaps-node"]);
     assert_eq!(points, edge_points(&inspect(svg), "flow"));
     assert!(distance_to_route(&label_bounds(&result.report, "retry"), &points) <= 16.0);
     assert_eq!(change_codes(&result), ["move-label"]);
@@ -1401,7 +1401,7 @@ fn moves_every_tspan_line_of_a_label() {
 
     let result = fix(&svg);
 
-    assert_eq!(issue_codes(&inspect(&svg)), ["edge-label-overlaps-node"]);
+    assert_eq!(issue_codes(&inspect(&svg)), ["label-overlaps-node"]);
     assert_moved_as_one_block(&svg, &result);
     assert_fix_snapshots!(result);
 }
@@ -2197,7 +2197,7 @@ fn pushes_another_edge_s_label_aside_to_keep_a_line_straight() {
       </svg>
     "#;
     let before = inspect(svg);
-    assert!(has_issue(&before, "edge-near-edge-label"), "{:?}", issue_codes(&before));
+    assert!(has_issue(&before, "edge-near-label"), "{:?}", issue_codes(&before));
 
     let result = fix(svg);
     let label = label_bounds(&result.report, "events");
