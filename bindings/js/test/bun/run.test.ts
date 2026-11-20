@@ -260,7 +260,7 @@ render({
     const { exitCode, report: result } = report(root, ["flow.ts"]);
 
     expect(exitCode).toBe(0);
-    expect(result.remainingIssues).toEqual([{ code: "label-overlaps-node", message: 'Label "connector-0" overlaps node "g".' }]);
+    expect(result.remainingIssues).toEqual([{ code: "label-overlaps-node", message: 'Label "edge-0" overlaps node "g".' }]);
     expect(result.output).toBe("flow.svg");
   });
 

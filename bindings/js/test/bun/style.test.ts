@@ -147,7 +147,7 @@ describe("render with style", () => {
       test("draws an edge and its head in its colour", () => {
         const image = String(render({ ...dfd, edges: [{ from: "order", to: "orders", color: "#c00" }] }));
 
-        expect(image).toMatch(/<path id="connector-0"[^>]* stroke="#c00"/);
+        expect(image).toMatch(/<path id="edge-0"[^>]* stroke="#c00"/);
         expect(image).toMatch(/<polygon fill="#c00"/);
       });
 
@@ -159,7 +159,7 @@ describe("render with style", () => {
         test("draws an edge at its stroke width and dashes", () => {
           const image = String(render({ ...dfd, edges: [{ from: "order", to: "orders", strokeWidth: 2, strokeDasharray: "6 4" }] }));
 
-          expect(image).toMatch(/<path id="connector-0"[^>]* stroke-width="2" stroke-dasharray="6 4"/);
+          expect(image).toMatch(/<path id="edge-0"[^>]* stroke-width="2" stroke-dasharray="6 4"/);
         });
 
   /**

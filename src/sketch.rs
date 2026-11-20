@@ -771,7 +771,7 @@ fn shaft_and_arrowheads(route: &[Point], arrow: SketchArrow) -> (Vec<Point>, Vec
 /// The id of the edge at `index` in a sketch, as the diagram read back
 /// names it, and the label describing it.
 fn edge_id(index: usize) -> String {
-    format!("connector-{index}")
+    format!("edge-{index}")
 }
 
 /// Where a node lies: the box around its picture, or its given size.
