@@ -88,6 +88,8 @@ Trusted Publisher はすでに npm にあるパッケージにしか登録でき
 
 以後はタグの push だけで公開される。npm のトークンは作らない（2FA を回避するトークンは、npm が段階的に廃止している）。
 
+main に push すると、同じワークフローが beta を公開する。バージョンは、次のパッチバージョンに実行番号を付けたもの（`0.31.4` のあとなら `0.31.5-beta.<実行番号>`）で、npm のタグは `beta` になる。`latest` は動かないので、`npm install nicevg` で入るバージョンと tap は変わらない。beta は `npm install nicevg@beta` で入る。
+
 ## Windows
 
 Windows では GNU ツールチェーン（`x86_64-pc-windows-gnu`）でビルドしており、依存クレートのリンクに MinGW-w64 の `dlltool` を使う。
