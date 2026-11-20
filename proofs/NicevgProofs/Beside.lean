@@ -4,7 +4,7 @@
 Fixing reads a draft's whole diagram again after each change
 (`Draft::report`, src/fix.rs). Reading the nodes is most of that on
 diagrams with many texts: every node's shape, its texts measured, its
-ports. Writing a edge's new route replaces its shaft and arrowheads,
+ports. Writing an edge's new route replaces its shaft and arrowheads,
 and moving a label rewrites its texts; where those stand beside every
 node's group (`ReadNodes::stand_beside`: none is a group, lies inside one
 or holds one), the nodes read before are kept for the changed draft

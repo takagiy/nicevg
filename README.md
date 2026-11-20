@@ -79,6 +79,6 @@ await image.write("diagram.svg");
 ## Docs
 
 - [SVG contract](docs/reference/svg-contract.md): the attributes nicevg reads (`data-node`, `data-from`, `data-label-for`, ...)
-- [Test list](docs/test-list/diagram.md): what nicevg checks, fixes and arranges, one behaviour per line
+- [Test list](docs/test-list/diagram.md): what nicevg inspects, fixes and lays out, one behaviour per line
 - [TypeScript library](docs/reference/typescript.md): `render()`, the sketch's fields, `style`, the result and errors
 - [Development](docs/guide/development.md)

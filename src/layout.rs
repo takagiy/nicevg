@@ -42,20 +42,20 @@ const TOGETHER: &str = "\u{1f}";
 // what only layout weighs, in the same units.
 const ISSUE_COST: f64 = 2000.0;
 const MOVEMENT_COST: f64 = 1.0;
-/// Nodes in a row or column joined by a edge running straight along
+/// Nodes in a row or column joined by an edge running straight along
 /// it show the flow with their alignment, so falling out of line costs
 /// much more than for neighbours that only share a coordinate (or whose
 /// edge detours).
 const JOINED_ALIGNMENT_COST: f64 = 600.0;
 const LOOSE_ALIGNMENT_COST: f64 = 100.0;
-/// An inner node leaving a line its neighbours keep reads as a inner misalignment,
+/// An inner node leaving a line its neighbours keep reads as an inner misalignment,
 /// bending the eye twice where an end leaving bends it once; worse when
 /// the node is joined to the line.
 const JOINED_INNER_MISALIGNMENT_COST: f64 = 600.0;
 const LOOSE_INNER_MISALIGNMENT_COST: f64 = 400.0;
 /// Every node that leaves a line it was on.
 const MISALIGNMENT_COST: f64 = 80.0;
-/// A edge with any bend reads as a detour, on top of its bends.
+/// An edge with any bend reads as a detour, on top of its bends.
 const BENT_COST: f64 = 120.0;
 /// A step this long or shorter between two runs heading the same way is a
 /// jog: the line staggers aside instead of bending. No move may add one.
@@ -79,7 +79,7 @@ const CROSSING_AT_END: Fade = Fade {
 /// gap between neighbours and to the side's corners; each even gap's worth
 /// of unevenness costs this much.
 const PORT_SPACING_COST: f64 = 80.0;
-/// A edge alone on a node side reads best through its middle; each
+/// An edge alone on a node side reads best through its middle; each
 /// even gap's worth of being off it costs this much.
 const LONE_PORT_COST: f64 = 8.0;
 /// Below this unevenness, in even gaps, a lone edge end counts as
@@ -115,7 +115,7 @@ struct Context {
     baseline: Diagram,
     alignments: Vec<Alignment>,
     parents: HashSet<String>,
-    /// Pairs of nodes, either way round, joined by a edge running
+    /// Pairs of nodes, either way round, joined by an edge running
     /// straight between them: along a row (`false`) or a column (`true`).
     joined: HashSet<(String, String, bool)>,
 }
@@ -411,7 +411,7 @@ fn evaluate(context: &Context, state: &State, id: &str, by: Move) -> Option<Stat
     }
     let names = ids.iter().map(|id| format!("\"{id}\"")).collect::<Vec<_>>().join(", ");
     let change = FixChange {
-        code: "arrange-node".to_owned(),
+        code: "layout-node".to_owned(),
         message: format!(
             "Moved {} {names} by ({}, {}) so edges bend, cross and crowd less.",
             if ids.len() > 1 { "nodes" } else { "node" },
@@ -470,7 +470,7 @@ fn translated(existing: &str, by: Move) -> String {
 }
 
 /// Moves worth trying: rerouting the edges of a bent edge's ends,
-/// and of a node with a edge alone on a side off its middle, in place, lining up the ends of bent edges, moving nodes
+/// and of a node with an edge alone on a side off its middle, in place, lining up the ends of bent edges, moving nodes
 /// off the straight line between a bent edge's lined-up ends, and
 /// nudging the nodes at the ends of edges that cross, crowd or have
 /// issues.
@@ -588,7 +588,7 @@ fn candidates(context: &Context, state: &State) -> Vec<(String, Move)> {
             .map(|by| (id.clone(), by))
         })
     });
-    // A edge alone on a side off its middle may be rerouted through it.
+    // An edge alone on a side off its middle may be rerouted through it.
     let mut off_centre: Vec<String> = uneven_sides(diagram)
         .into_iter()
         .filter(|(_, ends, unevenness)| *ends == 1 && *unevenness > LONE_PORT_SLACK)
@@ -678,13 +678,13 @@ fn troubled_nodes(report: &InspectionReport) -> Vec<String> {
                 .unwrap_or_default()
         }
     });
-    // A edge that bends twice or more might bend less with one of its
+    // An edge that bends twice or more might bend less with one of its
     // ends a little further along.
     let winding = edges
         .iter()
         .filter(|edge| edge.points.len() > 3)
         .flat_map(|edge| [edge.from.clone(), edge.to.clone()]);
-    // Where a edge meets its node with a stub too short to read, or
+    // Where an edge meets its node with a stub too short to read, or
     // is crossed right beside the node, the node is worth nudging so the
     // edge arrives more clearly.
     let unclear = edges.iter().flat_map(|edge| {
@@ -777,7 +777,7 @@ impl Context {
                 .all(|other| gap(bounds, &other.bounds) >= gap(&parent.bounds, &other.bounds).min(NODE_GAP))
         });
         let ancestors = ancestor_ids(&diagram.nodes, id);
-        // A edge the node lands on crosses it and is rerouted, but one
+        // An edge the node lands on crosses it and is rerouted, but one
         // left grazing its outline, inside the clearance yet outside the node,
         // stays where it is: the node must not come to rest against one.
         let clear_of_edges = diagram
@@ -839,8 +839,8 @@ impl Context {
     }
 
     /// The cost of the alignments a diagram breaks: each pair in a line
-    /// joined by a edge that fell out of it, each pair of unjoined
-    /// neighbours that did, and a inner misalignment for each inner node whose
+    /// joined by an edge that fell out of it, each pair of unjoined
+    /// neighbours that did, and an inner misalignment for each inner node whose
     /// neighbours still line up. A pair or node counts once per direction,
     /// whether it left the line's top, centre or bottom, or all three.
     fn alignment_cost(&self, diagram: &Diagram) -> f64 {
@@ -870,7 +870,7 @@ impl Context {
                     charge((pair[0].clone(), pair[1].clone(), column), LOOSE_ALIGNMENT_COST);
                 }
             }
-            // A inner misalignment: an inner run of nodes, one or more wide, off the line
+            // An inner misalignment: an inner run of nodes, one or more wide, off the line
             // while the nodes either side of it stay on it.
             let on_line: Vec<bool> = members
                 .iter()
@@ -1046,7 +1046,7 @@ fn uneven_sides(diagram: &Diagram) -> Vec<(&str, usize, f64)> {
     for (id, end, inner) in ends {
         let Some(node) = diagram.node(id) else { continue };
         let b = &node.bounds;
-        // The side a edge meets is the one it arrives at, along its
+        // The side an edge meets is the one it arrives at, along its
         // last segment.
         let horizontal = (end.x - inner.x).abs() >= (end.y - inner.y).abs();
         let (side, position, low, high) = if horizontal {
@@ -1098,7 +1098,7 @@ fn unclear_ends(edges: &[DiagramEdge]) -> f64 {
         .sum()
 }
 
-/// A edge's first and last segments, with the node each meets: the
+/// An edge's first and last segments, with the node each meets: the
 /// node, the point on it and the segment's other end.
 fn end_segments(edge: &DiagramEdge) -> Vec<(&str, Point, Point)> {
     let points = &edge.points;
@@ -1293,7 +1293,7 @@ mod tests {
     /// Given a row of three nodes sharing their top, centre and bottom
     /// When either the middle node or the last node drops out of line by
     ///   the same amount
-    /// Then the middle one costs more, as it reads as a inner misalignment in the row
+    /// Then the middle one costs more, as it reads as an inner misalignment in the row
     #[test]
     fn breaking_an_inner_alignment_costs_more_than_an_outer_one() {
         let row = vec![node("a", 0.0, 0.0), node("b", 150.0, 0.0), node("c", 300.0, 0.0)];
@@ -1418,7 +1418,7 @@ mod tests {
     /// Given a row of four nodes sharing their centre line
     /// When the two inner nodes drop out of line together, or the last
     ///   node alone
-    /// Then the two inner ones cost a inner misalignment, more than an end leaving
+    /// Then the two inner ones cost an inner misalignment, more than an end leaving
     #[test]
     fn counts_a_inner_misalignment_two_nodes_wide() {
         let row = vec![

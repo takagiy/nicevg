@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { open as openOnBun } from "./bun-ffi.ts";
 import { open as openOnNode } from "./node-ffi.ts";
 
-/** Fixes and arranges the diagram in a JSON request, returning the JSON reply. */
+/** Fixes and lays out the diagram in a JSON request, returning the JSON reply. */
 export type Render = (request: Uint8Array) => string;
 
 const extension = process.platform === "win32" ? "dll" : process.platform === "darwin" ? "dylib" : "so";
@@ -37,7 +37,7 @@ function libraryPath(): string {
 
 let render: Render | undefined;
 
-/** Fixes and arranges the diagram in `request`, opening the library on first use. */
+/** Fixes and lays out the diagram in `request`, opening the library on first use. */
 export function call(request: Uint8Array): string {
   render ??= (typeof Bun === "undefined" ? openOnNode : openOnBun)(libraryPath());
   return render(request);

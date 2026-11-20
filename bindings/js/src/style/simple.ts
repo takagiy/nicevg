@@ -2,7 +2,7 @@
  * Boxes and circles drawn the way nicevg draws a sketch's rect and circle
  * nodes: white, outlined in black unless painted, the label centred in lines. A label
  * too big for its node grows it as fixing grows those, so a diagram
- * drawn with these styles arranges as the same diagram without them.
+ * drawn with these styles lays out as the same diagram without them.
  *
  * ```ts
  * import { render } from "nicevg";
@@ -23,7 +23,7 @@ export interface SimpleNode {
   fontSize?: number;
   /** Where `box` writes its label: centred, or `padding` in from its top left, as a parent's title. */
   labelPosition?: "center" | "top-left";
-  /** How far `box` keeps its label, and a parent its children, inside its border: 12px unless given. */
+  /** How far `box` keeps its label, and a parent its children, inside its outline: 12px unless given. */
   padding?: number;
   /** The shape's paint, as the SVG attributes of the same names: white, outlined 1px in black, unless given. */
   fill?: string;

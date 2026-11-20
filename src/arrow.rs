@@ -1,8 +1,8 @@
 //! Edges as drawn: a shaft (`line`, `polyline` or `path`) and any
 //! arrowheads drawn as separate polygons touching its ends.
 //!
-//! A edge is annotated either on its shaft or on a group around the
-//! shaft and its arrowheads. A arrowhead lies at the end it touches, and the
+//! An edge is annotated either on its shaft or on a group around the
+//! shaft and its arrowheads. An arrowhead lies at the end it touches, and the
 //! edge runs on to the arrowhead's tip, where it meets its node.
 
 use crate::diagram::{edge_elements, edge_points, non_empty, translation};
@@ -79,7 +79,7 @@ pub fn drawn_edges(document: &Document) -> Vec<Drawn> {
     from_shafts.chain(from_groups).collect()
 }
 
-/// The node ids a edge joins: `data-from` and `data-to`, or the same
+/// The node ids an edge joins: `data-from` and `data-to`, or the same
 /// as `data-a` and `data-b`.
 fn annotation(element: &Element) -> Option<(&str, &str)> {
     [("data-from", "data-to"), ("data-a", "data-b")]
@@ -87,7 +87,7 @@ fn annotation(element: &Element) -> Option<(&str, &str)> {
         .find_map(|(from, to)| Some((non_empty(element.attr(from))?, non_empty(element.attr(to))?)))
 }
 
-/// Whether an element names at least one end of a edge.
+/// Whether an element names at least one end of an edge.
 pub fn names_an_end(element: &Element) -> bool {
     ["data-from", "data-to", "data-a", "data-b"]
         .iter()
@@ -161,7 +161,7 @@ fn drawn(document: &Document, id: String, from: &str, to: &str, shaft: Path, pol
     }
 }
 
-/// The polygon as a arrowhead at `end` when its box touches that end; its tip is
+/// The polygon as an arrowhead at `end` when its box touches that end; its tip is
 /// the vertex furthest along the shaft's direction.
 fn arrowhead_at(
     document: &Document,
@@ -197,7 +197,7 @@ fn arrowhead_at(
 }
 
 /// The route the shaft takes when its edge follows `route`: each end
-/// with a arrowhead stops short of it as `shaft_end` says.
+/// with an arrowhead stops short of it as `shaft_end` says.
 pub fn shaft_route(drawn: &Drawn, route: &[Point]) -> Vec<Point> {
     drawn.arrowheads.iter().fold(route.to_vec(), |mut shaft, arrowhead| {
         let (end, inner) = if arrowhead.at_start {
@@ -212,7 +212,7 @@ pub fn shaft_route(drawn: &Drawn, route: &[Point]) -> Vec<Point> {
     })
 }
 
-/// Where a shaft running from `before` to `tip` stops for a arrowhead `inset`
+/// Where a shaft running from `before` to `tip` stops for an arrowhead `inset`
 /// long there, and the way it points: at most halfway back to `before`, so
 /// that a segment shorter than the arrowhead still leaves the shaft a direction.
 /// None when the segment has no length to point along.
@@ -254,7 +254,7 @@ pub fn moved_arrowhead(document: &Document, arrowhead: &Arrowhead, route: &[Poin
 mod tests {
     use super::*;
 
-    /// Given a segment 6px long running right to a tip, and a arrowhead 10px long there
+    /// Given a segment 6px long running right to a tip, and an arrowhead 10px long there
     /// When the shaft's end is found
     /// Then it stops 3px back, halfway along the segment, still pointing right
     #[test]

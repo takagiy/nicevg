@@ -141,7 +141,7 @@ fn reports_insufficient_spacing_between_nodes_in_the_same_row() {
     })));
 }
 
-/// A row of two nodes 40px apart, joined by a edge whose label is
+/// A row of two nodes 40px apart, joined by an edge whose label is
 /// much wider than the gap.
 const LONG_LABEL_ROW: &str = r#"
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 500 300">
@@ -158,7 +158,7 @@ const LONG_LABEL_ROW: &str = r#"
   </svg>
 "#;
 
-/// Given two nodes in a row joined by a edge whose label is wider than their gap
+/// Given two nodes in a row joined by an edge whose label is wider than their gap
 /// When the diagram is inspected
 /// Then the gap the label needs, its width and 8px on each side, is reported as required
 #[test]
@@ -178,7 +178,7 @@ fn reports_the_gap_a_edge_label_between_nodes_needs() {
     assert!((details["requiredGap"].as_f64().unwrap() - (label.width + 16.0)).abs() < 0.01);
 }
 
-/// Given a edge whose segment passes through a third node
+/// Given an edge whose segment passes through a third node
 /// When the diagram is inspected
 /// Then the edge and obstructing node are reported
 #[test]
@@ -211,7 +211,7 @@ fn reports_a_edge_crossing_an_unrelated_node() {
     })));
 }
 
-/// Given two nodes inside a cluster parent, a edge between them and
+/// Given two nodes inside a cluster parent, an edge between them and
 ///   another from inside the cluster to a node outside it
 /// When the diagram is inspected
 /// Then neither edge is reported as crossing the cluster that contains
@@ -244,7 +244,7 @@ fn does_not_report_crossing_a_parent_that_holds_the_edge_ends() {
     assert!(!has_issue(&inspect(svg), "edge-overlaps-node"));
 }
 
-/// Given a edge that passes 5px below an edge label
+/// Given an edge that passes 5px below an edge label
 /// When the diagram is inspected
 /// Then the edge-label clearance violation is reported
 #[test]
@@ -276,7 +276,7 @@ fn reports_a_edge_passing_within_8px_of_a_free_label() {
     })));
 }
 
-/// Given a edge whose ends stop inside the source and target
+/// Given an edge whose ends stop inside the source and target
 /// When the diagram is inspected
 /// Then each end is reported instead of being accepted as edge-to-edge
 #[test]
@@ -309,19 +309,19 @@ fn reports_edge_ends_placed_inside_their_nodes() {
                 "code": "edge-overlaps-node",
                 "message": "Edge \"flow\" starts inside node \"source\".",
                 "elements": ["flow", "source"],
-                "details": { "endpoint": "start" },
+                "details": { "end": "start" },
             }),
             json!({
                 "code": "edge-overlaps-node",
                 "message": "Edge \"flow\" ends inside node \"target\".",
                 "elements": ["flow", "target"],
-                "details": { "endpoint": "end" },
+                "details": { "end": "end" },
             }),
         ]
     );
 }
 
-/// Given a edge whose ends stop 40px short of the source and the
+/// Given an edge whose ends stop 40px short of the source and the
 ///   target, and one stopping 8px short of them, as an arrowhead may
 /// When the diagram is inspected
 /// Then each end of the first is reported as detached from its node, and
@@ -358,13 +358,13 @@ fn reports_edge_ends_away_from_their_nodes() {
                 "code": "edge-end-detached",
                 "message": "Edge \"flow\" starts 40px away from node \"source\".",
                 "elements": ["flow", "source"],
-                "details": { "endpoint": "start", "distance": 40 },
+                "details": { "end": "start", "distance": 40 },
             }),
             json!({
                 "code": "edge-end-detached",
                 "message": "Edge \"flow\" ends 40px away from node \"target\".",
                 "elements": ["flow", "target"],
-                "details": { "endpoint": "end", "distance": 40 },
+                "details": { "end": "end", "distance": 40 },
             }),
         ]
     );
@@ -572,7 +572,7 @@ fn does_not_report_edges_that_only_cross_each_other() {
     assert!(!has_issue(&inspect(svg), "edge-overlaps"));
 }
 
-/// Given a edge that bends 1px beside where another bends, so the two
+/// Given an edge that bends 1px beside where another bends, so the two
 ///   read as one line bending
 /// When the diagram is inspected
 /// Then the pair is reported as a near miss
@@ -639,7 +639,7 @@ fn tied_label(label_y: u32) -> String {
     )
 }
 
-/// Given a label tied to a edge by data-label-for, 45px above it
+/// Given a label tied to an edge by data-label-for, 45px above it
 /// When the diagram is inspected
 /// Then the label is reported as detached from that edge
 #[test]
@@ -649,7 +649,7 @@ fn reports_a_tied_label_that_sits_away_from_its_edge() {
     assert_eq!(issues_with_code(&report, "edge-label-detached"), [["retry", "flow"]]);
 }
 
-/// Given a label tied to a edge, keeping 9px above it
+/// Given a label tied to an edge, keeping 9px above it
 /// When the diagram is inspected
 /// Then no detached label is reported
 #[test]
@@ -752,7 +752,7 @@ fn accepts_ends_on_a_circle_and_reports_ones_inside_it() {
     );
 }
 
-/// Given a edge that comes straight down onto the middle of a box's
+/// Given an edge that comes straight down onto the middle of a box's
 ///   left side, its last segment lying on that side
 /// When the diagram is inspected
 /// Then the end is reported as running along the side, while an end that
@@ -805,7 +805,7 @@ fn tables_joined_by(d: &str, to_port: &str) -> String {
 }
 
 /// Given `article` whose port "author" is a pin 20px outside its right
-///   side, and a edge from that pin to the left side of `user`
+///   side, and an edge from that pin to the left side of `user`
 /// When the diagram is inspected
 /// Then the end at the pin is not reported as detached from `article`
 #[test]
@@ -830,7 +830,7 @@ fn accepts_an_end_at_a_port_outside_its_node() {
     );
 }
 
-/// Given a edge leaving its port "author" but reaching the side of
+/// Given an edge leaving its port "author" but reaching the side of
 ///   `user` below its port "id"
 /// When the diagram is inspected
 /// Then the end is reported as off its port, and the start is not
@@ -849,12 +849,12 @@ fn reports_a_edge_end_off_the_port_it_names() {
             "code": "edge-end-detached-port",
             "message": "Edge \"wrote\" ends off port \"id\" of node \"user\".",
             "elements": ["wrote", "user"],
-            "details": { "endpoint": "end", "port": "id" },
+            "details": { "end": "end", "port": "id" },
         })]
     );
 }
 
-/// Given a edge naming a port "email" that `user` does not declare
+/// Given an edge naming a port "email" that `user` does not declare
 /// When the diagram is inspected
 /// Then the end is reported as naming an unknown port, not as off it
 #[test]
@@ -872,7 +872,7 @@ fn reports_a_edge_end_naming_a_port_its_node_lacks() {
             "code": "unknown-port",
             "message": "Edge \"wrote\" ends at port \"email\", which node \"user\" does not have.",
             "elements": ["wrote", "user"],
-            "details": { "endpoint": "end", "port": "email" },
+            "details": { "end": "end", "port": "email" },
         })]
     );
 }
@@ -933,7 +933,7 @@ fn does_not_report_the_bend_where_edges_merge_into_a_port_as_a_near_miss() {
     );
 }
 
-/// Source, and a target lower to the right, joined by a edge drawn as
+/// Source, and a target lower to the right, joined by an edge drawn as
 /// `d`.
 fn source_and_lower_target(d: &str) -> String {
     format!(
@@ -953,7 +953,7 @@ fn source_and_lower_target(d: &str) -> String {
     )
 }
 
-/// Given a edge drawn straight across to a node lower down
+/// Given an edge drawn straight across to a node lower down
 /// When the diagram is inspected
 /// Then the edge is reported as slanted
 #[test]
@@ -966,7 +966,7 @@ fn reports_a_slanted_edge() {
     );
 }
 
-/// Given a edge of horizontal and vertical segments only
+/// Given an edge of horizontal and vertical segments only
 /// When the diagram is inspected
 /// Then it is not reported as slanted
 #[test]
@@ -979,7 +979,7 @@ fn does_not_report_an_orthogonal_edge_as_slanted() {
     );
 }
 
-/// Given a edge from `a` to "ghost", which no node is, and a edge
+/// Given an edge from `a` to "ghost", which no node is, and an edge
 ///   between `a` and `b`, which both are
 /// When the diagram is inspected
 /// Then the first is reported as ending at a node the diagram does not have,
@@ -1006,7 +1006,7 @@ fn reports_a_edge_end_naming_a_node_the_diagram_lacks() {
           "code": "unknown-node",
           "message": "Edge \"typo\" ends at node \"ghost\", which the diagram does not have.",
           "elements": ["typo"],
-          "details": { "endpoint": "end", "node": "ghost" },
+          "details": { "end": "end", "node": "ghost" },
         })]
     );
 }
@@ -1041,7 +1041,7 @@ fn reports_an_id_two_nodes_share() {
 }
 
 /// Given a gateway outside a VPC lying across the top outline of a cluster in
-/// it, and a edge from a queue in the VPC entering the gateway's left
+/// it, and an edge from a queue in the VPC entering the gateway's left
 /// side through the top of the cluster
 /// When the diagram is inspected
 /// Then the edge is not reported crossing the cluster

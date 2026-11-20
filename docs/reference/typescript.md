@@ -37,8 +37,8 @@ const text = svg.toString(); // SVG の文字列（`${svg}` でも同じ）
 for (const node of svg.report.diagram.nodes) {
   console.log(node.id, node.bounds); // 動いた後の位置と大きさ
 }
-for (const connector of svg.report.diagram.connectors) {
-  console.log(connector.from, connector.to, connector.points); // 両端のノードと、直交する経路の折れ点
+for (const edge of svg.report.diagram.edges) {
+  console.log(edge.from, edge.to, edge.points); // 両端のノードと、直交する経路の折れ点
 }
 console.log(svg.report.issues); // 残った問題（なければ空）
 console.log(svg.changes); // 何を直し、何を動かしたか
@@ -54,7 +54,7 @@ console.log(svg.changes); // 何を直し、何を動かしたか
 | `nodes[].class` | 描き方を `style` から選ぶ名前。すべてのノードに要る。ほかの項目は、そのまま style に渡る |
 | `nodes[].children` | このノードの中に入れる子ノードの id の配列 |
 | `nodes[].allowOverlap` | 意図した重なりなら `true` |
-| `edges[].from`、`to` | 両端のノードの id。`edges` は前の名前の `connectors` でも渡せる（両方は渡せない） |
+| `edges[].from`、`to` | 両端のノードの id |
 | `edges[].points` | 経路の屈折点。省くと、修正とレイアウトが両端のノードのサイドからサイドへ経路を引く |
 | `edges[].label`、`fontSize` | 辺の脇に置くラベル |
 | `style` | クラス名から、そのクラスのノードを描く関数への対応 |
@@ -118,8 +118,8 @@ render({
 
 ## 結果
 
-`Svg` の `report.diagram` は、描いた図を読み直したもので、ノード（`bounds`、ラベルの範囲 `labelBounds`）、辺（`points`）、ラベル（`bounds`、説明する辺の id `connector`）を持つ。辺は id を持たないので、`from` と `to` で見分ける。文字の幅は、全角を 1 文字あたりフォントサイズ、それ以外を 0.59 倍として見積もる。
+`Svg` の `report.diagram` は、描いた図を読み直したもので、ノード（`bounds`、ラベルの範囲 `labelBounds`）、辺（`points`）、ラベル（`bounds`、説明する辺の id `edge`）を持つ。辺は id を持たないので、`from` と `to` で見分ける。文字の幅は、全角を 1 文字あたりフォントサイズ、それ以外を 0.59 倍として見積もる。
 
 ## エラー
 
-形の書き方が違う入力、存在しないノードを指す `from`・`to`・`parent`、`style` にないクラス、整形式でない SVG を描いたスタイルは、どこが何を指しているか（`connectors[0].to`、`nodes[1].class` など）を書いた `NicevgError` を投げる。
+形の書き方が違う入力、存在しないノードを指す `from`・`to`・`parent`、`style` にないクラス、整形式でない SVG を描いたスタイルは、どこが何を指しているか（`edges[0].to`、`nodes[1].class` など）を書いた `NicevgError` を投げる。

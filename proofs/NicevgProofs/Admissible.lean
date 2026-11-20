@@ -23,7 +23,7 @@ that for a model of the search.
   each to be never negative, a way costs at least `lowCost`.
 * Link weights (`Weights`): a count per grid link, for the links a route
   cannot take (`blocked_horizontal`, `blocked_vertical`) and those that
-  cross a edge (`crossing_horizontal`, `crossing_vertical`). `pre` is
+  cross an edge (`crossing_horizontal`, `crossing_vertical`). `pre` is
   the running count `along_rows` and `down_columns` build, and
   `absI (run ..)` the difference `run_counts` takes.
 * Bends: a state keeps at most `EASY_BENDS` of them, which `bends_cost`

@@ -21,7 +21,7 @@ through the skipped state has a strictly cheaper one with the same moves
 * A step costs, as in the search: what depends on the place and move alone
   (`base`: length, pushes, crossings, near misses and an end's own cost),
   a bend at `tc bent`, the bend onto an end stub at `tc` of the bends
-  after the move, and running alongside a edge, paid by how much
+  after the move, and running alongside an edge, paid by how much
   closer the step runs than the one before, which a bend forgets.
 * `tc` never falls as bends are made (`bends_cost`: the bend cost, three
   times as much from `EASY_BENDS` on). Capping the bends kept changes no
@@ -47,7 +47,7 @@ structure Costs (Place Move : Type) where
   next : Place → Move → Option Place
   bends : Place → Move → Bool
   base : Place → Move → Int
-  /-- What running alongside a edge on the move's link costs. -/
+  /-- What running alongside an edge on the move's link costs. -/
   near : Place → Move → Int
   /-- Whether the move arrives at an end across its stub, bending once more. -/
   endBend : Place → Move → Bool
@@ -55,7 +55,7 @@ structure Costs (Place Move : Type) where
   tc_mono : ∀ a b, a ≤ b → tc a ≤ tc b
 
 /-- A search state, with what its distance depends on beyond the place: the
-bends made and how close the step into it ran alongside a edge. -/
+bends made and how close the step into it ran alongside an edge. -/
 structure State (Place : Type) where
   place : Place
   bent : Nat
@@ -81,7 +81,7 @@ def cost (c : Costs Place Move) : State Place → List Move → Option Int
     | some p => (cost c ⟨p, bentAfter c s m, c.near s.place m⟩ ms).map (stepCost c s m + ·)
 
 /-- A step from a state with no more bends costs no more, but for how much
-closer the other state's last step ran alongside a edge. -/
+closer the other state's last step ran alongside an edge. -/
 theorem stepCost_le (c : Costs Place Move) (p : Place) {td tq : Nat} (nd nq : Int) (h : td ≤ tq) (m : Move) :
     stepCost c ⟨p, td, nd⟩ m ≤ stepCost c ⟨p, tq, nq⟩ m + pos (nq - nd) := by
   have h1 := c.tc_mono td tq h

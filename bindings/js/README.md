@@ -79,7 +79,7 @@ Fixes the diagram, nudges its nodes into a cleaner layout and returns an `Svg`. 
 | Option | |
 |---|---|
 | `nodes` | The boxes, circles and styled nodes (below). |
-| `edges` | The lines between nodes (below). `connectors` is accepted as its old name. |
+| `edges` | The lines between nodes (below). |
 | `style` | For each `class` used by a node, a function drawing that node with `svg` and `text`. |
 | `rootAttrs` | Attributes for the root `<svg>`, such as `{ "font-family": "sans-serif" }`. |
 
@@ -103,7 +103,7 @@ Fixes the diagram, nudges its nodes into a cleaner layout and returns an `Svg`. 
 | `write(path)` | Writes the SVG to a file. |
 | `toString()` | The SVG text. |
 | `report.issues` | Problems left after rendering; empty when there are none. |
-| `report.diagram` | The diagram read back: `nodes` with their `bounds`, `connectors` with their `points`, and `labels`. |
+| `report.diagram` | The diagram read back: `nodes` with their `bounds`, `edges` with their `points`, and `labels`. |
 | `changes` | What rendering fixed and moved, in order. |
 
 ### Drawing a style

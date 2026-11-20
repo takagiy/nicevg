@@ -36,7 +36,6 @@ pub use sketch::{
 pub struct InspectionReport {
     pub valid: bool,
     pub issues: Vec<DiagramIssue>,
-    #[serde(rename = "drawingBounds")]
     pub diagram_bounds: Option<Bounds>,
     pub diagram: Diagram,
 }

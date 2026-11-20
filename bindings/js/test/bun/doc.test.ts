@@ -569,7 +569,7 @@ describe("nicevg doc output paths", () => {
 
 describe("nicevg doc results", () => {
   /**
-   * Given a group 200px wide holding two boxes joined by a connector whose
+   * Given a group 200px wide holding two boxes joined by an edge whose
    *   label is wider than the room beside it in the group
    * When nicevg doc runs
    * Then the diagram is drawn, the stdout JSON holds only changedFiles,
@@ -602,7 +602,7 @@ render({
   });
 
   /**
-   * Given a block rendering a connector to a node the sketch does not have,
+   * Given a block rendering an edge to a node the sketch does not have,
    *   which only laying it out finds
    * When nicevg doc runs
    * Then it fails with what is wrong and where render was called
@@ -618,7 +618,7 @@ const nodes = [{ id: "a", class: "box", x: 0, y: 0, label: "A" }];
 
     expect(exitCode).toBe(2);
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0].message).toMatch(/^The diagram passed to render is invalid: connectors\[0\]\.to refers to node "ghost".*\(render was called at guide\.md:5:\d+\)$/);
+    expect(result.failures[0].message).toMatch(/^The diagram passed to render is invalid: edges\[0\]\.to refers to node "ghost".*\(render was called at guide\.md:5:\d+\)$/);
   });
 
   /**

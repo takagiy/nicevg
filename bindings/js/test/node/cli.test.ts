@@ -142,11 +142,11 @@ for (const [runtime, cli] of runtimes) {
     });
 
     /**
-     * Given a diagram whose connector bends only because one node sits 24px off, on standard input
+     * Given a diagram whose edge bends only because one node sits 24px off, on standard input
      * When the command runs
-     * Then it writes the arranged SVG, with the connector straight, and succeeds
+     * Then it writes the laid out SVG, with the edge straight, and succeeds
      */
-    test("arranges nodes by default", () => {
+    test("lays out nodes by default", () => {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 200">
         <g data-node="notify"><circle cx="100" cy="110" r="54"/><text x="100" y="115" text-anchor="middle" font-size="13">7 Notify</text></g>
         <g data-node="mail"><rect x="280" y="60" width="130" height="52"/><text x="345" y="91" text-anchor="middle" font-size="13">Email service</text></g>
@@ -162,7 +162,7 @@ for (const [runtime, cli] of runtimes) {
 
     /**
      * Given a reader that stops reading after the first bytes, as `head` does
-     * When the command writes the arranged SVG to it
+     * When the command writes the laid out SVG to it
      * Then it still succeeds, without a broken pipe error
      */
     test("succeeds when the reader of stdout goes away early", async () => {
@@ -180,11 +180,11 @@ for (const [runtime, cli] of runtimes) {
     });
 
     /**
-     * Given a diagram whose arranging frees its old candidates on other threads, run by many processes at once
+     * Given a diagram whose laying out frees its old candidates on other threads, run by many processes at once
      * When each process exits right after writing the SVG
      * Then none of them crashes: the library is done with its threads before the runtime unloads it
      */
-    test("exits cleanly after arranging, even under load", async () => {
+    test("exits cleanly after laying out, even under load", async () => {
       const svg = readFileSync(new URL("../../../../docs/images/before.svg", import.meta.url), "utf8");
 
       const statuses = await Promise.all(

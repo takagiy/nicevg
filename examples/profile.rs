@@ -196,7 +196,7 @@ fn main() {
     }
 
     println!(
-        "{} {}: {} nodes, {} connectors, {} labels; {:.1} ms wall, {} changes, {} issues left",
+        "{} {}: {} nodes, {} edges, {} labels; {:.1} ms wall, {} changes, {} issues left",
         if args.fix { "fix" } else { "arrange" },
         args.input.display(),
         report.diagram.nodes.len(),
