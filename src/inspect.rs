@@ -56,7 +56,7 @@ pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue>
         node_overlaps(&diagram.nodes),
         node_gaps(diagram),
         edge_crossings(&diagram.nodes, &diagram.edges),
-        label_overlaps(&diagram.labels),
+        label_overlaps(&diagram.nodes, &diagram.labels),
         label_node_overlaps(&diagram.nodes, &diagram.labels),
         edge_label_clearance(&diagram.edges, &diagram.labels),
         edge_unknown_nodes(&diagram.nodes, &diagram.edges),
@@ -279,24 +279,42 @@ fn edge_crossings(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIs
         .collect()
 }
 
-fn label_overlaps(labels: &[DiagramLabel]) -> Vec<DiagramIssue> {
-    labels
-        .iter()
-        .enumerate()
-        .flat_map(|(index, first)| {
-            labels[index + 1..]
-                .iter()
-                .filter(move |second| intersection(&first.bounds, &second.bounds).is_some())
-                .map(move |second| {
-                    issue(
-                        "label-overlaps",
-                        format!("Labels \"{}\" and \"{}\" overlap.", first.id, second.id),
-                        &[&first.id, &second.id],
-                        None,
-                    )
-                })
-        })
-        .collect()
+fn label_overlaps(nodes: &[DiagramNode], labels: &[DiagramLabel]) -> Vec<DiagramIssue> {
+    let on_labels = labels.iter().enumerate().flat_map(|(index, first)| {
+        labels[index + 1..]
+            .iter()
+            .filter(move |second| intersection(&first.bounds, &second.bounds).is_some())
+            .map(move |second| {
+                issue(
+                    "label-overlaps",
+                    format!("Labels \"{}\" and \"{}\" overlap.", first.id, second.id),
+                    &[&first.id, &second.id],
+                    None,
+                )
+            })
+    });
+    // A parent's free space is a valid place for a label, but for the
+    // parent's own labels, such as its title.
+    let on_parent_labels = labels.iter().flat_map(|label| {
+        nodes
+            .iter()
+            .filter(|parent| {
+                parent
+                    .label_bounds
+                    .iter()
+                    .any(|own| intersection(own, &label.bounds).is_some())
+                    && lies_within_parent(nodes, &label.bounds, parent)
+            })
+            .map(move |parent| {
+                issue(
+                    "label-overlaps",
+                    format!("Label \"{}\" overlaps a label of node \"{}\".", label.id, parent.id),
+                    &[&label.id, &parent.id],
+                    None,
+                )
+            })
+    });
+    on_labels.chain(on_parent_labels).collect()
 }
 
 /// Whether a label's box covers part of a node's shape.

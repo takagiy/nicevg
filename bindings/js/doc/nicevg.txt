@@ -410,8 +410,10 @@ edge-overlaps-node-outline
 	Fix: leave out the edge's `points`, or meet the side square.
 
 label-overlaps                            *nicevg-engine-issue-label-overlaps*
-	Two labels overlap.
-	Fix: move apart the nodes their edges join.
+	An edge's label overlaps another edge's label, or a label of a parent
+	it lies in, such as the parent's title.
+	Fix: move apart the nodes their edges join, or move them away from
+	the parent's label.
 
 label-overlaps-node                  *nicevg-engine-issue-label-overlaps-node*
 	An edge's label overlaps a node.
