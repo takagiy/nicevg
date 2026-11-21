@@ -406,8 +406,10 @@ edge-end-detached                      *nicevg-engine-issue-edge-end-detached*
 
                       *nicevg-engine-issue-edge-overlaps-node-outline*
 edge-overlaps-node-outline
-	An edge's last segment runs along a side of its node.
-	Fix: leave out the edge's `points`, or meet the side square.
+	An edge's segment runs along a side of a node, on it or less than 5px
+	from it. The node may be a parent around the edge's nodes.
+	Fix: move the edge's nodes away from that side, or give a parent more
+	`padding`. If the edge has `points`, leave them out.
 
 label-overlaps                            *nicevg-engine-issue-label-overlaps*
 	An edge's label overlaps another edge's label, or a label of a parent

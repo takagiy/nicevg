@@ -1,9 +1,10 @@
 ---
-source: tests/arrange.rs
+source: tests/layout.rs
+assertion_line: 477
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "badness": 1403.73,
+  "badness": 1403.77,
   "bends": 21,
   "bentEdges": 12,
   "cornerShortfall": 0.0,
@@ -15,7 +16,7 @@ expression: "support :: quality_of(& result.report)"
   "jogs": 0,
   "jogShortfall": 0.0,
   "lateBends": 1,
-  "parallelDensity": 30.45,
+  "parallelDensity": 30.49,
   "remainingIssues": 0,
   "shortEnds": 0,
   "shortEndShortfall": 0.0,

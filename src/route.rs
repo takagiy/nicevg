@@ -65,6 +65,8 @@ pub(crate) const CROSSING_COST: f64 = 300.0;
 const NEAR_MISS_COST: f64 = 2.0 * CROSSING_COST;
 /// Space a route keeps from the nodes and other boxes it passes.
 pub const ROUTE_CLEARANCE: f64 = 8.0;
+// A route that far from a node is not reported as running along its outline.
+const _: () = assert!(crate::inspect::NEAR_MISS_DISTANCE < ROUTE_CLEARANCE);
 /// A box a route may push aside, such as another edge's label, and
 /// what pushing it costs, worked out only once a route reaches it: `None`
 /// when it cannot move.
@@ -663,17 +665,28 @@ fn grid(
     drop(phase);
     let phase = tracing::info_span!("search_taken").entered();
     // Grid links that share any length with another edge's segment are
-    // taken, including segments shorter than one grid step.
-    for (from, to) in &occupied_segments {
+    // taken, including segments shorter than one grid step. So are the
+    // links closer beside a rail than the near-miss distance: a route that
+    // close reads as running on the outline, and is reported as that.
+    let taken = crossed_segments
+        .iter()
+        .map(|segment| (segment, 0.0))
+        .chain(rails.iter().map(|rail| (rail, crate::inspect::NEAR_MISS_DISTANCE)));
+    for ((from, to), clear) in taken {
+        // The lines a run along the segment is taken on: its own, and
+        // those closer than `clear`.
+        let beside = |lines: &[f64], at: f64| lines_inside(lines, at - clear, at + clear).chain(index_of(lines, at));
         if from.y == to.y {
-            let Some(yi) = index_of(&ys, from.y) else { continue };
-            for xi in steps_covering(&xs, from.x, to.x) {
-                blocked_horizontal[key(xi, yi)] = true;
+            for yi in beside(&ys, from.y) {
+                for xi in steps_covering(&xs, from.x, to.x) {
+                    blocked_horizontal[key(xi, yi)] = true;
+                }
             }
         } else if from.x == to.x {
-            let Some(xi) = index_of(&xs, from.x) else { continue };
-            for yi in steps_covering(&ys, from.y, to.y) {
-                blocked_vertical[key(xi, yi)] = true;
+            for xi in beside(&xs, from.x) {
+                for yi in steps_covering(&ys, from.y, to.y) {
+                    blocked_vertical[key(xi, yi)] = true;
+                }
             }
         }
     }
@@ -855,8 +868,9 @@ fn grid(
 /// from whichever start terminal and stops at whichever end terminal is
 /// cheapest overall.
 /// `rails` are lines a route may cross but should not run along, such as
-/// the outlines of parents around its ends: running on one is ruled
-/// out and running close beside one costs like running beside an edge.
+/// the outlines of parents around its ends: running on one, or closer
+/// beside it than the near-miss distance, is ruled out, and running
+/// beside one farther off costs like running beside an edge.
 #[tracing::instrument(skip_all, fields(columns = tracing::field::Empty, rows = tracing::field::Empty, occupied = occupied.len(), obstacles = obstacles.len()))]
 pub fn search(
     starts: &[Terminal],
@@ -2647,6 +2661,41 @@ mod tests {
 
         assert_eq!(step(6.0), PARALLEL_RUN.full);
         assert_eq!(step(20.0), 0.0);
+    }
+
+    /// Given a rail along y = 0 from x = 0 to 100, and terminals 3px and 6px
+    ///   beside it and past its end
+    /// When the grid for a search is built
+    /// Then the steps 3px beside the rail cannot be taken, as those on it,
+    ///   while the step past its end can, and so can those 6px beside it,
+    ///   which cost running alongside it
+    #[test]
+    fn rules_out_the_steps_closer_beside_a_rail_than_the_near_miss_distance() {
+        let terminal = |x: f64, y: f64| Terminal {
+            point: point(x, y),
+            axis: 0,
+            port: point(x - 24.0, y),
+            cost: 0.0,
+        };
+        let built = grid(
+            &[terminal(-50.0, 3.0)],
+            &[terminal(150.0, 3.0), terminal(400.0, 6.0)],
+            &[],
+            &[],
+            &[],
+            &[(point(0.0, 0.0), point(100.0, 0.0))],
+            Lines::All,
+        );
+        let step = |x: f64, y: f64| index_of(&built.ys, y).unwrap() * built.xs.len() + index_of(&built.xs, x).unwrap();
+
+        assert!(built.blocked_horizontal[step(-50.0, 0.0)]);
+        assert!(built.blocked_horizontal[step(-50.0, 3.0)]);
+        assert!(!built.blocked_horizontal[step(150.0, 3.0)]);
+        assert!(!built.blocked_horizontal[step(-50.0, 6.0)]);
+        assert_eq!(
+            built.near_costs[usize::from(built.near_horizontal[step(-50.0, 6.0)])],
+            PARALLEL_RUN.full
+        );
     }
 
     /// Given an edge drawn along y = 0 and a route to find straight

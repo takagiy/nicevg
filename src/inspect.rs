@@ -63,7 +63,7 @@ pub fn inspect(view_box: Option<Bounds>, diagram: &Diagram) -> Vec<DiagramIssue>
         edge_ends(&diagram.nodes, &diagram.edges),
         slanted_edges(&diagram.edges),
         edge_ends_off_ports(&diagram.nodes, &diagram.edges),
-        edge_ends_along_sides(&diagram.nodes, &diagram.edges),
+        edges_along_outlines(&diagram.nodes, &diagram.edges),
         edge_overlaps(&diagram.edges),
         edge_near_misses(&diagram.edges),
         detached_labels(&diagram.labels, &diagram.edges),
@@ -654,47 +654,35 @@ fn edge_ends_off_ports(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<Diag
         .collect()
 }
 
-/// Ends whose last segment lies on a side of the box they end on: the line
-/// runs along the outline instead of meeting it, and its arrowhead points
-/// along the side.
-fn edge_ends_along_sides(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
-    let node = |id: &str| nodes.iter().find(|node| node.id == id && !node.is_circle());
-    let along = |end: Point, inner: Point, b: &Bounds| {
+/// Edges with a segment along a side of a box, on it or closer than the
+/// near-miss distance: the two read as one line, part of the outline, and
+/// an arrowhead on the segment points along the side.
+fn edges_along_outlines(nodes: &[DiagramNode], edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
+    let along = |(from, to): (Point, Point), b: &Bounds| {
+        let near = |at: f64, sides: [f64; 2]| sides.iter().any(|side| (at - side).abs() < NEAR_MISS_DISTANCE);
         let overlap = |low: f64, high: f64, a: f64, c: f64| high.min(a.max(c)) - low.max(a.min(c));
-        (end.x == inner.x && (end.x == b.x || end.x == b.right()) && overlap(b.y, b.bottom(), end.y, inner.y) > 0.5)
-            || (end.y == inner.y
-                && (end.y == b.y || end.y == b.bottom())
-                && overlap(b.x, b.right(), end.x, inner.x) > 0.5)
+        (from.x == to.x && near(from.x, [b.x, b.right()]) && overlap(b.y, b.bottom(), from.y, to.y) > 0.5)
+            || (from.y == to.y && near(from.y, [b.y, b.bottom()]) && overlap(b.x, b.right(), from.x, to.x) > 0.5)
     };
     edges
         .iter()
-        .filter(|edge| edge.points.len() >= 2)
         .flat_map(|edge| {
-            let points = &edge.points;
-            let ends = [
-                (points[0], points[1], node(&edge.from), "starts", "start"),
-                (
-                    points[points.len() - 1],
-                    points[points.len() - 2],
-                    node(&edge.to),
-                    "ends",
-                    "end",
-                ),
-            ];
-            ends.into_iter().filter_map(move |(end, inner, owner, verb, which)| {
-                let owner = owner?;
-                along(end, inner, &owner.bounds).then(|| {
+            nodes
+                .iter()
+                .filter(|node| !node.is_circle())
+                .filter(move |node| {
+                    segments(&edge.points)
+                        .iter()
+                        .any(|segment| along(*segment, &node.bounds))
+                })
+                .map(move |node| {
                     issue(
                         "edge-overlaps-node-outline",
-                        format!(
-                            "Edge \"{}\" {verb} running along a side of node \"{}\".",
-                            edge.id, owner.id
-                        ),
-                        &[&edge.id, &owner.id],
-                        Some(json!({ "end": which })),
+                        format!("Edge \"{}\" runs along a side of node \"{}\".", edge.id, node.id),
+                        &[&edge.id, &node.id],
+                        None,
                     )
                 })
-            })
         })
         .collect()
 }
@@ -797,7 +785,8 @@ fn edge_overlaps(edges: &[DiagramEdge]) -> Vec<DiagramIssue> {
 }
 
 /// How close an edge may bend to another before the two read as one
-/// line bending.
+/// line bending, and how close it may run along a side of a node before it
+/// reads as part of the outline.
 pub const NEAR_MISS_DISTANCE: f64 = 5.0;
 
 /// How many bends of `route` lie within the near-miss distance of the

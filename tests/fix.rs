@@ -656,6 +656,32 @@ fn reroutes_a_edge_end_that_runs_along_its_node_s_side() {
     assert_fix_snapshots!(result);
 }
 
+/// Given three children in a column, the middle one 12px inside their
+///   parent's left and right sides, and an edge from the first to the
+///   last drawn through the gap on the left, 4px inside the parent's side
+/// When the diagram is fixed
+/// Then the edge is rerouted out of the gap, where it would keep too
+///   close to the node or to the parent's side, and nothing is reported
+#[test]
+fn reroutes_an_edge_out_of_the_gap_between_a_node_and_its_parent_s_side() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 420">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="200" height="380"/>
+          <g data-node="api"><rect x="70" y="60" width="100" height="56"/><text x="120" y="93" text-anchor="middle" font-size="14">API</text></g>
+          <g data-node="cache"><rect x="32" y="170" width="176" height="56"/><text x="120" y="203" text-anchor="middle" font-size="14">Cache</text></g>
+          <g data-node="worker"><rect x="70" y="280" width="100" height="56"/><text x="120" y="313" text-anchor="middle" font-size="14">Worker</text></g>
+        </g>
+        <path id="beside" data-from="api" data-to="worker" d="M 70 88 L 24 88 L 24 308 L 70 308"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+
+    assert_eq!(issue_codes(&inspect(svg)), ["edge-overlaps-node-outline"]);
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+}
+
 /// Given a line without a fill, which SVG never fills, that has to detour
 /// When the diagram is fixed
 /// Then the bent path that replaces it is not filled either, while

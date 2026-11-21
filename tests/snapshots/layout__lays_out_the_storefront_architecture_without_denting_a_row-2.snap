@@ -1,5 +1,6 @@
 ---
-source: tests/arrange.rs
+source: tests/layout.rs
+assertion_line: 477
 expression: result.svg.as_str()
 ---
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1470 700" width="1470" height="700">
@@ -131,7 +132,7 @@ expression: result.svg.as_str()
   <path id="f7" class="flow" data-from="admin" data-to="gateway" fill="none" d="M 278 400 L 404 400 L 404 318"/>
   <path id="f8" class="flow" data-from="gateway" data-to="auth" fill="none" d="M 468 286 L 496 286 L 496 154 L 580 154"/>
   <path id="f9" class="flow" data-from="gateway" data-to="catalog" fill="none" d="M 404 270 L 404 202 L 841 202 L 841 178"/>
-  <path id="f10" class="flow" data-from="gateway" data-to="cart" fill="none" d="M 436 270 L 436 218 L 1084 218 L 1084 178"/>
+  <path id="f10" class="flow" data-from="gateway" data-to="cart" fill="none" d="M 436 270 L 436 224 L 1084 224 L 1084 178"/>
   <path id="f11" class="flow" data-from="gateway" data-to="order" fill="none" d="M 468 302 L 580 302"/>
   <path id="f12" class="flow" data-from="auth" data-to="idp" fill="none" d="M 644 130 L 644 106 L 1360 106 L 1360 130"/>
   <path id="f13" class="flow" data-from="catalog" data-to="search" fill="none" d="M 933.5 154 L 970 154 L 970 600"/>
@@ -142,7 +143,7 @@ expression: result.svg.as_str()
   <path id="f18" class="flow" data-from="order" data-to="inventory" fill="none" d="M 644 290 L 644 257 L 1007 257"/>
   <path id="f19" class="flow" data-from="order" data-to="kafka" fill="none" d="M 708 322 L 735 322 L 735 624 L 780 624"/>
   <path id="f20" class="flow" data-from="payment" data-to="psp" fill="none" d="M 933.5 314 L 1286.5 314"/>
-  <path id="f21" class="flow" data-from="inventory" data-to="postgres" fill="none" d="M 1050 281 L 1050 680 L 644 680 L 644 648"/>
+  <path id="f21" class="flow" data-from="inventory" data-to="postgres" fill="none" d="M 1045.5 281 L 1045.5 680 L 676 680 L 676 648"/>
   <path id="f22" class="flow" data-from="kafka" data-to="notify" fill="none" d="M 835 600 L 835 478"/>
   <path id="f23" class="flow" data-from="notify" data-to="mail" fill="none" d="M 949 454 L 1290 454"/>
   <text data-label="f4-label" data-label-for="f4" class="flow-label" x="310" y="123" text-anchor="middle" font-size="11">HTTPS</text>
@@ -151,7 +152,7 @@ expression: result.svg.as_str()
   <text data-label="f7-label" data-label-for="f7" class="flow-label" x="341" y="389" text-anchor="middle" font-size="11">HTTPS</text>
   <text data-label="f8-label" data-label-for="f8" class="flow-label" x="487" y="179" text-anchor="end" font-size="11">token check</text>
   <text data-label="f9-label" data-label-for="f9" class="flow-label" x="732" y="191" text-anchor="middle" font-size="11">REST</text>
-  <text data-label="f10-label" data-label-for="f10" class="flow-label" x="1019" y="207" text-anchor="middle" font-size="11">REST</text>
+  <text data-label="f10-label" data-label-for="f10" class="flow-label" x="1019" y="213" text-anchor="middle" font-size="11">REST</text>
   <text data-label="f11-label" data-label-for="f11" class="flow-label" x="513" y="322" text-anchor="middle" font-size="11">REST</text>
   <text data-label="f12-label" data-label-for="f12" class="flow-label" x="1002" y="95" text-anchor="middle" font-size="11">OIDC</text>
   <text data-label="f13-label" data-label-for="f13" class="flow-label" x="961" y="538" text-anchor="end" font-size="11">queries</text>
