@@ -50,16 +50,51 @@ export function svg(strings: TemplateStringsArray, ...values: unknown[]): SvgFra
   return new SvgFragment(strings.reduce((markup, string, index) => markup + embed(values[index - 1]) + string));
 }
 
-// shortcut: the common wide ranges (CJK, kana, hangul, fullwidth forms), not every East Asian Wide character; widen it if a script measures short.
-export const WIDE = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]|[\u{20000}-\u{3fffd}]/u;
+/** The font texts are drawn in: the `font-family` and `font-weight` declared for them, if any. */
+export interface Font {
+  family?: string;
+  weight?: string;
+}
+
+let measure: ((line: string, size: number, font: Font) => number) | undefined;
+let font: Font = {};
+
+/** Has lines of text measured by `next`: set by the module that reaches the native library, which measures them. */
+export function measureWith(next: (line: string, size: number, font: Font) => number): void {
+  measure = next;
+}
+
+/** Runs `draw`, the texts it makes measured in `next`: the font of the diagram they are drawn for. */
+export function inFont<Result>(next: Font, draw: () => Result): Result {
+  const before = font;
+  font = next;
+  try {
+    return draw();
+  } finally {
+    font = before;
+  }
+}
+
+/** How wide nicevg measures a line of text at a font size, in the font of the diagram being drawn. */
+export function lineWidth(line: string, size: number): number {
+  if (!measure) {
+    throw new Error("nicevg: a text is measured by the native library, which importing nicevg loads");
+  }
+  return measure(line, size, font);
+}
 
 /** Where a text goes: one of `left`, `cx`, `right` across, one of `top`, `cy`, `bottom` down. */
 export type TextPlace = ({ left: number } | { cx: number } | { right: number }) &
   ({ top: number } | { cy: number } | { bottom: number });
 
-/** A text of one or more lines (split at `\n`), sized the way nicevg measures text, placed with `at`. */
+/**
+ * A text of one or more lines (split at `\n`), sized the way nicevg
+ * measures text, placed with `at`. One made while a style draws is
+ * measured in the `font-family` and `font-weight` of the sketch's
+ * `rootAttrs`; one made elsewhere, as a text that declares neither.
+ */
 export class Text {
-  /** Its widest line's width, wide characters one font size each and others 0.59. */
+  /** Its widest line's width, as the font draws it. */
   readonly width: number;
   /** Its lines' height, 1.2 font sizes each. */
   readonly height: number;
@@ -69,15 +104,9 @@ export class Text {
     readonly size = 14,
     readonly place: TextPlace = { left: 0, top: 0 },
   ) {
-    const widths = content.split("\n").map((line) => {
-      let width = 0;
-      for (const character of line) {
-        width += WIDE.test(character) ? size : character.length * size * 0.59;
-      }
-      return width;
-    });
-    this.width = Math.ceil(Math.max(...widths));
-    this.height = Math.ceil(widths.length * size * 1.2);
+    const lines = content.split("\n");
+    this.width = Math.max(...lines.map((line) => lineWidth(line, size)));
+    this.height = Math.ceil(lines.length * size * 1.2);
   }
 
   /** This text with the point of its box named in `place` at the coordinates given. */

@@ -194,8 +194,8 @@ describe("parents a style draws", () => {
    *   to lay it out by, and 40px down when drawn again
    * When the sketch is rendered
    * Then it is laid out once more by the title 40px down: the style is
-   *   called a third time, the box lies at least 12px below that title, and
-   *   no issue is left
+   *   called a third time, the box lies at least 12px below that title or
+   *   beside it, and no issue is left
    */
   test("lays a sketch out again when a parent's texts move once it is drawn at its size", () => {
     const { image, calls } = titledAt((call) => (call === 1 ? 12 : 40));
@@ -204,7 +204,9 @@ describe("parents a style draws", () => {
     const title = node("group").labelBounds[0]!;
     expect(calls).toBe(3);
     expect(title.y - node("group").bounds.y).toBeGreaterThan(30);
-    expect(node("a").bounds.y - (title.y + title.height)).toBeGreaterThanOrEqual(12);
+    const below = node("a").bounds.y - (title.y + title.height);
+    const beside = node("a").bounds.x - (title.x + title.width);
+    expect(Math.max(below, beside)).toBeGreaterThanOrEqual(12);
     expect(image.report.issues).toEqual([]);
   });
 

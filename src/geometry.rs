@@ -2,7 +2,6 @@
 //! ECMAScript reference implementation the snapshots were recorded with.
 
 use serde::{Deserialize, Serialize, Serializer};
-use unicode_width::UnicodeWidthChar;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Point {
@@ -351,22 +350,6 @@ pub fn without_redundant_points(points: &[Point]) -> Vec<Point> {
         })
         .map(|(_, current)| *current)
         .collect()
-}
-
-/// Estimates the box of a text run from its anchor point; glyph metrics are
-/// approximated by an average advance of 0.59em.
-/// Estimated advance of a text: full-width characters (East Asian Wide and
-/// Fullwidth) take one font size, everything else 0.59 of it per UTF-16
-/// code unit.
-pub fn text_width(text: &str, font_size: f64) -> f64 {
-    let (wide, narrow) = text.chars().fold((0usize, 0usize), |(wide, narrow), character| {
-        if UnicodeWidthChar::width(character) == Some(2) {
-            (wide + 1, narrow)
-        } else {
-            (wide, narrow + character.len_utf16())
-        }
-    });
-    round(narrow as f64 * font_size * 0.59 + wide as f64 * font_size)
 }
 
 /// Box of a line of text whose `anchor_point` lies `ascent` below the top

@@ -486,13 +486,15 @@ render({ nodes, edges, style: { box } });`;
   });
 
   /**
-   * Given two blocks that draw, and NICEVG_LIBRARY pointing at a file that is no native library
+   * Given two blocks that draw no text, and NICEVG_LIBRARY pointing at a file that is no native library
    * When nicevg doc runs
    * Then the layout process stops for each, each diagram fails saying so,
    *   and the JSON is still printed
    */
   test("fails each diagram whose layout process stops, and carries on", () => {
-    const markdown = `${oneBlock(ORDER_FLOW)}\n<!-- nicevg b.svg\n${ORDER_FLOW}-->\n`;
+    // Without a text, nothing asks the native library before the layout process does.
+    const dot = `import { render, svg } from "nicevg";\nrender({ nodes: [{ id: "a", class: "dot", x: 0, y: 0 }], style: { dot: () => svg\`<rect data-bounds="true" width="16" height="16"/>\` } });\n`;
+    const markdown = `${oneBlock(dot)}\n<!-- nicevg b.svg\n${dot}-->\n`;
     const second = markdown.slice(0, markdown.indexOf("<!-- nicevg b.svg")).split("\n").length;
     const root = repository({ "guide.md": markdown });
 
@@ -505,6 +507,25 @@ render({ nodes, edges, style: { box } });`;
     expect(exitCode).toBe(2);
     expect(failures.map((failure: { line: number }) => failure.line)).toEqual([1, second]);
     expect(failures[0].message).toMatch(/^The layout process stopped/);
+  });
+
+  /**
+   * Given a block whose style draws a text, and NICEVG_LIBRARY pointing at a file that is no native library
+   * When nicevg doc runs
+   * Then the diagram fails saying the native library could not measure a
+   *   text, rather than that the script threw
+   */
+  test("fails a diagram whose texts the native library cannot measure, saying so", () => {
+    const root = repository({ "guide.md": oneBlock(ORDER_FLOW) });
+
+    const { exitCode, stdout } = Bun.spawnSync([process.execPath, cli, "doc", "guide.md"], {
+      cwd: root,
+      env: { ...process.env, NICEVG_LIBRARY: join(root, "guide.md") },
+    });
+
+    const { failures } = JSON.parse(stdout.toString());
+    expect(exitCode).toBe(2);
+    expect(failures[0].message).toMatch(/^The native library could not measure a text/);
   });
 
   /**
@@ -587,7 +608,7 @@ render({
     { id: "a", class: "box", label: "A", x: 60, y: 20 },
     { id: "b", class: "box", label: "B", x: 60, y: 220 },
   ],
-  edges: [{ from: "a", to: "b", label: "a long label on the edge" }],
+  edges: [{ from: "a", to: "b", label: "a long label on the edge, wider than its group" }],
   style: { box, group },
 });`;
     const root = repository({ "guide.md": oneBlock(code) });

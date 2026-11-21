@@ -24,8 +24,8 @@ use crate::inspect::{
 use crate::route::{
     CROSSING_COST, END_STUBS, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, LabelSpot, PARALLEL_RUN, Placement, PortRequest,
     Ports, Pushable, ROUTE_CLEARANCE, Side, Sides, bends, choose_sides, crossings, edge_ports, end_on_shapes,
-    is_on_outline, label_landmarks, overlap, place_label, route_cost, route_edge, routes_cost, runs_across, side_of,
-    spread_ports,
+    even_places, is_on_outline, label_landmarks, overlap, place_label, route_cost, route_edge, routes_cost,
+    runs_across, side_of, spread_ports,
 };
 use crate::text::{label_text_index, move_label, text_bounds};
 use crate::xml::{Document, Element, Path, serialize};
@@ -794,20 +794,36 @@ fn reroute_edges(draft: Draft) -> Draft {
     // holds. One that then found no way is drawn straight across, slanted
     // or through a node or along a side: an edge left with a critical issue
     // is rerouted once more, alone, and chooses its sides among the others'
-    // routes.
-    let lost: HashSet<String> = rerouted
-        .report()
+    // routes. Several are rerouted one at a time, as together they would
+    // choose their sides before each other's routes again.
+    lost_edges(&rerouted).into_iter().fold(rerouted, |draft, edge| {
+        // The route of one rerouted before it may have rid it of its issue.
+        if lost_edges(&draft).contains(&edge) {
+            reroute_among_labels(draft, Some(&HashSet::from([edge])))
+        } else {
+            draft
+        }
+    })
+}
+
+/// The edges left with a critical issue rerouting may rid them of, in the
+/// diagram's order.
+fn lost_edges(draft: &Draft) -> Vec<String> {
+    let report = draft.report();
+    let lost: HashSet<&String> = report
         .issues
         .iter()
         .filter(|issue| severity(&issue.code) == Severity::Critical)
         .flat_map(rerouted_for)
-        .cloned()
         .collect();
-    if lost.is_empty() {
-        rerouted
-    } else {
-        reroute_among_labels(rerouted, Some(&lost))
-    }
+    report
+        .diagram
+        .edges
+        .iter()
+        .map(|edge| &edge.id)
+        .filter(|id| lost.contains(id))
+        .cloned()
+        .collect()
 }
 
 /// The edges rerouted to be rid of an issue: none for one rerouting does
@@ -1777,10 +1793,12 @@ fn sound(nodes: &[DiagramNode], edge: &DiagramEdge, route: &[Point]) -> bool {
 /// Port changes that spreading ports evenly cannot see, tried once routes
 /// are drawn: two edges on the same node side whose routes cross
 /// trade their ports there (an edge running straight takes its other
-/// end along), and an end that steps aside just before its node slides
-/// along the side to the line it arrives on. A change stays when the
-/// edges it reroutes stay orthogonal and cross less without bending
-/// more, or bend less without crossing more.
+/// end along), an end that bends just before its node moves to the side
+/// its route was heading into, both sides spreading their ends again, and
+/// an end that steps aside just before its node slides along the side to
+/// the line it arrives on. A change stays when the edges it reroutes stay
+/// orthogonal and cross less without bending more, or bend less without
+/// crossing more.
 #[tracing::instrument(skip_all)]
 fn improve_ports(
     reroutes: &[Reroute],
@@ -1792,9 +1810,10 @@ fn improve_ports(
     route_with: &RouteWith,
 ) -> Vec<Vec<Point>> {
     // Reroutes the edges at `changed` with their new ports, keeping the
-    // change when it is better. The first one rerouted takes the lane it
-    // likes and the next goes around it, so each order is tried.
-    let attempt = |(ports, routes): (Vec<Ports>, Vec<Vec<Point>>), changed: &[(usize, Ports)]| {
+    // change when it is better, or with `tidying` when it is no worse. The
+    // first one rerouted takes the lane it likes and the next goes around
+    // it, so each order is tried.
+    let attempt = |(ports, routes): (Vec<Ports>, Vec<Vec<Point>>), changed: &[(usize, Ports)], tidying: bool| {
         let others: Vec<Vec<Point>> = settled
             .iter()
             .cloned()
@@ -1852,7 +1871,7 @@ fn improve_ports(
             .iter()
             .zip(&rerouted)
             .all(|((index, _), route)| sound(nodes, reroutes[*index].edge, route));
-        if new.0 <= old.0 && new.1 <= old.1 && new != old && all_sound {
+        if new.0 <= old.0 && new.1 <= old.1 && (new != old || tidying) && all_sound {
             changed
                 .iter()
                 .zip(rerouted)
@@ -1884,16 +1903,36 @@ fn improve_ports(
             Ports { end: p, ..ports }
         }
     };
+    let ends: Vec<(usize, usize)> = (0..reroutes.len()).flat_map(|index| [(index, 0), (index, 1)]).collect();
+    // Where a side of a node starts and how long it is.
+    let extent = |node: &DiagramNode, side: Side| {
+        if matches!(side, Side::Left | Side::Right) {
+            (node.bounds.y, node.bounds.height)
+        } else {
+            (node.bounds.x, node.bounds.width)
+        }
+    };
+    // The ends on a side of a node, each with where it lies along the side.
+    let ends_on = |ports: &[Ports], node: &DiagramNode, side: Side| -> Vec<((usize, usize), f64)> {
+        ends.iter()
+            .filter_map(|&(index, end)| {
+                let p = port_at(&ports[index], end);
+                (node_at(index, end).id == node.id && side_of(p, &node.bounds) == side).then_some((
+                    (index, end),
+                    if matches!(side, Side::Left | Side::Right) {
+                        p.y
+                    } else {
+                        p.x
+                    },
+                ))
+            })
+            .collect()
+    };
     // The segment of a side a port may move to: its middle half, as a port
     // near a corner looks pushed aside, and one near a circle's tangent
     // would meet it at a glancing angle.
     let usable = |index: usize, end: usize, side: Side| {
-        let node = node_at(index, end);
-        let (low, length) = if matches!(side, Side::Left | Side::Right) {
-            (node.bounds.y, node.bounds.height)
-        } else {
-            (node.bounds.x, node.bounds.width)
-        };
+        let (low, length) = extent(node_at(index, end), side);
         // At most half the side, so a side under 16px leaves its middle.
         let margin = (length / 4.0).max(8.0).min(length / 2.0);
         (low + margin, low + length - margin)
@@ -1902,27 +1941,18 @@ fn improve_ports(
     // its usable segment and a lane from every other port there.
     let free = |ports: &[Ports], index: usize, end: usize, side: Side, value: f64| {
         let node = node_at(index, end);
-        let along_y = matches!(side, Side::Left | Side::Right);
         let (low, high) = usable(index, end, side);
         let mut taken = fixed
             .get(&side_key(&node.bounds, side))
             .into_iter()
             .flatten()
             .copied()
-            .chain((0..reroutes.len()).flat_map(|other| {
-                (0..2).filter_map(move |other_end| {
-                    if (other, other_end) == (index, end) {
-                        return None;
-                    }
-                    let owner = node_at(other, other_end);
-                    let p = port_at(&ports[other], other_end);
-                    (owner.id == node.id && side_of(p, &owner.bounds) == side).then_some(if along_y {
-                        p.y
-                    } else {
-                        p.x
-                    })
-                })
-            }));
+            .chain(
+                ends_on(ports, node, side)
+                    .into_iter()
+                    .filter(|(other, _)| *other != (index, end))
+                    .map(|(_, at)| at),
+            );
         value >= low && value <= high && taken.all(|other| (other - value).abs() >= LANE_SPACING)
     };
     let moved_to = |port: Point, side: Side, value: f64| {
@@ -1983,9 +2013,49 @@ fn improve_ports(
                 (first, carried(&ports, first, a, q)),
                 (second, carried(&ports, second, b, p)),
             ];
-            attempt((ports, routes), &changed)
+            attempt((ports, routes), &changed, false)
         });
-    let ends: Vec<(usize, usize)> = (0..reroutes.len()).flat_map(|index| [(index, 0), (index, 1)]).collect();
+    // The ends on a side of a node that lie at its even places: spreading
+    // put them there, and none has slid or lined up since to straighten its
+    // route.
+    let evenly_placed = |ports: &[Ports], node: &DiagramNode, side: Side| -> Vec<(usize, usize)> {
+        let (low, length) = extent(node, side);
+        let there = ends_on(ports, node, side);
+        let settled = fixed.get(&side_key(&node.bounds, side)).map_or(0, Vec::len);
+        let places = even_places(low, length, there.len() + settled, &[]);
+        there
+            .into_iter()
+            .filter(|((index, end), at)| !pinned(*index, *end) && places.contains(at))
+            .map(|(end, _)| end)
+            .collect()
+    };
+    // `placed` ends on a side of a node set at the even places the other
+    // ports there leave, in the order they lie along it, as spreading ports
+    // sets them: a side an end has come to or left holds another number of
+    // ends than its ports were spread for.
+    let spread_again = |ports: Vec<Ports>, node: &DiagramNode, side: Side, placed: &[(usize, usize)]| {
+        let (low, length) = extent(node, side);
+        let (mut moving, held): (Vec<_>, Vec<_>) = ends_on(&ports, node, side)
+            .into_iter()
+            .partition(|(end, _)| placed.contains(end));
+        moving.sort_by(|(_, a), (_, b)| a.total_cmp(b));
+        let held: Vec<f64> = fixed
+            .get(&side_key(&node.bounds, side))
+            .into_iter()
+            .flatten()
+            .copied()
+            .chain(held.into_iter().map(|(_, at)| at))
+            .collect();
+        let places = even_places(low, length, moving.len(), &held);
+        moving
+            .into_iter()
+            .zip(places)
+            .fold(ports, |mut ports, (((index, end), _), place)| {
+                let to = moved_to(port_at(&ports[index], end), side, place);
+                ports[index] = carried(&ports, index, end, to);
+                ports
+            })
+    };
     // A route with the end at `end` last.
     let toward = |routes: &[Vec<Point>], index: usize, end: usize| -> Vec<Point> {
         if end == 0 {
@@ -2013,34 +2083,76 @@ fn improve_ports(
             return (ports, routes);
         }
         let changed = [(index, with_port(ports[index], end, moved_to(port, side, line)))];
-        attempt((ports, routes), &changed)
+        attempt((ports, routes), &changed, false)
     });
     // An end that bends onto a short last segment just before its node
     // moves to the side the route was heading into, where the route may run
-    // straight in.
-    let (_, bent) = ends.iter().fold(slid, |(ports, routes), &(index, end)| {
+    // straight in: onto the line it ran on, or as near it as the side's
+    // usable segment lets it.
+    let (_, moved_over) = ends.iter().fold(slid, |(ports, routes), &(index, end)| {
         if pinned(index, end) {
             return (ports, routes);
         }
         let Some((side, line)) = bent_end(&toward(&routes, index, end)) else {
             return (ports, routes);
         };
-        let bounds = node_at(index, end).bounds;
+        let node = node_at(index, end);
+        let from = side_of(port_at(&ports[index], end), &node.bounds);
         let (low, high) = usable(index, end, side);
+        let on_line = line >= low && line <= high;
         let line = line.clamp(low, high);
-        if side == side_of(port_at(&ports[index], end), &bounds) || !free(&ports, index, end, side, line) {
+        if side == from || !free(&ports, index, end, side, line) {
             return (ports, routes);
         }
         let port = match side {
-            Side::Left => point(bounds.x, line),
-            Side::Right => point(bounds.right(), line),
-            Side::Top => point(line, bounds.y),
-            Side::Bottom => point(line, bounds.bottom()),
+            Side::Left => point(node.bounds.x, line),
+            Side::Right => point(node.bounds.right(), line),
+            Side::Top => point(line, node.bounds.y),
+            Side::Bottom => point(line, node.bounds.bottom()),
         };
-        let changed = [(index, with_port(ports[index], end, port))];
-        attempt((ports, routes), &changed)
+        // The ends to spread again once it has moved: those at the even
+        // places of the side it comes to and of the one it leaves, and the
+        // end itself where its line lay off the usable segment.
+        let coming: Vec<(usize, usize)> = evenly_placed(&ports, node, side)
+            .into_iter()
+            .chain((!on_line).then_some((index, end)))
+            .collect();
+        let staying: Vec<(usize, usize)> = evenly_placed(&ports, node, from)
+            .into_iter()
+            .filter(|other| *other != (index, end))
+            .collect();
+        let before = ports[index];
+        let (ports, routes) = attempt((ports, routes), &[(index, with_port(before, end, port))], false);
+        if ports[index] == before {
+            return (ports, routes);
+        }
+        // Both sides now hold another number of ends than their ports were
+        // spread for. Their ends spread again where every port keeps a lane
+        // from the next and no route crosses or bends more for it.
+        let spread = spread_again(spread_again(ports.clone(), node, side, &coming), node, from, &staying);
+        let apart = |side: Side| {
+            let mut lines: Vec<f64> = fixed
+                .get(&side_key(&node.bounds, side))
+                .into_iter()
+                .flatten()
+                .copied()
+                .chain(ends_on(&spread, node, side).into_iter().map(|(_, at)| at))
+                .collect();
+            lines.sort_by(f64::total_cmp);
+            lines.windows(2).all(|pair| pair[1] - pair[0] >= LANE_SPACING)
+        };
+        let changed: Vec<(usize, Ports)> = spread
+            .iter()
+            .enumerate()
+            .filter(|(other, new)| ports[*other] != **new)
+            .map(|(other, new)| (other, *new))
+            .collect();
+        if changed.is_empty() || !apart(side) || !apart(from) {
+            return (ports, routes);
+        }
+        attempt((ports, routes), &changed, true)
     });
-    bent
+    moved_over
 }
 
 /// Where a route bends onto a short last segment just before its last

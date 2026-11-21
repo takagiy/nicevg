@@ -1936,7 +1936,7 @@ fn keeps_a_moved_label_clear_of_other_labels() {
 
     let result = fix(svg);
 
-    assert_eq!(label_bounds(&result.report, "note"), bounds(173.5, -14.0, 33.0, 17.0));
+    assert_eq!(label_bounds(&result.report, "note"), bounds(175.0, -14.0, 30.0, 17.0));
     assert!(
         gap_between(
             &label_bounds(&result.report, "retry"),

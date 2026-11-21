@@ -246,6 +246,11 @@ style		A style for each node class (|nicevg-dsl-render-style|).
 rootAttrs	Attributes for the root <svg>, such as
 		`{ "font-family": "sans-serif" }`, which its texts inherit.
 		nicevg writes `xmlns`, `viewBox`, `width` and `height`.
+		Texts are measured as this machine's fonts draw them in
+		that `font-family` and `font-weight`, and in the font
+		nicevg carries (Liberation Sans) where it has none. With
+		NICEVG_SYSTEM_FONTS=0 in the environment, only that font
+		measures, the same on every machine.
 
 NODES                                                *nicevg-dsl-render-nodes*
 
@@ -305,7 +310,8 @@ svg`...`	SVG as written. Embedded strings are escaped; `svg`
 		are. `fragment.at(x, y)` moves a fragment's origin.
 text(s, size)	A <text> of `size` (14 unless given); `\n` splits
 		lines. `width` and `height` are its size as nicevg
-		estimates it. `.at({ cx, cy })` places it: one of `left`,
+		measures it, in the font of `rootAttrs` when made while
+		a style draws. `.at({ cx, cy })` places it: one of `left`,
 		`cx`, `right` and one of `top`, `cy`, `bottom`.
 
 A node lies round what its style draws, or round the <rect> or <circle> its

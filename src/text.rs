@@ -8,7 +8,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::diagram::{non_empty, number_attribute, translation};
-use crate::geometry::{Bounds, enclosing, format_number, measure_text, parse_number, point, round, text_width};
+use crate::font::text_width;
+use crate::geometry::{Bounds, enclosing, format_number, measure_text, parse_number, point, round};
 use crate::xml::{Document, Element, Node, Path};
 
 static LENGTH: LazyLock<Regex> = LazyLock::new(|| {
@@ -225,7 +226,12 @@ fn measure_line(document: &Document, line: &Gathering, runs: &[(String, f64)]) -
         .map(|(_, size)| *size)
         .reduce(f64::max)
         .unwrap_or_else(|| font_size(document, &line.path));
-    let width = runs.iter().map(|(content, size)| text_width(content, *size)).sum();
+    let property = |name: &str| inherited_property(document, &line.path, name).unwrap_or_default();
+    let (family, weight) = (property("font-family"), property("font-weight"));
+    let width = runs
+        .iter()
+        .map(|(content, size)| text_width(content, *size, family, weight))
+        .sum();
     let offset = translation(document, &line.path);
     Line {
         path: line.path.clone(),

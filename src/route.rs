@@ -1914,40 +1914,43 @@ fn spread_side(ports: HashMap<String, Ports>, key: &str, users: &[SideUser], fix
     } else {
         (first.y, first.height)
     };
-    let count = (ordered.len() + fixed.len()) as f64;
-    let mut slots: Vec<f64> = (1..=ordered.len() + fixed.len())
-        .map(|index| index as f64 / (count + 1.0))
-        .collect();
-    for taken in fixed {
-        let nearest = slots
-            .iter()
-            .enumerate()
-            .min_by(|(_, a), (_, b)| {
-                ((low + length * **a) - taken)
-                    .abs()
-                    .total_cmp(&((low + length * **b) - taken).abs())
-            })
-            .map(|(index, _)| index);
-        if let Some(index) = nearest {
-            slots.remove(index);
-        }
-    }
     ordered
         .iter()
-        .zip(slots)
-        .fold(ports, |mut ports, ((_, user), fraction)| {
+        .zip(even_places(low, length, ordered.len(), fixed))
+        .fold(ports, |mut ports, ((_, user), place)| {
             let Some(port) = ports.get(&user.id).copied() else {
                 return ports;
             };
             let current = get(&port, user.end);
             let moved = if along_x {
-                point(round(user.bounds.x + user.bounds.width * fraction), current.y)
+                point(place, current.y)
             } else {
-                point(current.x, round(user.bounds.y + user.bounds.height * fraction))
+                point(current.x, place)
             };
             ports.insert(user.id.clone(), set(port, user.end, moved));
             ports
         })
+}
+
+/// The even places along a side from `low` over `length` left for `ends`
+/// ends, in order, once each port already there (`fixed`, given along the
+/// side) has taken the place nearest it.
+pub(crate) fn even_places(low: f64, length: f64, ends: usize, fixed: &[f64]) -> Vec<f64> {
+    let count = ends + fixed.len();
+    let mut places: Vec<f64> = (1..=count)
+        .map(|index| low + length * (index as f64 / (count as f64 + 1.0)))
+        .collect();
+    for taken in fixed {
+        let nearest = places
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| (**a - taken).abs().total_cmp(&(**b - taken).abs()))
+            .map(|(index, _)| index);
+        if let Some(index) = nearest {
+            places.remove(index);
+        }
+    }
+    places.into_iter().map(round).collect()
 }
 
 /// Straightens edges between facing sides: when one end's coordinate

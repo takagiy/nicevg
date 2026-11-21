@@ -12,7 +12,7 @@
  * ```
  */
 
-import { type SvgFragment, WIDE, svg, text } from "../draw.ts";
+import { type SvgFragment, lineWidth, svg, text } from "../draw.ts";
 
 /** A node a simple style draws: the box it takes, just big enough for its label when not given, and its text. */
 export interface SimpleNode {
@@ -43,20 +43,6 @@ const PADDING = 12;
 
 /** nicevg's rounding: half up. */
 const round = (value: number) => (value - Math.floor(value) >= 0.5 ? Math.floor(value) + 1 : Math.floor(value));
-
-/** A line's width as nicevg estimates it: wide characters one font size, others 0.59, rounded. */
-function lineWidth(line: string, size: number): number {
-  let wide = 0;
-  let narrow = 0;
-  for (const character of line) {
-    if (WIDE.test(character)) {
-      wide += 1;
-    } else {
-      narrow += character.length;
-    }
-  }
-  return round(narrow * size * 0.59 + wide * size);
-}
 
 interface Box {
   x: number;
