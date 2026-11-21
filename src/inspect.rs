@@ -22,6 +22,41 @@ pub struct DiagramIssue {
     pub details: Option<Map<String, Value>>,
 }
 
+/// How far an issue keeps a diagram from saying what it means.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Severity {
+    /// It still says it: a gap too narrow, a parent drawn elsewhere.
+    Warn,
+    /// It says it less clearly: an edge may be taken for another.
+    Error,
+    /// It does not say it, or says it wrong: something is hidden, cut off,
+    /// tied to the wrong thing or to nothing.
+    Critical,
+}
+
+/// The severity of the issues with a code.
+pub fn severity(code: &str) -> Severity {
+    match code {
+        "node-near-node" | "parent-drawn-differently" => Severity::Warn,
+        "edge-near-label" | "edge-bend-near-edge" => Severity::Error,
+        _ => Severity::Critical,
+    }
+}
+
+/// The issues an edge has with the nodes as it is drawn, whatever the
+/// other edges and the labels: what can be asked of a route before it is
+/// written.
+pub fn edge_issues(nodes: &[DiagramNode], edge: &DiagramEdge) -> Vec<DiagramIssue> {
+    let edges = std::slice::from_ref(edge);
+    [
+        edge_crossings(nodes, edges),
+        edge_ends(nodes, edges),
+        slanted_edges(edges),
+        edges_along_outlines(nodes, edges),
+    ]
+    .concat()
+}
+
 fn issue(code: &str, message: String, elements: &[&str], details: Option<Value>) -> DiagramIssue {
     DiagramIssue {
         code: code.to_owned(),
@@ -856,4 +891,37 @@ fn detached_labels(labels: &[DiagramLabel], edges: &[DiagramEdge]) -> Vec<Diagra
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Given the codes of the issues
+    /// When their severity is asked
+    /// Then a narrow gap and a parent drawn elsewhere are warnings, an edge
+    ///   near a label or bending near an edge an error, and the others
+    ///   critical: a slanted edge, a label that overflows its node, an edge
+    ///   along a side and a node out of its parent among them
+    #[test]
+    fn grades_issues_by_how_far_they_keep_a_diagram_from_saying_what_it_means() {
+        for code in ["node-near-node", "parent-drawn-differently"] {
+            assert_eq!(severity(code), Severity::Warn, "{code}");
+        }
+        for code in ["edge-near-label", "edge-bend-near-edge"] {
+            assert_eq!(severity(code), Severity::Error, "{code}");
+        }
+        for code in [
+            "edge-slanted",
+            "node-label-overflows",
+            "edge-overlaps-node-outline",
+            "node-overflows-parent",
+            "label-overlaps",
+            "edge-label-detached",
+            "edge-overlaps-node",
+            "unknown-node",
+        ] {
+            assert_eq!(severity(code), Severity::Critical, "{code}");
+        }
+    }
 }

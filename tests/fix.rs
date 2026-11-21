@@ -704,6 +704,46 @@ fn reroutes_alone_an_edge_that_finds_no_way_among_those_rerouted_with_it() {
     assert!(!has_issue(&result.report, "edge-overlaps-node"));
 }
 
+/// Given two tables, one over the other, each with a port on its left
+///   and its right side, and an edge between the two ports drawn straight
+///   down the left sides; a wall 20px left of the tables, and an edge
+///   running down the one line between them, past both ports, so no route
+///   leaves the left ports; another edge running down 16px right of the
+///   tables, so a route from the right ports costs more than a straight
+///   line
+/// When the diagram is fixed
+/// Then the edge leaves the right ports, and nothing is reported: the
+///   straight line between the left ports, drawn when no way is found, lies
+///   on the tables' sides, and a route the inspection finds a critical
+///   issue with is no route to take
+#[test]
+fn takes_a_port_s_other_place_when_no_way_leads_from_the_nearer_one() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -100 400 520">
+        <g data-node="wall"><rect x="20" y="20" width="60" height="300"/><text x="50" y="175" text-anchor="middle" font-size="13">Wall</text></g>
+        <g data-node="upper" data-custom="true"><g transform="translate(100 40)"><rect data-bounds="true" width="200" height="100"/><circle data-port="id" cx="0" cy="50" r="0"/><circle data-port="id" cx="200" cy="50" r="0"/></g></g>
+        <g data-node="lower" data-custom="true"><g transform="translate(100 200)"><rect data-bounds="true" width="200" height="100"/><circle data-port="ref" cx="0" cy="50" r="0"/><circle data-port="ref" cx="200" cy="50" r="0"/></g></g>
+        <g data-node="north"><rect x="42" y="-80" width="100" height="40"/><text x="92" y="-55" text-anchor="middle" font-size="13">North</text></g>
+        <g data-node="south"><rect x="42" y="360" width="100" height="40"/><text x="92" y="385" text-anchor="middle" font-size="13">South</text></g>
+        <g data-node="north-east"><rect x="266" y="-80" width="100" height="40"/><text x="316" y="-55" text-anchor="middle" font-size="13">NE</text></g>
+        <g data-node="south-east"><rect x="266" y="360" width="100" height="40"/><text x="316" y="385" text-anchor="middle" font-size="13">SE</text></g>
+        <path id="left" data-from="north" data-to="south" d="M 92 -40 L 92 360"/>
+        <path id="right" data-from="north-east" data-to="south-east" d="M 316 -40 L 316 360"/>
+        <path id="ref" data-from="lower" data-from-port="ref" data-to="upper" data-to-port="id" d="M 100 250 L 100 90"/>
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let points = edge_points(&result.report, "ref");
+
+    assert_eq!(
+        issues_with_code(&inspect(svg), "edge-overlaps-node-outline"),
+        [["ref", "upper"], ["ref", "lower"]]
+    );
+    assert_eq!((points[0].x, points[points.len() - 1].x), (300.0, 300.0), "{points:?}");
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+}
+
 /// Given a line without a fill, which SVG never fills, that has to detour
 /// When the diagram is fixed
 /// Then the bent path that replaces it is not filled either, while
