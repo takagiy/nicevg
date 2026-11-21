@@ -1,0 +1,199 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-337 -31 2601 922" width="2601" height="922" font-family="sans-serif">
+  <g data-node="master" data-custom="true" transform="translate(84 0)"><g transform="translate(360 20)"><rect data-bounds="true" x="0" y="0" width="678.5" height="210" fill="#f1f5f9" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="339.25" y="109.9">Master server</tspan></text></g>
+    
+    
+    <g data-node="coordinator" data-custom="true" transform="translate(0 69.9)">
+      <g transform="translate(405 75)"><rect data-bounds="true" x="0" y="0" width="272" height="59" fill="#e0e7ff" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="136" y="26">Coordinator</tspan><tspan x="136" y="42.8">segment assignment + balancing</tspan></text></g>
+    </g>
+    <g data-node="overlord" data-custom="true" transform="translate(0 69.9) translate(7 0)">
+      <g transform="translate(690 75)"><rect data-bounds="true" x="0" y="0" width="321" height="59" fill="#e0e7ff" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="160.5" y="26">Overlord</tspan><tspan x="160.5" y="42.8">task scheduling + segment publishing</tspan></text></g>
+    </g>
+  </g>
+  <g data-node="query" data-custom="true"><g transform="translate(20 260)"><rect data-bounds="true" x="0" y="0" width="360" height="410" fill="#eff6ff" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="180" y="209.9">Query server</tspan></text></g>
+    
+    
+    <g data-node="router" data-custom="true">
+      <g transform="translate(65 325)"><rect data-bounds="true" x="0" y="0" width="231" height="59" fill="#dbeafe" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="115.5" y="26">Router</tspan><tspan x="115.5" y="42.8">API gateway + web console</tspan></text></g>
+    </g>
+    <g data-node="broker" data-custom="true">
+      <g transform="translate(65 475)"><rect data-bounds="true" x="0" y="0" width="280" height="59" fill="#bfdbfe" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="140" y="26">Broker</tspan><tspan x="140" y="42.8">segment pruning + query fan-out</tspan></text></g>
+    </g>
+  </g>
+  <g data-node="data" data-custom="true" transform="translate(212 0) translate(77 0)"><g transform="translate(430 290)"><rect data-bounds="true" x="0" y="0" width="655" height="510" fill="#f0fdf4" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="327.5" y="259.9">Data server</tspan></text></g>
+    
+    
+    <g data-node="supervisor" data-custom="true" transform="translate(118 0)">
+      <g transform="translate(675 345)"><rect data-bounds="true" x="0" y="0" width="280" height="59" fill="#dcfce7" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="140" y="26">Kafka Supervisor</tspan><tspan x="140" y="42.8">partitions · offsets · replicas</tspan></text></g>
+    </g>
+    <g data-node="task1" data-custom="true">
+      <g transform="translate(490 470)"><rect data-bounds="true" x="0" y="0" width="189" height="59" fill="#bbf7d0" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="94.5" y="26">Kafka indexing task</tspan><tspan x="94.5" y="42.8">read / build segment</tspan></text></g>
+    </g>
+    <g data-node="task2" data-custom="true">
+      <g transform="translate(700 470)"><rect data-bounds="true" x="0" y="0" width="214" height="59" fill="#bbf7d0" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="107" y="26">Kafka indexing task</tspan><tspan x="107" y="42.8">replica / next task set</tspan></text></g>
+    </g>
+    <g data-node="mm" data-custom="true">
+      <g transform="translate(485 390)"><rect data-bounds="true" x="0" y="0" width="288" height="59" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="144" y="26">Middle Manager</tspan><tspan x="144" y="42.8">worker capacity + Peon lifecycle</tspan></text></g>
+    </g>
+    <g data-node="peon" data-custom="true">
+      <g transform="translate(500 565)"><rect data-bounds="true" x="0" y="0" width="189" height="59" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="94.5" y="26">Peon JVM</tspan><tspan x="94.5" y="42.8">one task per process</tspan></text></g>
+    </g>
+    <g data-node="realtime" data-custom="true">
+      <g transform="translate(710 580)"><rect data-bounds="true" x="0" y="0" width="222" height="59" fill="#fef9c3" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="111" y="26">Realtime segment</tspan><tspan x="111" y="42.8">queryable before publish</tspan></text></g>
+    </g>
+    <g data-node="historical" data-custom="true">
+      <g transform="translate(490 680)"><rect data-bounds="true" x="0" y="0" width="288" height="59" fill="#bbf7d0" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="144" y="26">Historical</tspan><tspan x="144" y="42.8">serves loaded immutable segments</tspan></text></g>
+    </g>
+  </g>
+  <g data-node="kafka" data-custom="true">
+    <g transform="translate(20 60)"><rect data-bounds="true" x="0" y="0" width="247" height="59" fill="#fef3c7" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="123.5" y="26">Apache Kafka</tspan><tspan x="123.5" y="42.8"> topic partitions + offsets</tspan></text></g>
+  </g>
+  <g data-node="client" data-custom="true">
+    <g transform="translate(20 735)"><rect data-bounds="true" x="0" y="0" width="231" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="115.5" y="26">SQL / native query client</tspan></text></g>
+  </g>
+  <g data-node="taskapi" data-custom="true" transform="translate(635 0) translate(212 0) translate(77 0)">
+    <g transform="translate(470 260)"><rect data-bounds="true" x="0" y="0" width="164" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="82" y="26">Overlord task API</tspan></text></g>
+  </g>
+  <g data-node="deep" data-custom="true" transform="translate(75 0) translate(212 0) translate(77 0)">
+    <g transform="translate(1030 400)"><rect data-bounds="true" x="0" y="0" width="330" height="59" fill="#fce7f3" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="165" y="26">Deep storage</tspan><tspan x="165" y="42.8">segment files (S3 / HDFS / shared FS)</tspan></text></g>
+  </g>
+  <g data-node="metadata" data-custom="true" transform="translate(75 0) translate(212 0) translate(77 0)">
+    <g transform="translate(1030 540)"><rect data-bounds="true" x="0" y="0" width="321" height="59" fill="#fce7f3" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="160.5" y="26">Metadata store (PostgreSQL / MySQL)</tspan><tspan x="160.5" y="42.8">segment + task + supervisor metadata</tspan></text></g>
+  </g>
+  <g data-node="zk" data-custom="true" transform="translate(75 0) translate(212 0) translate(77 0)">
+    <g transform="translate(1030 680)"><rect data-bounds="true" x="0" y="0" width="313" height="59" fill="#fce7f3" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="156.5" y="26">ZooKeeper</tspan><tspan x="156.5" y="42.8">service discovery + leader election</tspan></text></g>
+  </g>
+  <g data-node="spec" data-custom="true">
+    <g transform="translate(20 125)"><rect data-bounds="true" x="0" y="0" width="321" height="59" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="160.5" y="26">Supervisor spec</tspan><tspan x="160.5" y="42.8">dataSchema · ioConfig · tuningConfig</tspan></text></g>
+  </g>
+  <g data-node="parse" data-custom="true">
+    <g transform="translate(20 200)"><rect data-bounds="true" x="0" y="0" width="404" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="202" y="26">inputFormat + timestamp / dimensions / metrics</tspan></text></g>
+  </g>
+  <g data-node="segments" data-custom="true" transform="translate(75 0) translate(212 0) translate(184 0) translate(77 0)">
+    <g transform="translate(1030 270)"><rect data-bounds="true" x="0" y="0" width="288" height="59" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="144" y="26">Druid segments</tspan><tspan x="144" y="42.8">time chunk · version · partition</tspan></text></g>
+  </g>
+  <g data-node="rules" data-custom="true" transform="translate(112.5 0)">
+    <g transform="translate(1030 190)"><rect data-bounds="true" x="0" y="0" width="231" height="59" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="115.5" y="26">Coordinator load rules</tspan><tspan x="115.5" y="42.8">tier + replication factor</tspan></text></g>
+  </g>
+  <g data-node="queryreq" data-custom="true" transform="translate(380 0)">
+    <g transform="translate(20 555)"><rect data-bounds="true" x="0" y="0" width="222" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="111" y="26">Druid SQL / native query</tspan></text></g>
+  </g>
+  <g data-node="subquery" data-custom="true" transform="translate(150 0) translate(242 0) translate(675 0) translate(341 0) translate(77 0)">
+    <g transform="translate(250 560)"><rect data-bounds="true" x="0" y="0" width="189" height="59" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="94.5" y="26">Rewritten subqueries</tspan><tspan x="94.5" y="42.8">selected segment set</tspan></text></g>
+  </g>
+  <g data-node="partials" data-custom="true" transform="translate(150 0)">
+    <g transform="translate(250 635)"><rect data-bounds="true" x="0" y="0" width="148" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="74" y="26">Partial results</tspan></text></g>
+  </g>
+  <g data-node="final" data-custom="true" transform="translate(380 0) translate(168 0)">
+    <g transform="translate(20 635)"><rect data-bounds="true" x="0" y="0" width="131" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="65.5" y="26">Merged result</tspan></text></g>
+  </g>
+  <g data-node="handoff" data-custom="true" transform="translate(617 0) translate(333 0) translate(77 0)">
+    <g transform="translate(700 695)"><rect data-bounds="true" x="0" y="0" width="239" height="59" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="119.5" y="26">Handoff complete</tspan><tspan x="119.5" y="42.8">Historical serving segment</tspan></text></g>
+  </g>
+  <g data-node="offsets" data-custom="true" transform="translate(112.5 0)">
+    <g transform="translate(1030 80)"><rect data-bounds="true" x="0" y="0" width="313" height="59" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="156.5" y="26">Committed Kafka offsets</tspan><tspan x="156.5" y="42.8">transactional with segment metadata</tspan></text></g>
+  </g>
+  <g data-node="announce" data-custom="true" transform="translate(287 0) translate(77 0)">
+    <g transform="translate(1030 335)"><rect data-bounds="true" x="0" y="0" width="272" height="59" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="136" y="26">Published segment metadata</tspan><tspan x="136" y="42.8">used flag + segment descriptor</tspan></text></g>
+  </g>
+  <g data-node="coordpoll" data-custom="true" transform="translate(287 0) translate(77 0)">
+    <g transform="translate(1030 620)"><rect data-bounds="true" x="0" y="0" width="280" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="140" y="26">Coordinator polls used segments</tspan></text></g>
+  </g>
+  <g><path id="edge-0" data-from="client" data-to="router" fill="none" stroke="black" d="M 20 756 L 0 756 L 0 355 L 55 355"/><polygon fill="black" points="55,360 65,355 55,350"/></g>
+  <text data-label="edge-0" data-label-for="edge-0" text-anchor="start" font-size="12" x="9" y="141.5"><tspan x="9" y="701">HTTP query / API request</tspan></text>
+  <g><path id="edge-1" data-from="router" data-to="broker" fill="none" stroke="black" d="M 181 384 L 181 465"/><polygon fill="black" points="176,465 181,475 186,465"/></g>
+  <text data-label="edge-1" data-label-for="edge-1" text-anchor="start" font-size="12" x="190" y="1.3"><tspan x="190" y="435">query endpoint</tspan></text>
+  <g><path id="edge-2" data-from="router" data-to="overlord" fill="none" stroke="black" d="M 181 325 L 181 281 L 861 281 L 861 213.9"/><polygon fill="black" points="866,213.9 861,203.9 856,213.9"/></g>
+  <text data-label="edge-2" data-label-for="edge-2" text-anchor="start" font-size="12" x="190" y="83.3"><tspan x="190" y="317">task + supervisor API</tspan></text>
+  <g><path id="edge-3" data-from="router" data-to="coordinator" fill="none" stroke="black" d="M 296 355 L 557 355 L 557 213.9"/><polygon fill="black" points="562,213.9 557,203.9 552,213.9"/></g>
+  <text data-label="edge-3" data-label-for="edge-3" text-anchor="middle" font-size="12"><tspan x="360.75" y="233.7">cluster / segment API</tspan></text>
+  <g><path id="edge-4" data-from="client" data-to="queryreq" fill="none" stroke="black" d="M 251 749 L 392 749 L 392 583 L 396 583"/><polygon fill="black" points="390,588 400,583 390,578"/></g>
+  <text data-label="edge-4" data-label-for="edge-4" text-anchor="start" font-size="12" x="401" y="-49.3"><tspan x="401" y="621">SQL or native JSON</tspan></text>
+  <g><path id="edge-5" data-from="queryreq" data-to="broker" fill="none" stroke="black" d="M 400 569 L 205 569 L 205 544"/><polygon fill="black" points="210,544 205,534 200,544"/></g>
+  <text data-label="edge-5" data-label-for="edge-5" text-anchor="middle" font-size="12" x="283" y="45.5"><tspan x="283" y="590">query</tspan></text>
+  <g><path id="edge-6" data-from="broker" data-to="subquery" fill="none" stroke="black" d="M 345 510 L 360 510 L 360 808 L 1974 808 L 1974 590 L 1934 590"/><polygon fill="black" points="1934,585 1924,590 1934,595"/></g>
+  <text data-label="edge-6" data-label-for="edge-6" text-anchor="middle" font-size="12" x="1732" y="277.8"><tspan x="1732" y="829">prune by time / attributes; rewrite</tspan></text>
+  <g><path id="edge-7" data-from="broker" data-to="historical" fill="none" stroke="black" d="M 345 487 L 707 487 L 707 710 L 769 710"/><polygon fill="black" points="769,715 779,710 769,705"/></g>
+  <text data-label="edge-7" data-label-for="edge-7" text-anchor="middle" font-size="12" x="466" y="-80.2"><tspan x="466" y="531">per-segment subquery</tspan></text>
+  <g><path id="edge-8" data-from="broker" data-to="realtime" fill="none" stroke="black" d="M 275 534 L 275 542 L 1073 542 L 1073 570"/><polygon fill="black" points="1068,570 1073,580 1078,570"/></g>
+  <text data-label="edge-8" data-label-for="edge-8" text-anchor="middle" font-size="12" x="514" y="-30.2"><tspan x="514" y="531">subquery for uncommitted data</tspan></text>
+  <g><path id="edge-9" data-from="historical" data-to="partials" fill="none" stroke="black" d="M 779 724 L 511 724 L 511 687.2"/><polygon fill="black" points="516,687.2 511,677.2 506,687.2"/></g>
+  <text data-label="edge-9" data-label-for="edge-9" text-anchor="middle" font-size="12"><tspan x="479" y="687">segment query results</tspan></text>
+  <g><path id="edge-10" data-from="realtime" data-to="partials" fill="none" stroke="black" d="M 1110 639 L 1110 747 L 474 747 L 474 687.2"/><polygon fill="black" points="479,687.2 474,677.2 469,687.2"/></g>
+  <text data-label="edge-10" data-label-for="edge-10" text-anchor="middle" font-size="12" x="824" y="131"><tspan x="824" y="768">segment query results</tspan></text>
+  <g><path id="edge-11" data-from="partials" data-to="broker" fill="none" stroke="black" d="M 400 656 L 135 656 L 135 544"/><polygon fill="black" points="140,544 135,534 130,544"/></g>
+  <text data-label="edge-11" data-label-for="edge-11" text-anchor="middle" font-size="12" x="241" y="60.5"><tspan x="241" y="645">partial results</tspan></text>
+  <g><path id="edge-12" data-from="broker" data-to="final" fill="none" stroke="black" d="M 345 499 L 634 499 L 634 625"/><polygon fill="black" points="629,625 634,635 639,625"/></g>
+  <text data-label="edge-12" data-label-for="edge-12" text-anchor="middle" font-size="12"><tspan x="145.25" y="584.5">merge partial results</tspan></text>
+  <g><path id="edge-13" data-from="final" data-to="client" fill="none" stroke="black" d="M 634 677.2 L 634 763 L 261 763"/><polygon fill="black" points="261,758 251,763 261,768"/></g>
+  <text data-label="edge-13" data-label-for="edge-13" text-anchor="end" font-size="12" x="625" y="-2.3"><tspan x="625" y="708">query response</tspan></text>
+  <g><path id="edge-14" data-from="spec" data-to="taskapi" fill="none" stroke="black" d="M 341 155 L 353 155 L 353 12 L 1133 12 L 1133 281 L 1384 281"/><polygon fill="black" points="1384,286 1394,281 1384,276"/></g>
+  <text data-label="edge-14" data-label-for="edge-14" text-anchor="middle" font-size="12" x="743" y="-221"><tspan x="743" y="1">POST supervisor spec</tspan></text>
+  <g><path id="edge-15" data-from="taskapi" data-to="overlord" fill="none" stroke="black" d="M 1476 260 L 1476 174 L 1112 174"/><polygon fill="black" points="1112,169 1102,174 1112,179"/></g>
+  <text data-label="edge-15" data-label-for="edge-15" text-anchor="start" font-size="12" x="1485" y="25"><tspan x="1485" y="222">HTTP task submission</tspan></text>
+  <g><path id="edge-16" data-from="overlord" data-to="supervisor" fill="none" stroke="black" d="M 1022 203.9 L 1022 375 L 1072 375"/><polygon fill="black" points="1072,380 1082,375 1072,370"/></g>
+  <text data-label="edge-16" data-label-for="edge-16" text-anchor="start" font-size="12" x="1031" y="68.3"><tspan x="1031" y="312">spawn / restore supervisor</tspan></text>
+  <g><path id="edge-17" data-from="supervisor" data-to="kafka" fill="none" stroke="black" d="M 1082 360 L 434 360 L 434 75 L 277 75"/><polygon fill="black" points="277,70 267,75 277,80"/></g>
+  <text data-label="edge-17" data-label-for="edge-17" text-anchor="middle" font-size="12" x="564" y="144.8"><tspan x="564" y="381">discover partitions; read offsets</tspan></text>
+  <g><path id="edge-18" data-from="kafka" data-to="task1" fill="none" stroke="black" d="M 267 104 L 373 104 L 373 192 L 12 192 L 12 251 L 393 251 L 393 480 L 769 480"/><polygon fill="black" points="769,485 779,480 769,475"/></g>
+  <text data-label="edge-18" data-label-for="edge-18" text-anchor="middle" font-size="12"><tspan x="364" y="298.7">records from assigned partitions</tspan></text>
+  <g><path id="edge-19" data-from="kafka" data-to="task2" fill="none" stroke="black" d="M 205.25 60 L 205.25 52 L -20 52 L -20 790 L 1229 790 L 1229 484.75 L 1213 484.75"/><polygon fill="black" points="1213,479.75 1203,484.75 1213,489.75"/></g>
+  <text data-label="edge-19" data-label-for="edge-19" text-anchor="middle" font-size="12" x="167" y="512.3"><tspan x="167" y="811">replica reads same stream offsets</tspan></text>
+  <g><path id="edge-20" data-from="supervisor" data-to="task1" fill="none" stroke="black" d="M 1082 389 L 1074 389 L 1074 382 L 739 382 L 739 490 L 769 490"/><polygon fill="black" points="769,495 779,490 769,485"/></g>
+  <text data-label="edge-20" data-label-for="edge-20" text-anchor="middle" font-size="12"><tspan x="699.75" y="441.2">assign partitions + start offsets</tspan></text>
+  <g><path id="edge-21" data-from="supervisor" data-to="task2" fill="none" stroke="black" d="M 1222 404 L 1222 429 L 1096 429 L 1096 460"/><polygon fill="black" points="1091,460 1096,470 1101,460"/></g>
+  <text data-label="edge-21" data-label-for="edge-21" text-anchor="middle" font-size="12"><tspan x="811" y="441.2">task status / replacement / retry</tspan></text>
+  <g><path id="edge-22" data-from="task1" data-to="mm" fill="none" stroke="black" d="M 779 500 L 750 500 L 750 429 L 764 429"/><polygon fill="black" points="764,434 774,429 764,424"/></g>
+  <text data-label="edge-22" data-label-for="edge-22" text-anchor="middle" font-size="12"><tspan x="606.75" y="463.7">task request</tspan></text>
+  <g><path id="edge-23" data-from="mm" data-to="peon" fill="none" stroke="black" d="M 774 410 L 745 410 L 745 595 L 779 595"/><polygon fill="black" points="779,600 789,595 779,590"/></g>
+  <text data-label="edge-23" data-label-for="edge-23" text-anchor="middle" font-size="12"><tspan x="611.75" y="511.2">spawn task JVM</tspan></text>
+  <g><path id="edge-24" data-from="peon" data-to="task1" fill="none" stroke="black" d="M 884 565 L 884 539"/><polygon fill="black" points="889,539 884,529 879,539"/></g>
+  <text data-label="edge-24" data-label-for="edge-24" text-anchor="middle" font-size="12"><tspan x="589.5" y="551.2">runs indexing task</tspan></text>
+  <g><path id="edge-25" data-from="parse" data-to="task1" fill="none" stroke="black" d="M 323 242.2 L 323 250.2 L 414 250.2 L 414 462 L 713 462 L 713 509 L 769 509"/><polygon fill="black" points="769,514 779,509 769,504"/></g>
+  <text data-label="edge-25" data-label-for="edge-25" text-anchor="middle" font-size="12" x="564" y="86.5"><tspan x="564" y="451">parse and transform records</tspan></text>
+  <g><path id="edge-26" data-from="task1" data-to="realtime" fill="none" stroke="black" d="M 905 529 L 905 537 L 1147 537 L 1147 570"/><polygon fill="black" points="1142,570 1147,580 1152,570"/></g>
+  <text data-label="edge-26" data-label-for="edge-26" text-anchor="middle" font-size="12"><tspan x="702.75" y="558.7">incremental segment; queryable now</tspan></text>
+  <g><path id="edge-27" data-from="task1" data-to="deep" fill="none" stroke="black" d="M 874 470 L 874 457 L 1239 457 L 1239 420 L 1384 420"/><polygon fill="black" points="1384,425 1394,420 1384,415"/></g>
+  <text data-label="edge-27" data-label-for="edge-27" text-anchor="middle" font-size="12"><tspan x="889.75" y="468.7">push completed segment file</tspan></text>
+  <g><path id="edge-28" data-from="task1" data-to="metadata" fill="none" stroke="black" d="M 921 470 L 921 462 L 1279 462 L 1279 591 L 1384 591"/><polygon fill="black" points="1384,596 1394,591 1384,586"/></g>
+  <text data-label="edge-28" data-label-for="edge-28" text-anchor="middle" font-size="12"><tspan x="887.5" y="538.7">publish segment + Kafka offsets atomically</tspan></text>
+  <g><path id="edge-29" data-from="task1" data-to="announce" fill="none" stroke="black" d="M 826 470 L 1384.1988664718078 356.9843844291234"/><polygon fill="black" points="1385.1910586863696,361.8849511932195 1394,355 1383.206674257246,352.0838176650273"/></g>
+  <text data-label="edge-29" data-label-for="edge-29" text-anchor="middle" font-size="12"><tspan x="875.25" y="436.2">segment descriptor / used=true</tspan></text>
+  <g><path id="edge-30" data-from="metadata" data-to="offsets" fill="none" stroke="black" d="M 1474.25 540 L 1474.25 504.75 L 1907 504.75 L 1907 124.25 L 1465.5 124.25"/><polygon fill="black" points="1465.5,119.25 1455.5,124.25 1465.5,129.25"/></g>
+  <text data-label="edge-30" data-label-for="edge-30" text-anchor="middle" font-size="12" x="1681" y="-230.7"><tspan x="1681" y="113">persist checkpoint with publish</tspan></text>
+  <g><path id="edge-31" data-from="metadata" data-to="announce" fill="none" stroke="black" d="M 1394 574 L 1386 574 L 1386 607 L 1725 607 L 1725 467 L 1382 467 L 1382 374 L 1388 374"/><polygon fill="black" points="1384,379 1394,374 1384,369"/></g>
+  <text data-label="edge-31" data-label-for="edge-31" text-anchor="start" font-size="12" x="1734" y="77.8"><tspan x="1734" y="549">segment metadata record</tspan></text>
+  <g><path id="edge-32" data-from="supervisor" data-to="metadata" fill="none" stroke="black" d="M 1292 404 L 1292 582 L 1384 582"/><polygon fill="black" points="1384,587 1394,582 1384,577"/></g>
+  <text data-label="edge-32" data-label-for="edge-32" text-anchor="middle" font-size="12"><tspan x="1002.75" y="476.2">persist spec + checkpoints; recover on leader change</tspan></text>
+  <g><path id="edge-33" data-from="overlord" data-to="metadata" fill="none" stroke="black" d="M 1102 160 L 1891 160 L 1891 484.75 L 1386 484.75 L 1386 548 L 1390 548"/><polygon fill="black" points="1384,553 1394,548 1384,543"/></g>
+  <text data-label="edge-33" data-label-for="edge-33" text-anchor="middle" font-size="12" x="1615" y="-160.2"><tspan x="1615" y="181">task state + supervisor specs</tspan></text>
+  <g><path id="edge-34" data-from="overlord" data-to="mm" fill="none" stroke="black" d="M 942 203.9 L 942 380"/><polygon fill="black" points="937,380 942,390 947,380"/></g>
+  <text data-label="edge-34" data-label-for="edge-34" text-anchor="end" font-size="12" x="933" y="54.8"><tspan x="933" y="321">assign task to worker capacity</tspan></text>
+  <g><path id="edge-35" data-from="coordinator" data-to="metadata" fill="none" stroke="black" d="M 707 203.9 L 707 211.9 L 769 211.9 L 769 72 L 1939 72 L 1939 671 L 1382 671 L 1382 565 L 1388 565"/><polygon fill="black" points="1384,570 1394,565 1384,560"/></g>
+  <text data-label="edge-35" data-label-for="edge-35" text-anchor="middle" font-size="12" x="1588" y="-248.2"><tspan x="1588" y="93">poll used segments + load rules</tspan></text>
+  <g><path id="edge-36" data-from="rules" data-to="coordinator" fill="none" stroke="black" d="M 1142.5 220 L 1110 220 L 1110 120.9 L 693 120.9 L 693 134.9"/><polygon fill="black" points="688,134.9 693,144.9 698,134.9"/></g>
+  <text data-label="edge-36" data-label-for="edge-36" text-anchor="end" font-size="12" x="684" y="-28.2"><tspan x="684" y="138">tier / replication policy</tspan></text>
+  <g><path id="edge-37" data-from="announce" data-to="segments" fill="none" stroke="black" d="M 1666 365 L 1722 365 L 1722 339"/><polygon fill="black" points="1727,339 1722,329 1717,339"/></g>
+  <text data-label="edge-37" data-label-for="edge-37" text-anchor="middle" font-size="12"><tspan x="1170" y="336.2">published segment identity</tspan></text>
+  <g><path id="edge-38" data-from="deep" data-to="historical" fill="none" stroke="black" d="M 1394 444.25 L 1259 444.25 L 1259 700 L 1077 700"/><polygon fill="black" points="1077,695 1067,700 1077,705"/></g>
+  <text data-label="edge-38" data-label-for="edge-38" text-anchor="middle" font-size="12"><tspan x="914.5" y="573.7">download segment file</tspan></text>
+  <g><path id="edge-39" data-from="coordinator" data-to="historical" fill="none" stroke="black" d="M 693 203.9 L 693 445 L 725 445 L 725 695 L 769 695"/><polygon fill="black" points="769,700 779,695 769,690"/></g>
+  <text data-label="edge-39" data-label-for="edge-39" text-anchor="end" font-size="12" x="684" y="-9.2"><tspan x="684" y="402">HTTP load / drop / balance</tspan></text>
+  <g><path id="edge-40" data-from="historical" data-to="coordpoll" fill="none" stroke="black" d="M 1067 719 L 1279 719 L 1279 648 L 1384 648"/><polygon fill="black" points="1384,653 1394,648 1384,643"/></g>
+  <text data-label="edge-40" data-label-for="edge-40" text-anchor="middle" font-size="12"><tspan x="902" y="679.5">HTTP served-segment inventory</tspan></text>
+  <g><path id="edge-41" data-from="coordpoll" data-to="coordinator" fill="none" stroke="black" d="M 1464 620 L 1464 612 L 1722 612 L 1722 632 L 1955 632 L 1955 56 L 481 56 L 481 246 L 543 246 L 543 213.9"/><polygon fill="black" points="548,213.9 543,203.9 538,213.9"/></g>
+  <text data-label="edge-41" data-label-for="edge-41" text-anchor="middle" font-size="12" x="776" y="-332"><tspan x="776" y="45">assess cluster state each run</tspan></text>
+  <g><path id="edge-42" data-from="historical" data-to="handoff" fill="none" stroke="black" d="M 923 739 L 923 778 L 1847 778 L 1847 764"/><polygon fill="black" points="1852,764 1847,754 1842,764"/></g>
+  <text data-label="edge-42" data-label-for="edge-42" text-anchor="middle" font-size="12" x="1062" y="45.8"><tspan x="1062" y="767">segment loaded and serving</tspan></text>
+  <g><path id="edge-43" data-from="handoff" data-to="task1" fill="none" stroke="black" d="M 1727 709.75 L 1719 709.75 L 1719 747 L 1127 747 L 1127 648 L 755 648 L 755 519 L 769 519"/><polygon fill="black" points="769,524 779,519 769,514"/></g>
+  <text data-label="edge-43" data-label-for="edge-43" text-anchor="middle" font-size="12" x="941" y="52.8"><tspan x="941" y="669">task exits after realtime handoff</tspan></text>
+  <g><path id="edge-44" data-from="deep" data-to="segments" fill="none" stroke="black" d="M 1724 430 L 1794 430 L 1794 339"/><polygon fill="black" points="1799,339 1794,329 1789,339"/></g>
+  <text data-label="edge-44" data-label-for="edge-44" text-anchor="middle" font-size="12"><tspan x="1184.5" y="368.7">durable segment bytes</tspan></text>
+  <g><path id="edge-45" data-from="metadata" data-to="segments" fill="none" stroke="black" d="M 1555 540 L 1555 527 L 1923 527 L 1923 290 L 1876 290"/><polygon fill="black" points="1876,285 1866,290 1876,295"/></g>
+  <text data-label="edge-45" data-label-for="edge-45" text-anchor="middle" font-size="12"><tspan x="1182.25" y="438.7">schema, size, deep-storage location</tspan></text>
+  <g><path id="edge-46" data-from="coordinator" data-to="zk" fill="none" stroke="black" d="M 652 203.9 L 652 262 L 464 262 L 464 40 L -40 40 L -40 848 L 1472.25 848 L 1472.25 749"/><polygon fill="black" points="1477.25,749 1472.25,739 1467.25,749"/></g>
+  <text data-label="edge-46" data-label-for="edge-46" text-anchor="middle" font-size="12" x="716" y="457.8"><tspan x="716" y="869">leader election + service discovery</tspan></text>
+  <g><path id="edge-47" data-from="overlord" data-to="zk" fill="none" stroke="black" d="M 1021.75 144.9 L 1021.75 40 L 1994 40 L 1994 763 L 1386 763 L 1386 700 L 1390 700"/><polygon fill="black" points="1384,705 1394,700 1384,695"/></g>
+  <text data-label="edge-47" data-label-for="edge-47" text-anchor="start" font-size="12" x="2003" y="-4.2"><tspan x="2003" y="407">leader election + worker discovery</tspan></text>
+  <g><path id="edge-48" data-from="broker" data-to="zk" fill="none" stroke="black" d="M 345 522 L 353 522 L 353 828 L 1551 828 L 1551 749"/><polygon fill="black" points="1556,749 1551,739 1546,749"/></g>
+  <text data-label="edge-48" data-label-for="edge-48" text-anchor="end" font-size="12" x="344" y="99.8"><tspan x="344" y="711">service discovery</tspan></text>
+</svg>

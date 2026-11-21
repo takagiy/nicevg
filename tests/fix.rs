@@ -682,6 +682,28 @@ fn reroutes_an_edge_out_of_the_gap_between_a_node_and_its_parent_s_side() {
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 }
 
+/// Given the Apache Druid architecture as laid out with one edge drawn
+///   straight through two nodes: it leaves the top of its node with two
+///   others, where the gap to the node above holds two routes
+/// When the diagram is fixed
+/// Then no edge is left slanted or through a node: one that finds no way
+///   among the routes drawn with its own is rerouted once more, alone,
+///   and leaves another side
+#[test]
+fn reroutes_alone_an_edge_that_finds_no_way_among_those_rerouted_with_it() {
+    let svg = include_str!("fixtures/apache-druid-lost-edge.svg");
+
+    let result = fix(svg);
+
+    assert_eq!(issues_with_code(&inspect(svg), "edge-slanted"), [["edge-29"]]);
+    assert!(
+        !has_issue(&result.report, "edge-slanted"),
+        "{:?}",
+        issues_with_code(&result.report, "edge-slanted")
+    );
+    assert!(!has_issue(&result.report, "edge-overlaps-node"));
+}
+
 /// Given a line without a fill, which SVG never fills, that has to detour
 /// When the diagram is fixed
 /// Then the bent path that replaces it is not filled either, while

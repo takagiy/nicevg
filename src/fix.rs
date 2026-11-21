@@ -632,6 +632,7 @@ fn pick_reroutes<'a>(
     report: &'a InspectionReport,
     moved_node_ids: &[String],
     nodes_by_id: &HashMap<&str, &'a DiagramNode>,
+    alone: Option<&HashSet<String>>,
 ) -> (HashSet<&'a str>, Vec<Reroute<'a>>) {
     let diagram = &report.diagram;
     // A tied label that drifted from its edge or covers a node moves
@@ -720,7 +721,10 @@ fn pick_reroutes<'a>(
     let reroutes: Vec<Reroute> = diagram
         .edges
         .iter()
-        .filter(|edge| with_issues.contains(edge.id.as_str()) || moved(&edge.from) || moved(&edge.to))
+        .filter(|edge| match alone {
+            Some(alone) => alone.contains(&edge.id),
+            None => with_issues.contains(edge.id.as_str()) || moved(&edge.from) || moved(&edge.to),
+        })
         .filter_map(|edge| {
             Some(Reroute::new(
                 edge,
@@ -806,25 +810,49 @@ fn write_routes(draft: &Draft, diagram: &Diagram, reroutes: &[Reroute], final_ro
 /// edges and of labels that drifted from their edge.
 #[tracing::instrument(skip_all, fields(reroutes = tracing::field::Empty, partners = tracing::field::Empty))]
 fn reroute_edges(draft: Draft) -> Draft {
+    let rerouted = reroute_among_labels(draft, None);
+    // Edges rerouted together choose their sides before any of their routes
+    // is drawn, so more of them may take a side than the gap before it
+    // holds. One that then found no way, and is drawn straight across, is
+    // rerouted once more, alone: it chooses its sides among the others'
+    // routes.
+    let lost: HashSet<String> = rerouted
+        .report()
+        .issues
+        .iter()
+        .filter(|issue| issue.code == "edge-slanted")
+        .filter_map(|issue| issue.elements.first().cloned())
+        .collect();
+    if lost.is_empty() {
+        rerouted
+    } else {
+        reroute_among_labels(rerouted, Some(&lost))
+    }
+}
+
+/// Reroutes the edges that need it, or only those named in `alone`, and
+/// places their labels.
+fn reroute_among_labels(draft: Draft, alone: Option<&HashSet<String>>) -> Draft {
     // A pushed label is sure of a spot only among the routes as they were;
     // one that finds none among the new routes stands as a wall instead.
-    let (rerouted, stuck) = reroute_around(draft.clone(), &HashSet::new());
+    let (rerouted, stuck) = reroute_around(draft.clone(), &HashSet::new(), alone);
     if stuck.is_empty() {
         rerouted
     } else {
-        reroute_around(draft, &stuck).0
+        reroute_around(draft, &stuck, alone).0
     }
 }
 
 /// Reroutes as `reroute_edges` does, with the labels named in `walls`
-/// standing in the way instead of moving aside; also gives the labels it
-/// pushed aside but found no spot for.
-fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<String>) {
+/// standing in the way instead of moving aside, and only the edges named in
+/// `alone` when it is given; also gives the labels it pushed aside but found
+/// no spot for.
+fn reroute_around(draft: Draft, walls: &HashSet<String>, alone: Option<&HashSet<String>>) -> (Draft, HashSet<String>) {
     let report = draft.report().clone();
     let diagram = &report.diagram;
 
     let nodes_by_id: HashMap<&str, &DiagramNode> = diagram.nodes.iter().map(|node| (node.id.as_str(), node)).collect();
-    let (detached_ids, reroutes) = pick_reroutes(&report, &draft.moved_node_ids, &nodes_by_id);
+    let (detached_ids, reroutes) = pick_reroutes(&report, &draft.moved_node_ids, &nodes_by_id, alone);
     let rerouted_ids: HashSet<&str> = reroutes.iter().map(|reroute| reroute.edge.id.as_str()).collect();
     let settled: Vec<Vec<Point>> = diagram
         .edges
@@ -2408,7 +2436,7 @@ mod tests {
             .iter()
             .map(|node| (node.id.as_str(), node))
             .collect();
-        let picked = |moved: &[String]| pick_reroutes(&report, moved, &nodes_by_id).1.len();
+        let picked = |moved: &[String]| pick_reroutes(&report, moved, &nodes_by_id, None).1.len();
 
         assert_eq!(picked(&[]), 0);
         assert_eq!(picked(&["a".to_owned()]), 1);
