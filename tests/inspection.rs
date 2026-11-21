@@ -834,6 +834,35 @@ fn reports_a_edge_end_running_along_the_side_it_ends_on() {
     );
 }
 
+/// Given an edge between two children of a parent whose middle segment
+///   runs 2px inside the parent's left side, and another that passes 8px
+///   beside a node it does not join
+/// When the diagram is inspected
+/// Then the first is reported as running along a side of the parent, and
+///   the second is not reported
+#[test]
+fn reports_an_edge_running_just_beside_a_side_of_a_node() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 360">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="300" height="320"/>
+          <g data-node="api"><rect x="60" y="60" width="120" height="56"/><text x="120" y="93" text-anchor="middle" font-size="14">API</text></g>
+          <g data-node="queue"><rect x="200" y="150" width="80" height="56"/><text x="240" y="183" text-anchor="middle" font-size="14">Queue</text></g>
+          <g data-node="worker"><rect x="60" y="240" width="120" height="56"/><text x="120" y="273" text-anchor="middle" font-size="14">Worker</text></g>
+        </g>
+        <path id="beside" data-from="api" data-to="worker" d="M 60 88 L 22 88 L 22 268 L 60 268"/>
+        <path id="clear" data-from="api" data-to="worker" d="M 180 88 L 192 88 L 192 268 L 180 268"/>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    assert_eq!(
+        issues_with_code(&report, "edge-overlaps-node-outline"),
+        [["beside", "cluster"]]
+    );
+}
+
 /// Two tables, `article` with a port "author" on each side at its middle
 /// row and `user` with a port "id" on each side at its top row, and a
 /// edge between them drawn as `d`.
