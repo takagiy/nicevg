@@ -484,6 +484,63 @@ fn ignores_labels_inside_a_parent_unless_they_cover_a_child() {
     );
 }
 
+/// Given a parent holding a child, and a label in the parent's free space
+///   that lies on the parent's title
+/// When the diagram is inspected
+/// Then the label is reported as overlapping a label, with the parent whose
+///   label that is, and not as overlapping the parent
+#[test]
+fn reports_a_label_on_a_label_of_the_parent_it_lies_in() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="360" height="200" />
+          <text x="36" y="48" font-size="13">Cluster</text>
+          <g data-node="service">
+            <rect x="60" y="80" width="120" height="56" />
+            <text x="120" y="113" text-anchor="middle" font-size="14">Service</text>
+          </g>
+        </g>
+        <text data-label="note" x="40" y="46" font-size="11">free note</text>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    assert!(issues_json(&report).contains(&json!({
+        "code": "label-overlaps",
+        "message": "Label \"note\" overlaps a label of node \"cluster\".",
+        "elements": ["note", "cluster"],
+    })));
+    assert!(!has_issue(&report, "label-overlaps-node"), "{:?}", issue_codes(&report));
+}
+
+/// Given an edge between two children of a parent, its label written
+///   inside the parent's group, in the parent's free space
+/// When the diagram is inspected
+/// Then the label is not taken for a label of the parent, and it is not
+///   reported as overlapping one
+#[test]
+fn does_not_take_an_edge_s_label_in_a_parent_s_group_for_the_parent_s() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="360" height="200" />
+          <text x="36" y="48" font-size="13">Cluster</text>
+          <g data-node="p"><rect x="60" y="80" width="100" height="56"/><text x="110" y="113" text-anchor="middle" font-size="14">P</text></g>
+          <g data-node="q"><rect x="260" y="80" width="100" height="56"/><text x="310" y="113" text-anchor="middle" font-size="14">Q</text></g>
+          <text data-label="e-label" data-label-for="e" x="210" y="95" text-anchor="middle" font-size="11">calls</text>
+        </g>
+        <line id="e" data-from="p" data-to="q" x1="160" y1="108" x2="260" y2="108" />
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    assert_eq!(report.diagram.node("cluster").expect("cluster").label_bounds.len(), 1);
+    assert!(!has_issue(&report, "label-overlaps"), "{:?}", issue_codes(&report));
+}
+
 /// Given a free label that extends beyond the viewBox safety area
 /// When the diagram is inspected
 /// Then viewport clipping is reported even when no nodes exist

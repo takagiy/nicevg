@@ -233,6 +233,18 @@ pub fn is_node_shape(element: &Element) -> bool {
     element.name == "rect" || element.name == "circle"
 }
 
+/// The texts a node's group holds directly, its labels: not an edge's label
+/// written there, which says so with `data-label`.
+pub fn node_labels(document: &Document, group: &[usize]) -> Vec<Path> {
+    child_element_paths(document, group)
+        .into_iter()
+        .filter(|child| {
+            let element = document.element(child);
+            element.name == "text" && element.attr("data-label").is_empty()
+        })
+        .collect()
+}
+
 /// The shape a node's group draws it as: the first in the group, which holds
 /// it directly unless it is annotated `data-node`.
 pub fn node_shape(document: &Document, group: &[usize]) -> Option<Path> {
@@ -464,10 +476,7 @@ fn recognize(document: &Document, custom: &[&Path], index: usize, path: &Path, g
     {
         return None;
     }
-    let labels: Vec<Path> = child_element_paths(document, path)
-        .into_iter()
-        .filter(|child| document.element(child).name == "text")
-        .collect();
+    let labels = node_labels(document, path);
     if !annotated && labels.is_empty() {
         return None;
     }

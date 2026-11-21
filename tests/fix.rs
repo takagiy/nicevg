@@ -2817,3 +2817,79 @@ fn reads_numbers_out_of_range_as_attribute_values() {
         fix(&format!(r#"<svg xmlns="http://www.w3.org/2000/svg">{source}{target}"#));
     }
 }
+
+/// `cluster` titled along its top, holding `p` and `q` joined by the edge
+/// `e` just below the title, with the edge's label drawn at `label_y`.
+fn titled_cluster(label_y: f64) -> String {
+    format!(
+        r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="520" height="200"/>
+          <text x="280" y="48" text-anchor="middle" font-size="13">A cluster of services</text>
+          <g data-node="p"><rect x="40" y="36" width="100" height="40"/><text x="90" y="61" text-anchor="middle" font-size="14">P</text></g>
+          <g data-node="q"><rect x="420" y="36" width="100" height="40"/><text x="470" y="61" text-anchor="middle" font-size="14">Q</text></g>
+        </g>
+        <line id="e" data-from="p" data-to="q" x1="140" y1="56" x2="420" y2="56"/>
+        <text data-label="e-label" data-label-for="e" x="280" y="{label_y}" text-anchor="middle" font-size="11">calls</text>
+      </svg>
+    "#
+    )
+}
+
+/// Whether the label `e-label` and the title of `cluster` overlap.
+fn label_on_title(result: &FixResult) -> bool {
+    let label = label_bounds(&result.report, "e-label");
+    let title = result.report.diagram.node("cluster").expect("cluster").label_bounds[0];
+    label.x < title.x + title.width
+        && title.x < label.x + label.width
+        && label.y < title.y + title.height
+        && title.y < label.y + label.height
+}
+
+/// Given an edge between two nodes of `cluster`, running just below the
+///   parent's title, and its label far from it
+/// When the diagram is fixed
+/// Then the label moves beside the edge, clear of the title
+#[test]
+fn places_a_label_clear_of_a_label_of_the_parent_around_it() {
+    let result = fix(&titled_cluster(180.0));
+
+    assert!(
+        !label_on_title(&result),
+        "{:?}",
+        label_bounds(&result.report, "e-label")
+    );
+    assert!(result.report.issues.is_empty(), "{:?}", issue_codes(&result.report));
+}
+
+/// Given two nodes of `cluster` joined by an edge that runs through the
+///   parent's label, which leaves no room beside the edge, and the edge's
+///   label far from it
+/// When the diagram is fixed
+/// Then the label moves beside its edge, onto the parent's label, where it
+///   is reported, rather than staying away from its edge
+#[test]
+fn places_a_label_on_a_label_of_the_parent_rather_than_away_from_its_edge() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240">
+        <g data-node="cluster">
+          <rect x="20" y="20" width="520" height="200"/>
+          <text x="280" y="140" text-anchor="middle" font-size="60">Service</text>
+          <g data-node="p"><rect x="40" y="100" width="100" height="40"/><text x="90" y="125" text-anchor="middle" font-size="14">P</text></g>
+          <g data-node="q"><rect x="420" y="100" width="100" height="40"/><text x="470" y="125" text-anchor="middle" font-size="14">Q</text></g>
+        </g>
+        <line id="e" data-from="p" data-to="q" x1="140" y1="120" x2="420" y2="120"/>
+        <text data-label="e-label" data-label-for="e" x="280" y="205" text-anchor="middle" font-size="11">calls</text>
+      </svg>
+    "#;
+    assert!(has_issue(&inspect(svg), "edge-label-detached"));
+
+    let result = fix(svg);
+
+    assert_eq!(issue_codes(&result.report), ["label-overlaps"]);
+    assert_eq!(
+        issues_with_code(&result.report, "label-overlaps"),
+        [["e-label", "cluster"]]
+    );
+}

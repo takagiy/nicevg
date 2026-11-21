@@ -11,8 +11,8 @@ use serde::Serialize;
 use crate::arrow::{drawn_edges, moved_arrowhead, shaft_route};
 use crate::diagram::{
     Diagram, DiagramEdge, DiagramLabel, DiagramNode, ReadNodes, ancestor_ids, child_element_paths, circle_bounds,
-    holds_end, is_node_shape, node_group, node_shape, non_empty, number_attribute, read_nodes, rect_bounds,
-    translation,
+    holds_end, is_node_shape, node_group, node_labels, node_shape, non_empty, number_attribute, read_nodes,
+    rect_bounds, translation,
 };
 use crate::geometry::{
     Bounds, Point, distance_to_route, enclosing, format_number, intersection, point, route_is_clear, segments,
@@ -21,9 +21,10 @@ use crate::inspect::{
     EDGE_LABEL_CLEARANCE, NODE_GAP, TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing,
 };
 use crate::route::{
-    CROSSING_COST, END_STUBS, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, LabelSpot, PARALLEL_RUN, PortRequest, Ports,
-    Pushable, ROUTE_CLEARANCE, Side, Sides, bends, choose_sides, crossings, edge_ports, end_on_shapes, is_on_outline,
-    label_landmarks, overlap, place_label, route_cost, route_edge, routes_cost, runs_across, side_of, spread_ports,
+    CROSSING_COST, END_STUBS, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, LabelSpot, PARALLEL_RUN, Placement, PortRequest,
+    Ports, Pushable, ROUTE_CLEARANCE, Side, Sides, bends, choose_sides, crossings, edge_ports, end_on_shapes,
+    is_on_outline, label_landmarks, overlap, place_label, route_cost, route_edge, routes_cost, runs_across, side_of,
+    spread_ports,
 };
 use crate::text::{label_text_index, move_label, text_bounds};
 use crate::xml::{Document, Element, Path, serialize};
@@ -260,10 +261,7 @@ fn expand_nodes(draft: Draft) -> Draft {
                 return draft;
             };
             let shape = node_shape(document, &group);
-            let labels: Vec<_> = child_element_paths(document, &group)
-                .into_iter()
-                .filter(|child| document.element(child).name == "text")
-                .collect();
+            let labels = node_labels(document, &group);
             let (Some(shape), false) = (shape, labels.is_empty()) else {
                 return draft;
             };
@@ -1351,7 +1349,8 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>) -> (Draft, HashSet<Stri
             } else {
                 LabelSpot::Across
             };
-            let Some(placement) = place_label(width, height, route, &all_final, &blocked, &parents, worst) else {
+            let place = |blocked: &[Bounds]| place_label(width, height, route, &all_final, blocked, &parents, worst);
+            let Some(placement) = off_parent_labels(diagram, &edge_id, &blocked, place) else {
                 if pushed.contains(label.id.as_str()) {
                     stuck.insert(label.id.clone());
                 }
@@ -1630,16 +1629,14 @@ fn settle_labels(draft: Draft, before: &HashMap<String, Vec<Point>>) -> Draft {
                 .copied()
                 .chain(label_blockers(diagram, &edge.id))
                 .collect();
-            let Some(placement) = place_label(
-                label.bounds.width,
-                label.bounds.height,
-                &edge.points,
-                &routes,
-                &blocked,
-                &label_parents(diagram, &edge.id),
-                if stale { LabelSpot::Within } else { LabelSpot::Clear },
-            )
-            .filter(|placement| placement.bounds != label.bounds) else {
+            let parents = label_parents(diagram, &edge.id);
+            let worst = if stale { LabelSpot::Within } else { LabelSpot::Clear };
+            let (width, height) = (label.bounds.width, label.bounds.height);
+            let place =
+                |blocked: &[Bounds]| place_label(width, height, &edge.points, &routes, blocked, &parents, worst);
+            let Some(placement) = off_parent_labels(diagram, &edge.id, &blocked, place)
+                .filter(|placement| placement.bounds != label.bounds)
+            else {
                 return (draft, obstacles);
             };
             let updated = move_label(
@@ -1687,6 +1684,28 @@ fn label_blockers(diagram: &Diagram, edge_id: &str) -> Vec<Bounds> {
         .filter(|node| !parents.contains(&node.id.as_str()))
         .map(|node| node.bounds)
         .collect()
+}
+
+/// The spot `place` finds clear of `blocked` for the label of an edge: off
+/// the labels of the parents around the edge's ends, such as their titles,
+/// when there is one, and on them rather than nowhere.
+fn off_parent_labels(
+    diagram: &Diagram,
+    edge_id: &str,
+    blocked: &[Bounds],
+    place: impl Fn(&[Bounds]) -> Option<Placement>,
+) -> Option<Placement> {
+    let parents = end_parent_ids(diagram, edge_id);
+    let labels: Vec<Bounds> = diagram
+        .nodes
+        .iter()
+        .filter(|node| parents.contains(&node.id.as_str()))
+        .flat_map(|node| node.label_bounds.iter().copied())
+        .collect();
+    (!labels.is_empty())
+        .then(|| place(&[blocked, &labels].concat()))
+        .flatten()
+        .or_else(|| place(blocked))
 }
 
 /// The parents around an edge's ends, which its label may sit in
