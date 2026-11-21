@@ -18,7 +18,8 @@ use crate::geometry::{
     Bounds, Point, distance_to_route, enclosing, format_number, intersection, point, route_is_clear, segments,
 };
 use crate::inspect::{
-    EDGE_LABEL_CLEARANCE, NODE_GAP, TEXT_PADDING, VIEWPORT_PADDING, parse_view_box, radius_enclosing,
+    DiagramIssue, EDGE_LABEL_CLEARANCE, NODE_GAP, Severity, TEXT_PADDING, VIEWPORT_PADDING, edge_issues,
+    parse_view_box, radius_enclosing, severity,
 };
 use crate::route::{
     CROSSING_COST, END_STUBS, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, LabelSpot, PARALLEL_RUN, Placement, PortRequest,
@@ -685,32 +686,9 @@ fn pick_reroutes<'a>(
         .map(|(_, edge_id)| *edge_id)
         .collect();
 
-    let reroute_codes = [
-        "edge-overlaps-node",
-        "edge-near-label",
-        "edge-end-detached",
-        "edge-slanted",
-        "edge-end-detached-port",
-        "edge-overlaps-node-outline",
-        "edge-overlaps",
-        "edge-bend-near-edge",
-    ];
     let with_issues: HashSet<&str> = stuck_edges
         .into_iter()
-        .chain(
-            report
-                .issues
-                .iter()
-                .filter(|issue| reroute_codes.contains(&issue.code.as_str()))
-                .flat_map(|issue| {
-                    let take = if issue.code == "edge-overlaps" || issue.code == "edge-bend-near-edge" {
-                        issue.elements.len()
-                    } else {
-                        1
-                    };
-                    issue.elements.iter().take(take).map(String::as_str)
-                }),
-        )
+        .chain(report.issues.iter().flat_map(rerouted_for).map(String::as_str))
         .collect();
     // A node moves with any parent around it.
     let moved = |id: &str| {
@@ -813,20 +791,37 @@ fn reroute_edges(draft: Draft) -> Draft {
     let rerouted = reroute_among_labels(draft, None);
     // Edges rerouted together choose their sides before any of their routes
     // is drawn, so more of them may take a side than the gap before it
-    // holds. One that then found no way, and is drawn straight across, is
-    // rerouted once more, alone: it chooses its sides among the others'
+    // holds. One that then found no way is drawn straight across, slanted
+    // or through a node or along a side: an edge left with a critical issue
+    // is rerouted once more, alone, and chooses its sides among the others'
     // routes.
     let lost: HashSet<String> = rerouted
         .report()
         .issues
         .iter()
-        .filter(|issue| issue.code == "edge-slanted")
-        .filter_map(|issue| issue.elements.first().cloned())
+        .filter(|issue| severity(&issue.code) == Severity::Critical)
+        .flat_map(rerouted_for)
+        .cloned()
         .collect();
     if lost.is_empty() {
         rerouted
     } else {
         reroute_among_labels(rerouted, Some(&lost))
+    }
+}
+
+/// The edges rerouted to be rid of an issue: none for one rerouting does
+/// not help.
+fn rerouted_for(issue: &DiagramIssue) -> &[String] {
+    match issue.code.as_str() {
+        "edge-overlaps" | "edge-bend-near-edge" => &issue.elements,
+        "edge-overlaps-node"
+        | "edge-near-label"
+        | "edge-end-detached"
+        | "edge-slanted"
+        | "edge-end-detached-port"
+        | "edge-overlaps-node-outline" => &issue.elements[..issue.elements.len().min(1)],
+        _ => &[],
     }
 }
 
@@ -1136,7 +1131,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>, alone: Option<&HashSet<
             };
             let cost = |ports: Ports| {
                 let route = route_with(reroute, ports, &settled);
-                if !orthogonal(&route) {
+                if !sound(&diagram.nodes, reroute.edge, &route) {
                     return f64::INFINITY;
                 }
                 route_cost(&route) + settled.iter().map(|other| routes_cost(&route, other)).sum::<f64>()
@@ -1300,6 +1295,7 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>, alone: Option<&HashSet<
         .collect();
     let improved = improve_ports(
         &reroutes,
+        &diagram.nodes,
         &staying,
         &staying_ports,
         [first_ports, partners.iter().map(|(_, ports)| *ports).collect()].concat(),
@@ -1765,10 +1761,17 @@ fn end_parent_ids<'a>(diagram: &'a Diagram, edge_id: &str) -> Vec<&'a str> {
 /// diagram.
 type RouteWith<'a> = dyn Fn(&Reroute, Ports, &[Vec<Point>]) -> Vec<Point> + 'a;
 
-/// Whether a route runs only across and down: one that found no way is
-/// drawn straight across, slanted, and bends no corner.
-fn orthogonal(route: &[Point]) -> bool {
-    segments(route).iter().all(|(a, b)| a.x == b.x || a.y == b.y)
+/// Whether a route for an edge is one to draw: the inspection has nothing
+/// critical to say of it against the nodes. One that found no way is drawn
+/// straight across, slanted or through a node or along a side.
+fn sound(nodes: &[DiagramNode], edge: &DiagramEdge, route: &[Point]) -> bool {
+    let drawn = DiagramEdge {
+        points: route.to_vec(),
+        ..edge.clone()
+    };
+    edge_issues(nodes, &drawn)
+        .iter()
+        .all(|issue| severity(&issue.code) < Severity::Critical)
 }
 
 /// Port changes that spreading ports evenly cannot see, tried once routes
@@ -1781,6 +1784,7 @@ fn orthogonal(route: &[Point]) -> bool {
 #[tracing::instrument(skip_all)]
 fn improve_ports(
     reroutes: &[Reroute],
+    nodes: &[DiagramNode],
     settled: &[Vec<Point>],
     fixed: &HashMap<String, Vec<f64>>,
     ports: Vec<Ports>,
@@ -1844,7 +1848,11 @@ fn improve_ports(
             .expect("at least one order");
         let current: Vec<Vec<Point>> = changed.iter().map(|(index, _)| routes[*index].clone()).collect();
         let (old, new) = (cost(&current), cost(&rerouted));
-        if new.0 <= old.0 && new.1 <= old.1 && new != old && rerouted.iter().all(|route| orthogonal(route)) {
+        let all_sound = changed
+            .iter()
+            .zip(&rerouted)
+            .all(|((index, _), route)| sound(nodes, reroutes[*index].edge, route));
+        if new.0 <= old.0 && new.1 <= old.1 && new != old && all_sound {
             changed
                 .iter()
                 .zip(rerouted)
