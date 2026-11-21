@@ -252,7 +252,7 @@ render({
     { id: "a", class: "box", label: "A", x: 60, y: 20 },
     { id: "b", class: "box", label: "B", x: 60, y: 220 },
   ],
-  edges: [{ from: "a", to: "b", label: "a long label on the edge" }],
+  edges: [{ from: "a", to: "b", label: "a long label on the edge, wider than its group" }],
   style: { box, group },
 });`;
     const root = repository({ "flow.ts": code });

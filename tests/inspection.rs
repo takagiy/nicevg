@@ -80,7 +80,7 @@ fn reports_the_required_box_size_when_a_label_violates_node_padding() {
             "code": "node-label-overflows",
             "message": "Label does not fit inside node \"confirm\" with 12px padding.",
             "elements": ["confirm"],
-            "details": { "requiredWidth": 148, "requiredHeight": 41 },
+            "details": { "requiredWidth": 131, "requiredHeight": 41 },
         })]
     );
 }
@@ -560,7 +560,7 @@ fn includes_free_labels_when_checking_the_safe_viewbox() {
         "elements": ["svg"],
         "details": {
             "sides": ["right"],
-            "requiredViewBox": { "x": 70, "y": 6, "width": 73, "height": 57 },
+            "requiredViewBox": { "x": 70, "y": 6, "width": 70, "height": 57 },
         },
     })));
 }
@@ -725,8 +725,8 @@ fn reports_a_label_that_cuts_into_a_circular_node_s_padding() {
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 200">
         <g data-node="crowded">
           <circle cx="80" cy="80" r="50" />
-          <text x="80" y="77" text-anchor="middle" font-size="14">Received</text>
-          <text x="80" y="97" text-anchor="middle" font-size="14">Received</text>
+          <text x="80" y="77" text-anchor="middle" font-size="14">Is received</text>
+          <text x="80" y="97" text-anchor="middle" font-size="14">Is received</text>
         </g>
         <g data-node="roomy">
           <circle cx="240" cy="80" r="50" />

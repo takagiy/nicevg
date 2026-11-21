@@ -1,0 +1,4 @@
+# Tests measure text with nicevg's own fonts only, not this machine's, so
+# their results are the same on every machine.
+[env]
+NICEVG_SYSTEM_FONTS = "0"

@@ -25,12 +25,14 @@
 
 import { writeFile } from "node:fs/promises";
 
-import type { SvgFragment } from "./draw.ts";
-import { call as native } from "./native.ts";
+import { type SvgFragment, measureWith } from "./draw.ts";
+import { call as native, textWidth } from "./native.ts";
 import { NicevgError, layOutSketch, sketchRequest } from "./sketch.ts";
 
 export { SvgFragment, Text, type TextPlace, svg, text } from "./draw.ts";
 export { NicevgError } from "./sketch.ts";
+
+measureWith(textWidth);
 
 export interface Point {
   x: number;

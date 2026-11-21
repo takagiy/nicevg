@@ -1,23 +1,23 @@
 ---
-source: tests/arrange.rs
+source: tests/layout.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "badness": 2151.36,
-  "bends": 23,
-  "bentEdges": 15,
+  "badness": 2371.54,
+  "bends": 24,
+  "bentEdges": 16,
   "cornerShortfall": 0.0,
-  "crossings": 3,
-  "crossingsNearEnds": 0,
+  "crossings": 12,
+  "crossingsNearEnds": 2,
   "detachedLabels": 0,
-  "detour": 6524.0,
+  "detour": 4784.0,
   "diagonalSegments": 0,
   "jogs": 0,
   "jogShortfall": 0.0,
   "lateBends": 0,
-  "parallelDensity": 45.52,
+  "parallelDensity": 54.1,
   "remainingIssues": 0,
-  "shortEnds": 0,
-  "shortEndShortfall": 0.0,
-  "tangledCrossings": 3
+  "shortEnds": 2,
+  "shortEndShortfall": 6.0,
+  "tangledCrossings": 1
 }

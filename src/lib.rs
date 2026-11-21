@@ -9,6 +9,7 @@
 mod arrow;
 mod diagram;
 mod fix;
+mod font;
 mod geometry;
 mod inspect;
 mod layout;
@@ -22,6 +23,7 @@ use serde::Serialize;
 
 pub use diagram::{Diagram, DiagramEdge, DiagramLabel, DiagramNode, Port, Shape, UnsupportedElement};
 pub use fix::{FixChange, FixResult, fix, fix_with_steps};
+pub use font::text_width;
 pub use geometry::{Bounds, Point};
 pub use inspect::DiagramIssue;
 pub use layout::layout;

@@ -52,7 +52,7 @@ describe("svg and text", () => {
     expect(String(text("注文").at({ cx: 50, cy: 20 }))).toContain('x="50" y="20" font-size="14" text-anchor="middle"');
     expect(String(text("a").at({ right: 50, bottom: 34 }))).toContain('x="50" y="25.5" font-size="14" text-anchor="end"');
     expect(text("注文").width).toBe(28);
-    expect(text("ab").width).toBe(17);
+    expect(text("ab").width).toBe(16);
   });
 
   /**
@@ -86,6 +86,31 @@ describe("svg and text", () => {
     const { bounds } = image.report.diagram.nodes.find((node) => node.id === "note")!;
     expect(Math.abs(bounds.width - note.width)).toBeLessThan(1);
     expect(Math.abs(bounds.height - note.height)).toBeLessThan(1);
+  });
+
+  /**
+   * Given a sketch whose root declares a bold font, and a style making its text as it draws
+   * When it is rendered
+   * Then the text is as wide as the bold font draws it: wider than one
+   *   made outside a style, and as wide as nicevg measures the node
+   */
+  test("measures a text made while a style draws in the font the root declares", () => {
+    let drawn = 0;
+    const image = render({
+      nodes: [{ id: "note", class: "note", x: 20, y: 20 }],
+      style: {
+        note: () => {
+          const note = text("mwmw");
+          drawn = note.width;
+          return svg`${note.at({ left: 0, top: 0 })}`;
+        },
+      },
+      rootAttrs: { "font-weight": "bold" },
+    });
+
+    const { bounds } = image.report.diagram.nodes.find((node) => node.id === "note")!;
+    expect(drawn).toBeGreaterThan(text("mwmw").width);
+    expect(Math.abs(bounds.width - drawn)).toBeLessThan(1);
   });
 
   /**

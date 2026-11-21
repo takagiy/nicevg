@@ -42,3 +42,12 @@ export function call(request: Uint8Array): string {
   render ??= (typeof Bun === "undefined" ? openOnNode : openOnBun)(libraryPath());
   return render(request);
 }
+
+/** How wide the native library measures a line of text at a font size, in the `font-family` and `font-weight` given. */
+export function textWidth(text: string, size: number, font: { family?: string; weight?: string }): number {
+  const reply = JSON.parse(call(new TextEncoder().encode(JSON.stringify({ measure: { text, size, ...font } }))));
+  if ("error" in reply) {
+    throw new Error(`nicevg: ${reply.error}`);
+  }
+  return reply.ok;
+}

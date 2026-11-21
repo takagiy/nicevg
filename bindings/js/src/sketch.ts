@@ -2,6 +2,7 @@
 // from index.ts, which loads the native library, so that a diagram script in
 // a sandbox (doc.ts) builds its requests the same way.
 
+import { inFont } from "./draw.ts";
 import type { Sketch, SketchNode, Style } from "./index.ts";
 
 /** An input nicevg cannot read, saying what is wrong and where. */
@@ -51,10 +52,14 @@ export function sketchRequest<Node extends SketchNode>({ nodes, edges, style, ro
     }
     return draw;
   };
+  // The font the root declares, which the texts styles make are measured in.
+  const font = { family: rootAttrs?.["font-family"]?.toString(), weight: rootAttrs?.["font-weight"]?.toString() };
+  const drawn = (node: SketchNode, index: number, styled: SketchNode) =>
+    inFont(font, () => String(styleOf(node, index)(styled)));
   /** A parent's picture, an error from its style naming the parent. */
   const pictured = (node: SketchNode, index: number, styled: SketchNode) => {
     try {
-      return String(styleOf(node, index)(styled));
+      return drawn(node, index, styled);
     } catch (error) {
       throw new NicevgError(`nodes[${index}]: the style "${node.class}" threw ${error}`, { cause: error });
     }
@@ -67,7 +72,7 @@ export function sketchRequest<Node extends SketchNode>({ nodes, edges, style, ro
         styleOf(node, index);
         return { id, x, y, parent, allowOverlap, redrawn: true };
       }
-      return { id, x, y, parent, allowOverlap, svg: String(styleOf(node, index)(node)) };
+      return { id, x, y, parent, allowOverlap, svg: drawn(node, index, node) };
     }),
     edges: edges?.map(({ from, to, ...edge }) => {
       const [start, finish] = [end(from), end(to)];

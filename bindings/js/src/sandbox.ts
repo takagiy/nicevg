@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import amaro from "amaro";
 import { type QuickJSContext, type QuickJSHandle, getQuickJS, shouldInterruptAfterDeadline } from "quickjs-emscripten";
 
+import { textWidth } from "./native.ts";
 import type { Asked } from "./sketch.ts";
 
 /** A diagram script: its code, the markdown line it starts on, and the module blocks it may import. */
@@ -74,6 +75,10 @@ const SOURCE = dirname(fileURLToPath(import.meta.url));
 /** What the guest `nicevg` leaves for the host (see guest.ts). */
 const RECORD = "__nicevgRender";
 const DRAW = "__nicevgDraw";
+/** The host's measuring of a line of text, which the guest `nicevg` sizes its texts by (see guest.ts). */
+const MEASURE = "__nicevgMeasure";
+/** The longest line measured for a script: measuring runs on the host, where the script's deadline cannot stop it. */
+const LONGEST_LINE = 10_000;
 /** Where the host's console writer waits until the sandbox's console takes it. */
 const CONSOLE = "__nicevgConsole";
 const METHODS = ["log", "info", "warn", "error", "debug"];
@@ -253,9 +258,29 @@ export async function run<Result>(
     );
     context.unwrapResult(made).dispose();
 
+    // The native library measures texts, and the sandbox cannot reach it.
+    // Its failing is not the script's doing, whatever the script makes of
+    // the exception: the run fails saying so.
+    let unmeasured: Failure | undefined;
+    const measure = context.newFunction("measure", (line, size, family, weight) => {
+      const text = context.getString(line);
+      if (text.length > LONGEST_LINE) {
+        throw new Error(`a line of text longer than ${LONGEST_LINE} characters cannot be measured`);
+      }
+      const font = { family: context.getString(family), weight: context.getString(weight) };
+      try {
+        return context.newNumber(textWidth(text, context.getNumber(size), font));
+      } catch (error) {
+        unmeasured ??= { failure: `The native library could not measure a text: ${(error as Error).message}` };
+        throw error;
+      }
+    });
+    context.setProp(context.global, MEASURE, measure);
+    measure.dispose();
+
     const result = context.evalCode(code, script.file, { type: "module" });
     if (result.error) {
-      const outcome = failed(printed(context, result.error));
+      const outcome = unmeasured ?? failed(printed(context, result.error));
       result.error.dispose();
       return outcome;
     }
@@ -266,8 +291,8 @@ export async function run<Result>(
       (state.type === "rejected" ? state.error : state.type === "fulfilled" ? state.value : undefined)?.dispose();
     }
     result.value.dispose();
-    if (rejected) {
-      return rejected;
+    if (unmeasured ?? rejected) {
+      return (unmeasured ?? rejected)!;
     }
     const record = context.getProp(context.global, RECORD);
     const recorded = context.typeof(record) === "string" ? context.getString(record) : undefined;
@@ -282,7 +307,7 @@ export async function run<Result>(
       drawer.dispose();
       argument.dispose();
       if (drawn.error) {
-        const failure = failed(printed(context, drawn.error));
+        const failure = unmeasured ?? failed(printed(context, drawn.error));
         drawn.error.dispose();
         throw new Stopped(failure);
       }

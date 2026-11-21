@@ -54,8 +54,8 @@
     "build:native": "bun run scripts/build-native.ts",
     "build:js": "tsc -p tsconfig.build.json",
     "test": "bun run test:bun && bun run test:node",
-    "test:bun": "bun test --timeout 30000 ./test/bun",
-    "test:node": "node --test \"test/node/**/*.test.*\"",
+    "test:bun": "NICEVG_SYSTEM_FONTS=0 bun test --timeout 30000 ./test/bun",
+    "test:node": "NICEVG_SYSTEM_FONTS=0 node --test \"test/node/**/*.test.*\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

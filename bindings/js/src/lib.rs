@@ -3,10 +3,12 @@
 //! diagram as JSON out.
 //!
 //! The request is either `{"svg": "..."}`, a sketch (`{"nodes": [...],
-//! "edges": [...]}`), or a step of a sketch whose parents styles draw
+//! "edges": [...]}`), a step of a sketch whose parents styles draw
 //! (`{"sketch": {...}, "pictures": {...}, "state": ...}`, see
-//! `nicevg::layout_sketch_in_steps`). The reply is `{"ok": ...}`, holding
-//! the fix result, `{"draw": [...], "state": ...}`, asking for pictures and
+//! `nicevg::layout_sketch_in_steps`), or a line of text to measure
+//! (`{"measure": {"text": "...", "size": 14, "family": "...", "weight":
+//! "..."}}`). The reply is `{"ok": ...}`, holding the fix result or the
+//! text's width, `{"draw": [...], "state": ...}`, asking for pictures and
 //! holding the state to step on from, or `{"error": "..."}`.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -20,6 +22,7 @@ enum Input {
     Svg(String),
     Sketch(nicevg::Sketch),
     Step(Step),
+    Measure(Measure),
 }
 
 #[derive(serde::Deserialize)]
@@ -32,6 +35,19 @@ struct Step {
     state: Option<nicevg::StepState>,
 }
 
+/// A line of text to measure: its font size, and the `font-family` and
+/// `font-weight` it is drawn with, where it declares them.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Measure {
+    text: String,
+    size: f64,
+    #[serde(default)]
+    family: String,
+    #[serde(default)]
+    weight: String,
+}
+
 fn read(request: &[u8]) -> Result<Input, String> {
     let value: Value = serde_json::from_slice(request).map_err(|error| format!("invalid JSON: {error}"))?;
     if let Some(svg) = value.get("svg") {
@@ -39,6 +55,11 @@ fn read(request: &[u8]) -> Result<Input, String> {
             .as_str()
             .map(|svg| Input::Svg(svg.to_owned()))
             .ok_or_else(|| "svg: expected a string".to_owned());
+    }
+    if let Some(measure) = value.get("measure") {
+        return serde_path_to_error::deserialize(measure)
+            .map(Input::Measure)
+            .map_err(|error| format!("measure.{}: {}", error.path(), error.inner()));
     }
     if value.get("sketch").is_some() {
         return serde_path_to_error::deserialize(value)
@@ -64,6 +85,12 @@ fn render(request: &[u8]) -> Result<Value, String> {
                 return Ok(json!({ "draw": pictures, "state": state }));
             }
         },
+        Input::Measure(Measure {
+            text,
+            size,
+            family,
+            weight,
+        }) => return Ok(json!({ "ok": nicevg::text_width(&text, size, &family, &weight) })),
     };
     Ok(json!({ "ok": result }))
 }

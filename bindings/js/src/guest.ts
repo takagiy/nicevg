@@ -3,6 +3,7 @@
 // diagram the script describes for the host to lay out, rather than laying it
 // out itself.
 
+import { measureWith } from "./draw.ts";
 import { NicevgError, sketchRequest } from "./sketch.ts";
 
 export { SvgFragment, Text, svg, text } from "./draw.ts";
@@ -12,6 +13,13 @@ export { NicevgError } from "./sketch.ts";
 const RECORD = "__nicevgRender";
 /** Where `render` leaves, for the host to call while it lays the sketch out, how to draw the pictures of its parents. */
 const DRAW = "__nicevgDraw";
+/** Where the host leaves its measuring of a line of text: the native library measures, out of the sandbox's reach. */
+const MEASURE = "__nicevgMeasure";
+
+type Measure = (line: string, size: number, family: string, weight: string) => number;
+measureWith((line, size, { family = "", weight = "" }) =>
+  (globalThis as unknown as Record<string, Measure>)[MEASURE]!(line, size, family, weight),
+);
 
 const unavailable = (what: string) => () => {
   throw new NicevgError(

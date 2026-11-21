@@ -8,6 +8,8 @@ authors = ["Yuki Takagi <takagiy.4dev@gmail.com>"]
 repository = "https://github.com/takagiy/nicevg"
 
 [dependencies]
+fontique = { version = "0.13.0", features = ["fontconfig-dlopen"] }
+parley = "0.13.0"
 quick-xml = "0.42.0"
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }

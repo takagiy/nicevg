@@ -1,25 +1,58 @@
-//! How the space a text takes is estimated: character widths, presentation
-//! properties, baselines and labels spanning several lines.
+//! How the space a text takes is measured: the widths its font draws,
+//! presentation properties, baselines and labels spanning several lines.
 
 mod support;
 
 use nicevg::{Bounds, InspectionReport};
 use support::*;
 
-/// Given a free label of six full-width Japanese characters at 14px
+/// Given free labels of four letters at 14px, one of narrow letters, one
+///   of wide letters, and one of the wide letters in bold
 /// When the diagram is inspected
-/// Then the label is estimated at about one font size per character
+/// Then each is as wide as its font draws it: the narrow one 12px, the
+///   wide one 44px, and the bold one wider still
 #[test]
-fn estimates_full_width_characters_at_one_font_size_each() {
+fn measures_a_text_as_wide_as_its_font_draws_it() {
     let svg = r#"
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100">
-        <text data-label="pay" x="20" y="50" font-size="14">決済サービス</text>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 140" font-family="sans-serif" font-size="14">
+        <text data-label="narrow" x="20" y="40">illi</text>
+        <text data-label="wide" x="20" y="80">mwmw</text>
+        <text data-label="bold" x="20" y="120" font-weight="bold">mwmw</text>
       </svg>
     "#;
 
     let report = inspect(svg);
+    let width = |id: &str| label_bounds(&report, id).width;
 
-    assert!((label_bounds(&report, "pay").width - 6.0 * 14.0).abs() < 1.0);
+    assert_eq!((width("narrow"), width("wide")), (12.0, 44.0));
+    assert!(width("bold") > width("wide"));
+}
+
+/// Given free labels at 14px in characters the fonts measuring here lack: two
+///   kanji, a thumbs-up emoji, two Thai letters with a vowel sign above the
+///   first, and the kanji after two Latin letters
+/// When the diagram is inspected
+/// Then each is as wide as its columns in Unicode's East Asian Width, 7px
+///   each: the kanji and the emoji two columns a character, the Thai
+///   letters one each and the sign above none, and the Latin letters as
+///   their font draws them
+#[test]
+fn takes_a_character_no_font_has_as_wide_as_its_columns() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 220" font-family="sans-serif" font-size="14">
+        <text data-label="kanji" x="20" y="40">注文</text>
+        <text data-label="emoji" x="20" y="80">👍</text>
+        <text data-label="thai" x="20" y="120">กิน</text>
+        <text data-label="latin" x="20" y="160">ab</text>
+        <text data-label="mixed" x="20" y="200">ab注文</text>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+    let width = |id: &str| label_bounds(&report, id).width;
+
+    assert_eq!((width("kanji"), width("emoji"), width("thai")), (28.0, 14.0, 14.0));
+    assert_eq!(width("mixed"), width("latin") + 28.0);
 }
 
 /// Given a free label whose anchor and size are set only in its style

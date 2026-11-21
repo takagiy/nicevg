@@ -28,7 +28,7 @@ fn recognizes_an_annotated_node_with_its_box_and_label() {
             id: "checkout".to_owned(),
             shape: None,
             bounds: bounds(20.0, 20.0, 120.0, 56.0),
-            label_bounds: vec![bounds(47.0, 39.0, 66.0, 17.0)],
+            label_bounds: vec![bounds(50.5, 39.0, 59.0, 17.0)],
             parent_id: None,
             allow_overlap: false,
             custom: false,

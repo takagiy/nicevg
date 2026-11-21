@@ -1,5 +1,6 @@
 ---
 source: tests/fix.rs
+assertion_line: 578
 expression: result.svg.as_str()
 ---
 
@@ -9,7 +10,7 @@ expression: result.svg.as_str()
           <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
         </g>
         <g data-node="obstacle">
-          <rect x="197.5" y="-31" width="65" height="41"/>
+          <rect x="200" y="-31" width="60" height="41"/>
           <text x="230" y="-5" text-anchor="middle" font-size="14">Block</text>
         </g>
         <g data-node="target">
