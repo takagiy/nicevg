@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 760 731 522.2" width="731" height="522.2">
+  <g data-node="p4" data-custom="true">
+    <g transform="translate(350 780)"><circle data-bounds="true" cx="55" cy="55" r="55" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="55" y="43.1">hsr</tspan><tspan x="55" y="59.900000000000006">eltpusctap</tspan><tspan x="55" y="76.7">irhgwprrpm</tspan></text></g>
+  </g>
+  <g data-node="s4" data-custom="true">
+    <g transform="translate(60 805)"><rect data-bounds="true" x="0" y="0" width="144" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="72" y="26">uehueqmxavycfysbjy</tspan></text></g>
+  </g>
+  <g data-node="p5" data-custom="true">
+    <g transform="translate(350 1000)"><circle data-bounds="true" cx="58" cy="58" r="58" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="58" y="46.1">aip</tspan><tspan x="58" y="62.900000000000006">txmwznmxzs</tspan><tspan x="58" y="79.7">oeldbepg</tspan></text></g>
+  </g>
+  <g data-node="s9" data-custom="true">
+    <g transform="translate(620 1025)"><rect data-bounds="true" x="0" y="0" width="131" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="65.5" y="26">ivnyujnqmslrsnshk</tspan></text></g>
+  </g>
+  <g data-node="end" data-custom="true">
+    <g transform="translate(340 1220)"><rect data-bounds="true" x="0" y="0" width="151" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="75.5" y="26">vaitvwfwkrssdwugusij</tspan></text></g>
+  </g>
+  <path id="edge-0" data-from="s4" data-to="p4" fill="none" stroke="black" d="M 132 826.1 L 405 835"/>
+  <text data-label="edge-0" data-label-for="edge-0" text-anchor="middle" font-size="12"><tspan x="268.5" y="834.75">dcpupclzcneajnyndbttybmw</tspan></text>
+  <path id="edge-1" data-from="p4" data-to="end" fill="none" stroke="black" d="M 405 835 L 415.5 1241.1"/>
+  <text data-label="edge-1" data-label-for="edge-1" text-anchor="middle" font-size="12"><tspan x="410.25" y="1042.25">skriqhbjacdtrbgnjtiew</tspan></text>
+  <path id="edge-2" data-from="p5" data-to="s9" fill="none" stroke="black" d="M 408 1058 L 685.5 1046.1"/>
+  <text data-label="edge-2" data-label-for="edge-2" text-anchor="middle" font-size="12"><tspan x="546.75" y="1056.25">bkklemmoqmutvrdtzqinuxwh</tspan></text>
+  <path id="edge-3" data-from="p5" data-to="end" fill="none" stroke="black" d="M 408 1058 L 415.5 1241.1"/>
+  <text data-label="edge-3" data-label-for="edge-3" text-anchor="middle" font-size="12"><tspan x="411.75" y="1153.75">jniqjrkaznskamtsuebuukolvl</tspan></text>
+</svg>

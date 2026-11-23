@@ -693,6 +693,23 @@ fn lays_out_the_social_app_er_diagram_without_issues() {
     assert_eq!(issue_codes(report), Vec::<String>::new());
 }
 
+/// Given a sketch as drawn before layout (issue #58): a short edge from the
+///   lower of two stacked circles to a box on its right, its label filling
+///   the gap between them, and an edge from the upper circle to a box below
+///   the lower one, which has to go round the lower circle on one side
+/// When the diagram is laid out
+/// Then no edge runs across or near a label, and nothing else is reported
+#[test]
+fn lays_out_a_label_no_edge_runs_across_when_another_edge_could_take_its_room() {
+    let svg = include_str!("fixtures/label-crowded-sketch.svg");
+
+    let result = layout(svg);
+
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a tall loan origination DFD drafted with straight lines between
 ///   centres: a nested split and merge of checks, a manual review branch,
 ///   stores beside the processes, and flows skipping several processes

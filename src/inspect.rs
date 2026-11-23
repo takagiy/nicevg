@@ -394,20 +394,29 @@ fn label_node_overlaps(nodes: &[DiagramNode], labels: &[DiagramLabel]) -> Vec<Di
         .collect()
 }
 
+/// Edges running across a label, its own edge's or another's, which leaves
+/// it unreadable, and edges passing within the clearance of one without
+/// running across it.
 fn edge_label_clearance(edges: &[DiagramEdge], labels: &[DiagramLabel]) -> Vec<DiagramIssue> {
     edges
         .iter()
         .flat_map(|edge| {
-            labels
-                .iter()
-                .filter(move |label| {
-                    let expanded = label.bounds.inflate(EDGE_LABEL_CLEARANCE);
-                    segments(&edge.points)
+            let segments = segments(&edge.points);
+            labels.iter().filter_map(move |label| {
+                let reaches = |bounds: &Bounds| {
+                    segments
                         .iter()
-                        .any(|(from, to)| segment_intersects_interior(*from, *to, &expanded))
-                })
-                .map(move |label| {
-                    issue(
+                        .any(|(from, to)| segment_intersects_interior(*from, *to, bounds))
+                };
+                if reaches(&label.bounds) {
+                    Some(issue(
+                        "edge-overlaps-label",
+                        format!("Edge \"{}\" crosses label \"{}\".", edge.id, label.id),
+                        &[&edge.id, &label.id],
+                        None,
+                    ))
+                } else if reaches(&label.bounds.inflate(EDGE_LABEL_CLEARANCE)) {
+                    Some(issue(
                         "edge-near-label",
                         format!(
                             "Edge \"{}\" passes within {}px of label \"{}\".",
@@ -417,8 +426,11 @@ fn edge_label_clearance(edges: &[DiagramEdge], labels: &[DiagramLabel]) -> Vec<D
                         ),
                         &[&edge.id, &label.id],
                         Some(json!({ "requiredClearance": json_number(EDGE_LABEL_CLEARANCE) })),
-                    )
-                })
+                    ))
+                } else {
+                    None
+                }
+            })
         })
         .collect()
 }
@@ -918,6 +930,7 @@ mod tests {
             "node-overflows-parent",
             "label-overlaps",
             "edge-label-detached",
+            "edge-overlaps-label",
             "edge-overlaps-node",
             "unknown-node",
         ] {
