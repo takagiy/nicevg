@@ -29,7 +29,7 @@ that for a model of the search.
 * Bends: a state keeps at most `EASY_BENDS` of them, which `bends_cost`
   cannot tell from more (`tc_cap`), so the model keeps them all.
 
-## Assumptions checked in the Rust code (2026-11-19)
+## Assumptions checked in the Rust code (2026-11-23)
 
 * `X`, `Y` strictly increasing: `xs` and `ys` come from `sorted_distinct`,
   and lanes are inserted at their place more than `LINE_MERGE` from their
@@ -41,8 +41,9 @@ that for a model of the search.
   misses cost `NEAR_MISS_COST`; outlines scale a length by 1.01.
 * `bend` is `BEND_COST` or `SIDE_BEND_COST`, both positive.
 * An end terminal's cost is not negative (needed with more than
-  `MAX_ENDS` ends, whose estimate leaves it out): `end_terminals` gives
-  `END_STUBS[0] - length + short` with `length` one of `END_STUBS`, and
+  `MAX_ENDS` ends, whose estimate leaves it out): `stub_terminals` gives
+  `END_STUBS[0] - length + short_end_cost(length)` with `length` one of
+  `END_STUBS` (`short_end_cost` is a fade plus 3 times a `max(0)` term), and
   `choose_sides` gives 0 or `SIDE_CHANGE_COST` plus `CROWDING_COST` times
   a side's load. A load counts the edge ends on the side and takes
   off exactly what the edge's own previous choice added (`load_of`

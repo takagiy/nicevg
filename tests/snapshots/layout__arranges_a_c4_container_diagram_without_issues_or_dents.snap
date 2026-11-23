@@ -3,21 +3,21 @@ source: tests/layout.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "badness": 1382.59,
-  "bends": 23,
+  "badness": 1421.14,
+  "bends": 24,
   "bentEdges": 15,
   "cornerShortfall": 25.0,
-  "crossings": 6,
+  "crossings": 4,
   "crossingsNearEnds": 0,
   "detachedLabels": 0,
-  "detour": 136.0,
+  "detour": 260.0,
   "diagonalSegments": 0,
   "jogs": 0,
   "jogShortfall": 0.0,
-  "lateBends": 1,
-  "parallelDensity": 16.83,
+  "lateBends": 3,
+  "parallelDensity": 15.54,
   "remainingIssues": 0,
   "shortEnds": 0,
   "shortEndShortfall": 0.0,
-  "tangledCrossings": 1
+  "tangledCrossings": 0
 }

@@ -20,7 +20,7 @@ use crate::geometry::{
     segments,
 };
 use crate::route::{
-    Fade, ROUTE_CLEARANCE, SHORT_END, SHORT_END_FADE, bends, chords_cross, crossings, route_cost, routes_cost,
+    Fade, ROUTE_CLEARANCE, SHORT_END, bends, chords_cross, crossings, route_cost, routes_cost, short_end_cost,
 };
 use crate::xml::Element;
 use crate::{InspectionReport, SvgInputError, parse};
@@ -1089,7 +1089,7 @@ fn unclear_ends(edges: &[DiagramEdge]) -> f64 {
                 .into_iter()
                 .map(|(_, end, inner)| {
                     let length = (end.x - inner.x).abs() + (end.y - inner.y).abs();
-                    SHORT_END_FADE.cost(length)
+                    short_end_cost(length)
                         + crossed_near(edges, &edge.id, end, inner, CROSSING_AT_END.reach)
                             .map_or(0.0, |distance| CROSSING_AT_END.cost(distance))
                 })

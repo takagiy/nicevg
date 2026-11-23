@@ -16,8 +16,10 @@ through the skipped state has a strictly cheaper one with the same moves
 ## Model
 
 * A `Place` is a grid point with the axis of arrival; what a move leads to
-  (`next`: nothing when it is blocked, outside the corridor or arrives
-  backwards at an end) depends on the place alone.
+  (`next`: nothing when it is blocked, outside the corridor, arrives
+  backwards at an end or leaves a start back towards its port) depends on
+  the place alone. A start is never reached for less along its own stub,
+  so the state there is always the start's own.
 * A step costs, as in the search: what depends on the place and move alone
   (`base`: length, pushes, crossings, near misses and an end's own cost),
   a bend at `tc bent`, the bend onto an end stub at `tc` of the bends

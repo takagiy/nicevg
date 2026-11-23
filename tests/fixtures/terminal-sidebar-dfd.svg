@@ -1,15 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -30 2351 1816" width="2351" height="1816" font-family="'Yu Gothic UI', 'Meiryo', 'Hiragino Sans', 'Noto Sans CJK JP', sans-serif" style="background:#ffffff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2351 1706" width="2351" height="1706" font-family="'Yu Gothic UI', 'Meiryo', 'Hiragino Sans', 'Noto Sans CJK JP', sans-serif" style="background:#ffffff">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="black"/>
     </marker>
   </defs>
-  <g data-node="hc" data-custom="true" transform="translate(0 20)">
+  <g data-node="hc" data-custom="true">
     <g transform="translate(20 20)">
     <rect data-bounds="true" width="47.6" height="1490" fill="#eeeeee" stroke="#333333" stroke-width="1.5"/>
     <text x="23.8" y="150" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text><text x="23.8" y="450" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text><text x="23.8" y="750" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text><text x="23.8" y="1050" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text><text x="23.8" y="1350" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text></g>
   </g>
-  <g data-node="user" data-custom="true" transform="translate(-40 20)">
+  <g data-node="user" data-custom="true">
     <g transform="translate(2260 520)">
     <rect data-bounds="true" width="71" height="1160" fill="#eeeeee" stroke="#333333" stroke-width="1.5"/>
     <text x="35.5" y="150" font-size="13" text-anchor="middle" dominant-baseline="central">利用者</text><text x="35.5" y="450" font-size="13" text-anchor="middle" dominant-baseline="central">利用者</text><text x="35.5" y="750" font-size="13" text-anchor="middle" dominant-baseline="central">利用者</text><text x="35.5" y="1050" font-size="13" text-anchor="middle" dominant-baseline="central">利用者</text></g>
@@ -44,10 +44,10 @@
     <rect data-bounds="true" width="123" height="60" fill="#eeeeee" stroke="#333333" stroke-width="1.5"/>
     <text x="61.5" font-size="13" text-anchor="middle" dominant-baseline="central"><tspan x="61.5" y="22.2">エージェントの</tspan><tspan x="61.5" y="37.8">設定ファイル</tspan></text></g>
   </g>
-  <g data-node="adapter" data-custom="true" data-padding="22"><g transform="translate(358 38)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="245" height="1498" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">adapter</text></g>
-    
-    
-    <g data-node="a1" data-custom="true" transform="translate(0 38.2)">
+  <g data-node="adapter" data-custom="true" data-redrawn="true" data-padding="22">
+    <rect data-bounds="true" data-frame="true" x="358" y="38" width="245" height="1498" fill="none"/>
+    <g data-picture="true" transform="translate(358 38)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="225" height="1478" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">adapter</text></g>
+    <g data-node="a1" data-custom="true">
       <g transform="translate(380 60)">
     <rect data-bounds="true" width="159.4" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="159.4" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -120,10 +120,10 @@
     <g fill="#5b6b85"><text x="94" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">adapter/hc.lua</text></g></g>
     </g>
   </g>
-  <g data-node="core" data-custom="true" data-padding="22"><g transform="translate(778 38)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="558" height="1686" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">core</text></g>
-    
-    
-    <g data-node="c1" data-custom="true" transform="translate(0 38.2)">
+  <g data-node="core" data-custom="true" data-redrawn="true" data-padding="22">
+    <rect data-bounds="true" data-frame="true" x="778" y="38" width="558" height="1648" fill="none"/>
+    <g data-picture="true" transform="translate(778 38)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="538" height="1628" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">core</text></g>
+    <g data-node="c1" data-custom="true">
       <g transform="translate(800 60)">
     <rect data-bounds="true" width="201" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="201" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -147,7 +147,7 @@
     <text x="87.5" y="40" font-size="13" text-anchor="middle" dominant-baseline="central">モニターの対象を決める</text>
     <g fill="#5b6b85"><text x="87.5" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">core/state.lua</text></g></g>
     </g>
-    <g data-node="c4" data-custom="true" transform="translate(0 -20)">
+    <g data-node="c4" data-custom="true">
       <g transform="translate(800 570)">
     <rect data-bounds="true" width="162" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="162" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -179,7 +179,7 @@
     <text x="70" y="40" font-size="13" text-anchor="middle" dominant-baseline="central">待ちを判定する</text>
     <g fill="#5b6b85"><text x="70" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">core/attention.lua</text></g></g>
     </g>
-    <g data-node="c8" data-custom="true" transform="translate(0 20)">
+    <g data-node="c8" data-custom="true">
       <g transform="translate(800 1250)">
     <rect data-bounds="true" width="123" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="123" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -187,7 +187,7 @@
     <text x="61.5" y="40" font-size="13" text-anchor="middle" dominant-baseline="central">配置を統合する</text>
     <g fill="#5b6b85"><text x="61.5" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">core/layout.lua</text></g></g>
     </g>
-    <g data-node="c9" data-custom="true" transform="translate(0 13)">
+    <g data-node="c9" data-custom="true">
       <g transform="translate(800 1420)">
     <rect data-bounds="true" width="149" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="149" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -195,7 +195,7 @@
     <text x="74.5" y="40" font-size="13" text-anchor="middle" dominant-baseline="central">再開する会話を選ぶ</text>
     <g fill="#5b6b85"><text x="74.5" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">core/resume.lua</text></g></g>
     </g>
-    <g data-node="c10" data-custom="true" transform="translate(0 38)">
+    <g data-node="c10" data-custom="true">
       <g transform="translate(800 1590)">
     <rect data-bounds="true" width="201" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="201" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -203,10 +203,10 @@
     <text x="100.5" y="40" font-size="13" text-anchor="middle" dominant-baseline="central">インストールの状態を決める</text>
     <g fill="#5b6b85"><text x="100.5" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">core/setup.lua</text></g></g>
     </g>
-    <g data-node="s1" data-custom="true" data-padding="14"><g transform="translate(1116 66)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="159" height="114.19999999999999" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
-      
-      
-      <g data-node="d1" data-custom="true" transform="translate(0 50.2)">
+    <g data-node="s1" data-custom="true" data-redrawn="true" data-padding="14">
+      <rect data-bounds="true" data-frame="true" x="1116" y="66" width="159" height="64" fill="none"/>
+      <g data-picture="true" transform="translate(1116 66)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="155" height="60" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
+      <g data-node="d1" data-custom="true">
         <g transform="translate(1130 80)">
     <rect data-bounds="true" width="131" height="36" fill="#fff6d6" stroke="none"/>
     <path d="M 131 0 H 0 V 36 H 131 M 38 0 V 36 M 5 0 V 36" fill="none" stroke="#6b5a16" stroke-width="1.5"/>
@@ -214,10 +214,10 @@
     <text x="84.5" y="18" font-size="13" text-anchor="middle" dominant-baseline="central">ターミナル</text></g>
       </g>
     </g>
-    <g data-node="s2" data-custom="true" data-padding="14"><g transform="translate(1076 406)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="225" height="94.19999999999999" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
-      
-      
-      <g data-node="d2" data-custom="true" transform="translate(-40 30.19999999999999)">
+    <g data-node="s2" data-custom="true" data-redrawn="true" data-padding="14">
+      <rect data-bounds="true" data-frame="true" x="1116" y="406" width="185" height="64" fill="none"/>
+      <g data-picture="true" transform="translate(1116 406)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="181" height="60" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
+      <g data-node="d2" data-custom="true">
         <g transform="translate(1130 420)">
     <rect data-bounds="true" width="157" height="36" fill="#fff6d6" stroke="none"/>
     <path d="M 157 0 H 0 V 36 H 157 M 38 0 V 36" fill="none" stroke="#6b5a16" stroke-width="1.5"/>
@@ -225,10 +225,10 @@
     <text x="97.5" y="18" font-size="13" text-anchor="middle" dominant-baseline="central">リソースの項目</text></g>
       </g>
     </g>
-    <g data-node="s3" data-custom="true" data-padding="14"><g transform="translate(1116 1256)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="198" height="94.20000000000005" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
-      
-      
-      <g data-node="d3" data-custom="true" transform="translate(0 30.200000000000045)">
+    <g data-node="s3" data-custom="true" data-redrawn="true" data-padding="14">
+      <rect data-bounds="true" data-frame="true" x="1116" y="1256" width="198" height="64" fill="none"/>
+      <g data-picture="true" transform="translate(1116 1256)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="194" height="60" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
+      <g data-node="d3" data-custom="true">
         <g transform="translate(1130 1270)">
     <rect data-bounds="true" width="170" height="36" fill="#fff6d6" stroke="none"/>
     <path d="M 170 0 H 0 V 36 H 170 M 38 0 V 36" fill="none" stroke="#6b5a16" stroke-width="1.5"/>
@@ -236,10 +236,10 @@
     <text x="104" y="18" font-size="13" text-anchor="middle" dominant-baseline="central">ウィンドウの配置</text></g>
       </g>
     </g>
-    <g data-node="s4" data-custom="true" data-padding="14"><g transform="translate(1116 996)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="159" height="94.20000000000005" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
-      
-      
-      <g data-node="d1b" data-custom="true" transform="translate(0 30.200000000000045)">
+    <g data-node="s4" data-custom="true" data-redrawn="true" data-padding="14">
+      <rect data-bounds="true" data-frame="true" x="1116" y="996" width="159" height="64" fill="none"/>
+      <g data-picture="true" transform="translate(1116 996)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="155" height="60" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
+      <g data-node="d1b" data-custom="true">
         <g transform="translate(1130 1010)">
     <rect data-bounds="true" width="131" height="36" fill="#fff6d6" stroke="none"/>
     <path d="M 131 0 H 0 V 36 H 131 M 38 0 V 36 M 5 0 V 36" fill="none" stroke="#6b5a16" stroke-width="1.5"/>
@@ -247,10 +247,10 @@
     <text x="84.5" y="18" font-size="13" text-anchor="middle" dominant-baseline="central">ターミナル</text></g>
       </g>
     </g>
-    <g data-node="s5" data-custom="true" data-padding="14"><g transform="translate(1116 1426)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="159" height="94.20000000000005" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
-      
-      
-      <g data-node="d1c" data-custom="true" transform="translate(0 30.200000000000045)">
+    <g data-node="s5" data-custom="true" data-redrawn="true" data-padding="14">
+      <rect data-bounds="true" data-frame="true" x="1116" y="1426" width="159" height="64" fill="none"/>
+      <g data-picture="true" transform="translate(1116 1426)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="155" height="60" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
+      <g data-node="d1c" data-custom="true">
         <g transform="translate(1130 1440)">
     <rect data-bounds="true" width="131" height="36" fill="#fff6d6" stroke="none"/>
     <path d="M 131 0 H 0 V 36 H 131 M 38 0 V 36 M 5 0 V 36" fill="none" stroke="#6b5a16" stroke-width="1.5"/>
@@ -259,10 +259,10 @@
       </g>
     </g>
   </g>
-  <g data-node="app" data-custom="true" data-padding="22"><g transform="translate(1378 823)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="196" height="156.20000000000005" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">app</text></g>
-    
-    
-    <g data-node="p5" data-custom="true" transform="translate(0 38.200000000000045)">
+  <g data-node="app" data-custom="true" data-redrawn="true" data-padding="22">
+    <rect data-bounds="true" data-frame="true" x="1378" y="823" width="196" height="118" fill="none"/>
+    <g data-picture="true" transform="translate(1378 823)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="176" height="98" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">app</text></g>
+    <g data-node="p5" data-custom="true">
       <g transform="translate(1400 845)">
     <rect data-bounds="true" width="151.6" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="151.6" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -271,10 +271,10 @@
     <g fill="#5b6b85"><text x="75.8" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">app/init.lua</text></g></g>
     </g>
   </g>
-  <g data-node="integrations" data-custom="true" data-padding="22"><g transform="translate(1378 1568)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="232" height="156.20000000000005" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">integrations</text></g>
-    
-    
-    <g data-node="p10" data-custom="true" transform="translate(0 38.200000000000045)">
+  <g data-node="integrations" data-custom="true" data-redrawn="true" data-padding="22">
+    <rect data-bounds="true" data-frame="true" x="1378" y="1568" width="232" height="118" fill="none"/>
+    <g data-picture="true" transform="translate(1378 1568)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="212" height="98" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">integrations</text></g>
+    <g data-node="p10" data-custom="true">
       <g transform="translate(1400 1590)">
     <rect data-bounds="true" width="188" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="188" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -283,10 +283,10 @@
     <g fill="#5b6b85"><text x="94" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">integrations.lua</text></g></g>
     </g>
   </g>
-  <g data-node="ui" data-custom="true" data-padding="22"><g transform="translate(1838 548)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="248" height="814" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">ui</text></g>
-    
-    
-    <g data-node="u4" data-custom="true" transform="translate(33 0)">
+  <g data-node="ui" data-custom="true" data-redrawn="true" data-padding="22">
+    <rect data-bounds="true" data-frame="true" x="1838" y="548" width="248" height="814" fill="none"/>
+    <g data-picture="true" transform="translate(1838 548)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="228" height="794" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">ui</text></g>
+    <g data-node="u4" data-custom="true">
       <g transform="translate(1860 570)">
     <rect data-bounds="true" width="136" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="136" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -302,7 +302,7 @@
     <text x="102" y="40" font-size="13" text-anchor="middle" dominant-baseline="central">キーとクリックを受ける</text>
     <g fill="#5b6b85"><text x="102" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">ui/sidebar.lua、ui/prompt.lua</text></g></g>
     </g>
-    <g data-node="u6" data-custom="true" transform="translate(0 40)">
+    <g data-node="u6" data-custom="true">
       <g transform="translate(1860 910)">
     <rect data-bounds="true" width="136" height="90" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="136" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -318,7 +318,7 @@
     <text x="81" font-size="13" text-anchor="middle" dominant-baseline="central"><tspan x="81" y="40.2">フォーカスと表示中の</tspan><tspan x="81" y="55.8">ターミナルを読む</tspan></text>
     <g fill="#5b6b85"><text x="81" y="74" font-size="10" text-anchor="middle" dominant-baseline="central">ui/focus.lua</text></g></g>
     </g>
-    <g data-node="u8" data-custom="true" transform="translate(0 -60)">
+    <g data-node="u8" data-custom="true">
       <g transform="translate(1860 1250)">
     <rect data-bounds="true" width="149" height="90" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="149" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -327,98 +327,98 @@
     <g fill="#5b6b85"><text x="74.5" y="74" font-size="10" text-anchor="middle" dominant-baseline="central">ui/layout.lua</text></g></g>
     </g>
   </g>
-  <line id="edge-0" data-from="hc" data-to="a1" stroke="black" x1="43.8" y1="785" x2="459.7" y2="135.2" marker-end="url(#arrow)"/>
-  <text data-label="edge-0" data-label-for="edge-0" text-anchor="middle" font-size="11" x="252" y="-427.85"><tspan x="252" y="7">hc events の JSON</tspan></text>
-  <line id="edge-1" data-from="a1" data-to="c1" stroke="black" x1="459.7" y1="135.2" x2="900.5" y2="135.2" marker-end="url(#arrow)"/>
-  <text data-label="edge-1" data-label-for="edge-1" text-anchor="middle" font-size="11" x="670" y="23.15"><tspan x="670" y="124">ターミナルの一覧と変化</tspan></text>
-  <line id="edge-2" data-from="c1" data-to="d1" stroke="black" x1="900.5" y1="135.2" x2="1195.5" y2="148.2" marker-end="url(#arrow)"/>
-  <text data-label="edge-2" data-label-for="edge-2" text-anchor="middle" font-size="11" x="1072" y="29.65"><tspan x="1072" y="131">ターミナルの記録</tspan></text>
-  <line id="edge-3" data-from="d1" data-to="c2" stroke="black" x1="1195.5" y1="148.2" x2="868" y2="267" marker-end="url(#arrow)"/>
-  <text data-label="edge-3" data-label-for="edge-3" text-anchor="middle" font-size="11" x="1105" y="69.65"><tspan x="1105" y="256">cwd</tspan></text>
+  <line id="edge-0" data-from="hc" data-to="a1" stroke="black" x1="43.8" y1="765" x2="459.7" y2="97" marker-end="url(#arrow)"/>
+  <text data-label="edge-0" data-label-for="edge-0" text-anchor="middle" font-size="11"><tspan x="251.75" y="434.85">hc events の JSON</tspan></text>
+  <line id="edge-1" data-from="a1" data-to="c1" stroke="black" x1="459.7" y1="97" x2="900.5" y2="97" marker-end="url(#arrow)"/>
+  <text data-label="edge-1" data-label-for="edge-1" text-anchor="middle" font-size="11"><tspan x="680.1" y="100.85">ターミナルの一覧と変化</tspan></text>
+  <line id="edge-2" data-from="c1" data-to="d1" stroke="black" x1="900.5" y1="97" x2="1195.5" y2="98" marker-end="url(#arrow)"/>
+  <text data-label="edge-2" data-label-for="edge-2" text-anchor="middle" font-size="11"><tspan x="1048" y="101.35">ターミナルの記録</tspan></text>
+  <line id="edge-3" data-from="d1" data-to="c2" stroke="black" x1="1195.5" y1="98" x2="868" y2="267" marker-end="url(#arrow)"/>
+  <text data-label="edge-3" data-label-for="edge-3" text-anchor="middle" font-size="11"><tspan x="1031.75" y="186.35">cwd</tspan></text>
   <line id="edge-4" data-from="c2" data-to="a3" stroke="black" x1="868" y1="267" x2="480.5" y2="267" marker-end="url(#arrow)"/>
-  <text data-label="edge-4" data-label-for="edge-4" text-anchor="middle" font-size="11" x="691" y="-26.85"><tspan x="691" y="244">フォルダー</tspan></text>
+  <text data-label="edge-4" data-label-for="edge-4" text-anchor="middle" font-size="11"><tspan x="674.25" y="270.85">フォルダー</tspan></text>
   <line id="edge-5" data-from="a3" data-to="c2" stroke="black" x1="480.5" y1="267" x2="868" y2="267" marker-end="url(#arrow)"/>
-  <text data-label="edge-5" data-label-for="edge-5" text-anchor="middle" font-size="11" x="691" y="28.15"><tspan x="691" y="299">リポジトリのルート</tspan></text>
+  <text data-label="edge-5" data-label-for="edge-5" text-anchor="middle" font-size="11"><tspan x="674.25" y="270.85">リポジトリのルート</tspan></text>
   <line id="edge-6" data-from="a3" data-to="git" stroke="black" x1="480.5" y1="267" x2="137.7" y2="267" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-  <text data-label="edge-6" data-label-for="edge-6" text-anchor="middle" font-size="11" x="273" y="-14.85"><tspan x="273" y="256">git の問い合わせ</tspan></text>
+  <text data-label="edge-6" data-label-for="edge-6" text-anchor="middle" font-size="11"><tspan x="309.1" y="270.85">git の問い合わせ</tspan></text>
   <line id="edge-7" data-from="c2" data-to="w2" stroke="black" x1="868" y1="267" x2="467.5" y2="355" marker-end="url(#arrow)"/>
-  <text data-label="edge-7" data-label-for="edge-7" text-anchor="middle" font-size="11" x="712" y="29.15"><tspan x="712" y="344">スペースのラベル</tspan></text>
-  <line id="edge-8" data-from="w2" data-to="hc" stroke="black" x1="467.5" y1="355" x2="43.8" y2="785" marker-end="url(#arrow)"/>
-  <text data-label="edge-8" data-label-for="edge-8" text-anchor="middle" font-size="11" x="236" y="-219.85"><tspan x="236" y="344">ラベル</tspan></text>
-  <line id="edge-9" data-from="d1" data-to="c3" stroke="black" x1="1195.5" y1="148.2" x2="887.5" y2="437" marker-end="url(#arrow)"/>
-  <text data-label="edge-9" data-label-for="edge-9" text-anchor="start" font-size="11" x="1032" y="85.65"><tspan x="1032" y="357">ターミナル</tspan></text>
+  <text data-label="edge-7" data-label-for="edge-7" text-anchor="middle" font-size="11"><tspan x="667.75" y="314.85">スペースのラベル</tspan></text>
+  <line id="edge-8" data-from="w2" data-to="hc" stroke="black" x1="467.5" y1="355" x2="43.8" y2="765" marker-end="url(#arrow)"/>
+  <text data-label="edge-8" data-label-for="edge-8" text-anchor="middle" font-size="11"><tspan x="255.65" y="563.85">ラベル</tspan></text>
+  <line id="edge-9" data-from="d1" data-to="c3" stroke="black" x1="1195.5" y1="98" x2="887.5" y2="437" marker-end="url(#arrow)"/>
+  <text data-label="edge-9" data-label-for="edge-9" text-anchor="middle" font-size="11"><tspan x="1041.5" y="271.35">ターミナル</tspan></text>
   <line id="edge-10" data-from="c3" data-to="a5" stroke="black" x1="887.5" y1="437" x2="459" y2="445" marker-end="url(#arrow)"/>
-  <text data-label="edge-10" data-label-for="edge-10" text-anchor="middle" font-size="11" x="669" y="-18.85"><tspan x="669" y="426">モニターを張る親</tspan></text>
+  <text data-label="edge-10" data-label-for="edge-10" text-anchor="middle" font-size="11"><tspan x="673.25" y="444.85">モニターを張る親</tspan></text>
   <line id="edge-11" data-from="a5" data-to="monitors" stroke="black" x1="459" y1="445" x2="178" y2="440" marker-end="url(#arrow)"/>
-  <text data-label="edge-11" data-label-for="edge-11" text-anchor="middle" font-size="11" x="313" y="-27.35"><tspan x="313" y="419">親の要素</tspan></text>
+  <text data-label="edge-11" data-label-for="edge-11" text-anchor="middle" font-size="11"><tspan x="318.5" y="446.35">親の要素</tspan></text>
   <line id="edge-12" data-from="monitors" data-to="a5" stroke="black" x1="178" y1="440" x2="459" y2="445" marker-end="url(#arrow)"/>
-  <text data-label="edge-12" data-label-for="edge-12" text-anchor="middle" font-size="11" x="313" y="23.65"><tspan x="313" y="470">項目のリスト</tspan></text>
-  <line id="edge-13" data-from="a5" data-to="d2" stroke="black" x1="459" y1="445" x2="1168.5" y2="468.2" marker-end="url(#arrow)"/>
-  <text data-label="edge-13" data-label-for="edge-13" text-anchor="middle" font-size="11" x="801" y="90.65"><tspan x="801" y="536">項目</tspan></text>
-  <line id="edge-14" data-from="d1" data-to="c4" stroke="black" x1="1195.5" y1="148.2" x2="881" y2="587" marker-end="url(#arrow)"/>
-  <text data-label="edge-14" data-label-for="edge-14" text-anchor="end" font-size="11" x="1302" y="16.65"><tspan x="1302" y="373">ターミナル</tspan></text>
-  <line id="edge-15" data-from="d2" data-to="c4" stroke="black" x1="1168.5" y1="468.2" x2="881" y2="587" marker-end="url(#arrow)"/>
-  <text data-label="edge-15" data-label-for="edge-15" text-anchor="middle" font-size="11" x="1079" y="31.65"><tspan x="1079" y="558">項目</tspan></text>
-  <line id="edge-16" data-from="c4" data-to="u4" stroke="black" x1="881" y1="587" x2="1961" y2="607" marker-end="url(#arrow)"/>
-  <text data-label="edge-16" data-label-for="edge-16" text-anchor="middle" font-size="11" x="1428" y="-15.85"><tspan x="1428" y="595">行</tspan></text>
-  <line id="edge-17" data-from="u4" data-to="user" stroke="black" x1="1961" y1="607" x2="2255.5" y2="1120" marker-end="url(#arrow)"/>
-  <text data-label="edge-17" data-label-for="edge-17" text-anchor="middle" font-size="11" x="2109" y="-352.35"><tspan x="2109" y="505">サイドバーの表示</tspan></text>
-  <line id="edge-18" data-from="user" data-to="u5" stroke="black" x1="2255.5" y1="1120" x2="1962" y2="777" marker-end="url(#arrow)"/>
-  <text data-label="edge-18" data-label-for="edge-18" text-anchor="middle" font-size="11" x="2142" y="-187.95"><tspan x="2142" y="747.8">キー、クリック、</tspan><tspan x="2142" y="761">メニューの選択</tspan></text>
+  <text data-label="edge-12" data-label-for="edge-12" text-anchor="middle" font-size="11"><tspan x="318.5" y="446.35">項目のリスト</tspan></text>
+  <line id="edge-13" data-from="a5" data-to="d2" stroke="black" x1="459" y1="445" x2="1208.5" y2="438" marker-end="url(#arrow)"/>
+  <text data-label="edge-13" data-label-for="edge-13" text-anchor="middle" font-size="11"><tspan x="833.75" y="445.35">項目</tspan></text>
+  <line id="edge-14" data-from="d1" data-to="c4" stroke="black" x1="1195.5" y1="98" x2="881" y2="607" marker-end="url(#arrow)"/>
+  <text data-label="edge-14" data-label-for="edge-14" text-anchor="middle" font-size="11"><tspan x="1038.25" y="356.35">ターミナル</tspan></text>
+  <line id="edge-15" data-from="d2" data-to="c4" stroke="black" x1="1208.5" y1="438" x2="881" y2="607" marker-end="url(#arrow)"/>
+  <text data-label="edge-15" data-label-for="edge-15" text-anchor="middle" font-size="11"><tspan x="1044.75" y="526.35">項目</tspan></text>
+  <line id="edge-16" data-from="c4" data-to="u4" stroke="black" x1="881" y1="607" x2="1928" y2="607" marker-end="url(#arrow)"/>
+  <text data-label="edge-16" data-label-for="edge-16" text-anchor="middle" font-size="11"><tspan x="1404.5" y="610.85">行</tspan></text>
+  <line id="edge-17" data-from="u4" data-to="user" stroke="black" x1="1928" y1="607" x2="2295.5" y2="1100" marker-end="url(#arrow)"/>
+  <text data-label="edge-17" data-label-for="edge-17" text-anchor="middle" font-size="11"><tspan x="2111.75" y="857.35">サイドバーの表示</tspan></text>
+  <line id="edge-18" data-from="user" data-to="u5" stroke="black" x1="2295.5" y1="1100" x2="1962" y2="777" marker-end="url(#arrow)"/>
+  <text data-label="edge-18" data-label-for="edge-18" text-anchor="middle" font-size="11"><tspan x="2128.75" y="935.75">キー、クリック、</tspan><tspan x="2128.75" y="948.95">メニューの選択</tspan></text>
   <line id="edge-19" data-from="u5" data-to="c5" stroke="black" x1="1962" y1="777" x2="899.2" y2="777" marker-end="url(#arrow)"/>
-  <text data-label="edge-19" data-label-for="edge-19" text-anchor="middle" font-size="11" x="1429" y="-26.85"><tspan x="1429" y="754">行とキー</tspan></text>
-  <line id="edge-20" data-from="c5" data-to="p5" stroke="black" x1="899.2" y1="777" x2="1475.8" y2="920.2" marker-end="url(#arrow)"/>
-  <text data-label="edge-20" data-label-for="edge-20" text-anchor="middle" font-size="11" x="1237" y="-24.35"><tspan x="1237" y="809">実行する action と項目</tspan></text>
-  <line id="edge-21" data-from="p5" data-to="actions" stroke="black" x1="1475.8" y1="920.2" x2="1718" y2="882" marker-end="url(#arrow)"/>
-  <text data-label="edge-21" data-label-for="edge-21" text-anchor="start" font-size="11" x="1727" y="41.15"><tspan x="1727" y="927">選ばれた項目と親</tspan></text>
-  <line id="edge-22" data-from="p5" data-to="c6" stroke="black" x1="1475.8" y1="920.2" x2="914" y2="947" marker-end="url(#arrow)"/>
-  <text data-label="edge-22" data-label-for="edge-22" text-anchor="middle" font-size="11" x="1214" y="-0.95"><tspan x="1214" y="910.8">ターミナルの操作</tspan><tspan x="1214" y="924">（開く、名前、ピン留め、起動）</tspan></text>
-  <line id="edge-23" data-from="c6" data-to="u6" stroke="black" x1="914" y1="947" x2="1928" y2="995" marker-end="url(#arrow)"/>
-  <text data-label="edge-23" data-label-for="edge-23" text-anchor="middle" font-size="11" x="1756" y="129.15"><tspan x="1756" y="1084">開くターミナルと開き方</tspan></text>
+  <text data-label="edge-19" data-label-for="edge-19" text-anchor="middle" font-size="11"><tspan x="1430.6" y="780.85">行とキー</tspan></text>
+  <line id="edge-20" data-from="c5" data-to="p5" stroke="black" x1="899.2" y1="777" x2="1475.8" y2="882" marker-end="url(#arrow)"/>
+  <text data-label="edge-20" data-label-for="edge-20" text-anchor="middle" font-size="11"><tspan x="1187.5" y="833.35">実行する action と項目</tspan></text>
+  <line id="edge-21" data-from="p5" data-to="actions" stroke="black" x1="1475.8" y1="882" x2="1718" y2="882" marker-end="url(#arrow)"/>
+  <text data-label="edge-21" data-label-for="edge-21" text-anchor="middle" font-size="11"><tspan x="1596.9" y="885.85">選ばれた項目と親</tspan></text>
+  <line id="edge-22" data-from="p5" data-to="c6" stroke="black" x1="1475.8" y1="882" x2="914" y2="947" marker-end="url(#arrow)"/>
+  <text data-label="edge-22" data-label-for="edge-22" text-anchor="middle" font-size="11"><tspan x="1194.9" y="911.75">ターミナルの操作</tspan><tspan x="1194.9" y="924.95">（開く、名前、ピン留め、起動）</tspan></text>
+  <line id="edge-23" data-from="c6" data-to="u6" stroke="black" x1="914" y1="947" x2="1928" y2="955" marker-end="url(#arrow)"/>
+  <text data-label="edge-23" data-label-for="edge-23" text-anchor="middle" font-size="11"><tspan x="1421" y="954.85">開くターミナルと開き方</tspan></text>
   <line id="edge-24" data-from="c6" data-to="w6" stroke="black" x1="914" y1="947" x2="474" y2="947" marker-end="url(#arrow)"/>
-  <text data-label="edge-24" data-label-for="edge-24" text-anchor="middle" font-size="11" x="684" y="-14.85"><tspan x="684" y="936">起動するフォルダー、ラベル</tspan></text>
-  <line id="edge-25" data-from="w6" data-to="hc" stroke="black" x1="474" y1="947" x2="43.8" y2="785" marker-end="url(#arrow)"/>
-  <text data-label="edge-25" data-label-for="edge-25" text-anchor="middle" font-size="11" x="271" y="-85.85"><tspan x="271" y="774">起動、ラベル</tspan></text>
-  <line id="edge-26" data-from="u6" data-to="hc2" stroke="black" x1="1928" y1="995" x2="1683.8" y2="1017" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-  <text data-label="edge-26" data-label-for="edge-26" text-anchor="middle" font-size="11" x="1784" y="16.15"><tspan x="1784" y="1006">ターミナルの入出力</tspan></text>
-  <line id="edge-27" data-from="u6" data-to="user" stroke="black" x1="1928" y1="995" x2="2255.5" y2="1120" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-  <text data-label="edge-27" data-label-for="edge-27" text-anchor="middle" font-size="11" x="2119" y="-47.35"><tspan x="2119" y="984">画面と入力</tspan></text>
-  <line id="edge-28" data-from="user" data-to="u7" stroke="black" x1="2255.5" y1="1120" x2="1941" y2="1125" marker-end="url(#arrow)"/>
-  <text data-label="edge-28" data-label-for="edge-28" text-anchor="middle" font-size="11" x="2131" y="-2.35"><tspan x="2131" y="1114">ウィンドウの移動</tspan></text>
+  <text data-label="edge-24" data-label-for="edge-24" text-anchor="middle" font-size="11"><tspan x="694" y="950.85">起動するフォルダー、ラベル</tspan></text>
+  <line id="edge-25" data-from="w6" data-to="hc" stroke="black" x1="474" y1="947" x2="43.8" y2="765" marker-end="url(#arrow)"/>
+  <text data-label="edge-25" data-label-for="edge-25" text-anchor="middle" font-size="11"><tspan x="258.9" y="859.85">起動、ラベル</tspan></text>
+  <line id="edge-26" data-from="u6" data-to="hc2" stroke="black" x1="1928" y1="955" x2="1683.8" y2="1017" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text data-label="edge-26" data-label-for="edge-26" text-anchor="middle" font-size="11"><tspan x="1805.9" y="989.85">ターミナルの入出力</tspan></text>
+  <line id="edge-27" data-from="u6" data-to="user" stroke="black" x1="1928" y1="955" x2="2295.5" y2="1100" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text data-label="edge-27" data-label-for="edge-27" text-anchor="middle" font-size="11"><tspan x="2111.75" y="1031.35">画面と入力</tspan></text>
+  <line id="edge-28" data-from="user" data-to="u7" stroke="black" x1="2295.5" y1="1100" x2="1941" y2="1125" marker-end="url(#arrow)"/>
+  <text data-label="edge-28" data-label-for="edge-28" text-anchor="middle" font-size="11"><tspan x="2118.25" y="1116.35">ウィンドウの移動</tspan></text>
   <line id="edge-29" data-from="u7" data-to="c7" stroke="black" x1="1941" y1="1125" x2="870" y2="1117" marker-end="url(#arrow)"/>
-  <text data-label="edge-29" data-label-for="edge-29" text-anchor="middle" font-size="11" x="1262" y="26.75"><tspan x="1262" y="1145">フォーカスと</tspan><tspan x="1262" y="1158.2">表示中のターミナル</tspan></text>
-  <line id="edge-30" data-from="d1b" data-to="c7" stroke="black" x1="1195.5" y1="1058.2" x2="870" y2="1117" marker-end="url(#arrow)"/>
-  <text data-label="edge-30" data-label-for="edge-30" text-anchor="middle" font-size="11" x="1000" y="-31.35"><tspan x="1000" y="1045">状態と turn</tspan></text>
+  <text data-label="edge-29" data-label-for="edge-29" text-anchor="middle" font-size="11"><tspan x="1405.5" y="1118.25">フォーカスと</tspan><tspan x="1405.5" y="1131.45">表示中のターミナル</tspan></text>
+  <line id="edge-30" data-from="d1b" data-to="c7" stroke="black" x1="1195.5" y1="1028" x2="870" y2="1117" marker-end="url(#arrow)"/>
+  <text data-label="edge-30" data-label-for="edge-30" text-anchor="middle" font-size="11"><tspan x="1032.75" y="1076.35">状態と turn</tspan></text>
   <line id="edge-31" data-from="c7" data-to="a4" stroke="black" x1="870" y1="1117" x2="456" y2="1117" marker-end="url(#arrow)"/>
-  <text data-label="edge-31" data-label-for="edge-31" text-anchor="middle" font-size="11" x="666" y="-14.85"><tspan x="666" y="1106">通知する名前と状態</tspan></text>
+  <text data-label="edge-31" data-label-for="edge-31" text-anchor="middle" font-size="11"><tspan x="663" y="1120.85">通知する名前と状態</tspan></text>
   <line id="edge-32" data-from="a4" data-to="os" stroke="black" x1="456" y1="1117" x2="157.2" y2="1117" marker-end="url(#arrow)"/>
-  <text data-label="edge-32" data-label-for="edge-32" text-anchor="middle" font-size="11" x="292" y="-14.85"><tspan x="292" y="1106">通知</tspan></text>
+  <text data-label="edge-32" data-label-for="edge-32" text-anchor="middle" font-size="11"><tspan x="306.6" y="1120.85">通知</tspan></text>
   <line id="edge-33" data-from="c7" data-to="w7" stroke="black" x1="870" y1="1117" x2="454.5" y2="1205" marker-end="url(#arrow)"/>
-  <text data-label="edge-33" data-label-for="edge-33" text-anchor="middle" font-size="11" x="700" y="29.15"><tspan x="700" y="1194">既読のラベル</tspan></text>
-  <line id="edge-34" data-from="w7" data-to="hc" stroke="black" x1="454.5" y1="1205" x2="43.8" y2="785" marker-end="url(#arrow)"/>
-  <text data-label="edge-34" data-label-for="edge-34" text-anchor="middle" font-size="11" x="276" y="205.15"><tspan x="276" y="1194">ラベル</tspan></text>
-  <line id="edge-35" data-from="user" data-to="u8" stroke="black" x1="2255.5" y1="1120" x2="1934.5" y2="1235" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-  <text data-label="edge-35" data-label-for="edge-35" text-anchor="middle" font-size="11" x="2125" y="22.65"><tspan x="2125" y="1224">ウィンドウの配置</tspan></text>
-  <line id="edge-36" data-from="u8" data-to="c8" stroke="black" x1="1934.5" y1="1235" x2="861.5" y2="1307" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-  <text data-label="edge-36" data-label-for="edge-36" text-anchor="middle" font-size="11" x="1211" y="-70.85"><tspan x="1211" y="1224">配置</tspan></text>
-  <line id="edge-37" data-from="c8" data-to="d3" stroke="black" x1="861.5" y1="1307" x2="1215" y2="1318.2" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-  <text data-label="edge-37" data-label-for="edge-37" text-anchor="middle" font-size="11" x="1027" y="15.65"><tspan x="1027" y="1307">配置</tspan></text>
-  <line id="edge-38" data-from="c8" data-to="w8" stroke="black" x1="861.5" y1="1307" x2="480.5" y2="1307" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-  <text data-label="edge-38" data-label-for="edge-38" text-anchor="middle" font-size="11" x="691" y="-4.85"><tspan x="691" y="1296">共有する配置</tspan></text>
-  <line id="edge-39" data-from="w8" data-to="hc" stroke="black" x1="480.5" y1="1307" x2="43.8" y2="785" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-  <text data-label="edge-39" data-label-for="edge-39" text-anchor="middle" font-size="11" x="231" y="256.15"><tspan x="231" y="1296">配置の doc</tspan></text>
-  <line id="edge-40" data-from="d1c" data-to="c9" stroke="black" x1="1195.5" y1="1488.2" x2="874.5" y2="1470" marker-end="url(#arrow)"/>
-  <text data-label="edge-40" data-label-for="edge-40" text-anchor="middle" font-size="11" x="1040" y="15.65"><tspan x="1040" y="1477">セッション ID</tspan></text>
-  <line id="edge-41" data-from="c9" data-to="w9" stroke="black" x1="874.5" y1="1470" x2="474" y2="1477" marker-end="url(#arrow)"/>
-  <text data-label="edge-41" data-label-for="edge-41" text-anchor="middle" font-size="11" x="684" y="-11.85"><tspan x="684" y="1459">再開のコマンド</tspan></text>
-  <line id="edge-42" data-from="w9" data-to="hc" stroke="black" x1="474" y1="1477" x2="43.8" y2="785" marker-end="url(#arrow)"/>
-  <text data-label="edge-42" data-label-for="edge-42" text-anchor="middle" font-size="11" x="255" y="442.15"><tspan x="255" y="1567">入力</tspan></text>
-  <line id="edge-43" data-from="u5" data-to="c10" stroke="black" x1="1962" y1="777" x2="900.5" y2="1665" marker-end="url(#arrow)"/>
-  <text data-label="edge-43" data-label-for="edge-43" text-anchor="middle" font-size="11" x="1245" y="348.15"><tspan x="1245" y="1554">インストールの指示</tspan></text>
-  <line id="edge-44" data-from="c10" data-to="p10" stroke="black" x1="900.5" y1="1665" x2="1494" y2="1665.2" marker-end="url(#arrow)"/>
-  <text data-label="edge-44" data-label-for="edge-44" text-anchor="middle" font-size="11" x="1201" y="11.15"><tspan x="1201" y="1642">インストールする統合</tspan></text>
-  <line id="edge-45" data-from="p10" data-to="c10" stroke="black" x1="1494" y1="1665.2" x2="900.5" y2="1665" marker-end="url(#arrow)"/>
-  <text data-label="edge-45" data-label-for="edge-45" text-anchor="middle" font-size="11" x="1201" y="67.15"><tspan x="1201" y="1698">結果</tspan></text>
-  <line id="edge-46" data-from="p10" data-to="agents" stroke="black" x1="1494" y1="1665.2" x2="171.5" y2="1630" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
-  <text data-label="edge-46" data-label-for="edge-46" text-anchor="middle" font-size="11" x="833" y="131.65"><tspan x="833" y="1764">フックの設定</tspan></text>
+  <text data-label="edge-33" data-label-for="edge-33" text-anchor="middle" font-size="11"><tspan x="662.25" y="1164.85">既読のラベル</tspan></text>
+  <line id="edge-34" data-from="w7" data-to="hc" stroke="black" x1="454.5" y1="1205" x2="43.8" y2="765" marker-end="url(#arrow)"/>
+  <text data-label="edge-34" data-label-for="edge-34" text-anchor="middle" font-size="11"><tspan x="249.15" y="988.85">ラベル</tspan></text>
+  <line id="edge-35" data-from="user" data-to="u8" stroke="black" x1="2295.5" y1="1100" x2="1934.5" y2="1295" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text data-label="edge-35" data-label-for="edge-35" text-anchor="middle" font-size="11"><tspan x="2115" y="1201.35">ウィンドウの配置</tspan></text>
+  <line id="edge-36" data-from="u8" data-to="c8" stroke="black" x1="1934.5" y1="1295" x2="861.5" y2="1287" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text data-label="edge-36" data-label-for="edge-36" text-anchor="middle" font-size="11"><tspan x="1398" y="1294.85">配置</tspan></text>
+  <line id="edge-37" data-from="c8" data-to="d3" stroke="black" x1="861.5" y1="1287" x2="1215" y2="1288" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text data-label="edge-37" data-label-for="edge-37" text-anchor="middle" font-size="11"><tspan x="1038.25" y="1291.35">配置</tspan></text>
+  <line id="edge-38" data-from="c8" data-to="w8" stroke="black" x1="861.5" y1="1287" x2="480.5" y2="1307" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text data-label="edge-38" data-label-for="edge-38" text-anchor="middle" font-size="11"><tspan x="671" y="1300.85">共有する配置</tspan></text>
+  <line id="edge-39" data-from="w8" data-to="hc" stroke="black" x1="480.5" y1="1307" x2="43.8" y2="765" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text data-label="edge-39" data-label-for="edge-39" text-anchor="middle" font-size="11"><tspan x="262.15" y="1039.85">配置の doc</tspan></text>
+  <line id="edge-40" data-from="d1c" data-to="c9" stroke="black" x1="1195.5" y1="1458" x2="874.5" y2="1457" marker-end="url(#arrow)"/>
+  <text data-label="edge-40" data-label-for="edge-40" text-anchor="middle" font-size="11"><tspan x="1035" y="1461.35">セッション ID</tspan></text>
+  <line id="edge-41" data-from="c9" data-to="w9" stroke="black" x1="874.5" y1="1457" x2="474" y2="1477" marker-end="url(#arrow)"/>
+  <text data-label="edge-41" data-label-for="edge-41" text-anchor="middle" font-size="11"><tspan x="674.25" y="1470.85">再開のコマンド</tspan></text>
+  <line id="edge-42" data-from="w9" data-to="hc" stroke="black" x1="474" y1="1477" x2="43.8" y2="765" marker-end="url(#arrow)"/>
+  <text data-label="edge-42" data-label-for="edge-42" text-anchor="middle" font-size="11"><tspan x="258.9" y="1124.85">入力</tspan></text>
+  <line id="edge-43" data-from="u5" data-to="c10" stroke="black" x1="1962" y1="777" x2="900.5" y2="1627" marker-end="url(#arrow)"/>
+  <text data-label="edge-43" data-label-for="edge-43" text-anchor="middle" font-size="11"><tspan x="1431.25" y="1205.85">インストールの指示</tspan></text>
+  <line id="edge-44" data-from="c10" data-to="p10" stroke="black" x1="900.5" y1="1627" x2="1494" y2="1627" marker-end="url(#arrow)"/>
+  <text data-label="edge-44" data-label-for="edge-44" text-anchor="middle" font-size="11"><tspan x="1197.25" y="1630.85">インストールする統合</tspan></text>
+  <line id="edge-45" data-from="p10" data-to="c10" stroke="black" x1="1494" y1="1627" x2="900.5" y2="1627" marker-end="url(#arrow)"/>
+  <text data-label="edge-45" data-label-for="edge-45" text-anchor="middle" font-size="11"><tspan x="1197.25" y="1630.85">結果</tspan></text>
+  <line id="edge-46" data-from="p10" data-to="agents" stroke="black" x1="1494" y1="1627" x2="171.5" y2="1630" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text data-label="edge-46" data-label-for="edge-46" text-anchor="middle" font-size="11"><tspan x="832.75" y="1632.35">フックの設定</tspan></text>
 </svg>

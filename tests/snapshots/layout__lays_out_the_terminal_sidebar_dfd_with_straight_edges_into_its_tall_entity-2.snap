@@ -2,18 +2,18 @@
 source: tests/layout.rs
 expression: result.svg.as_str()
 ---
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -30 2351 1816" width="2351" height="1816" font-family="'Yu Gothic UI', 'Meiryo', 'Hiragino Sans', 'Noto Sans CJK JP', sans-serif" style="background:#ffffff">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2351 1786" width="2351" height="1786" font-family="'Yu Gothic UI', 'Meiryo', 'Hiragino Sans', 'Noto Sans CJK JP', sans-serif" style="background:#ffffff">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="black"/>
     </marker>
   </defs>
-  <g data-node="hc" data-custom="true" transform="translate(0 20)">
+  <g data-node="hc" data-custom="true">
     <g transform="translate(20 20)">
     <rect data-bounds="true" width="47.6" height="1490" fill="#eeeeee" stroke="#333333" stroke-width="1.5"/>
     <text x="23.8" y="150" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text><text x="23.8" y="450" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text><text x="23.8" y="750" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text><text x="23.8" y="1050" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text><text x="23.8" y="1350" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text></g>
   </g>
-  <g data-node="user" data-custom="true" transform="translate(-40 20)">
+  <g data-node="user" data-custom="true">
     <g transform="translate(2260 520)">
     <rect data-bounds="true" width="71" height="1160" fill="#eeeeee" stroke="#333333" stroke-width="1.5"/>
     <text x="35.5" y="150" font-size="13" text-anchor="middle" dominant-baseline="central">利用者</text><text x="35.5" y="450" font-size="13" text-anchor="middle" dominant-baseline="central">利用者</text><text x="35.5" y="750" font-size="13" text-anchor="middle" dominant-baseline="central">利用者</text><text x="35.5" y="1050" font-size="13" text-anchor="middle" dominant-baseline="central">利用者</text></g>
@@ -28,12 +28,12 @@ expression: result.svg.as_str()
     <rect data-bounds="true" width="136" height="60" fill="#eeeeee" stroke="#333333" stroke-width="1.5"/>
     <text x="68" font-size="13" text-anchor="middle" dominant-baseline="central"><tspan x="68" y="22.2">利用者のリソース</tspan><tspan x="68" y="37.8">（モニター）</tspan></text></g>
   </g>
-  <g data-node="actions" data-custom="true" transform="translate(-20 0)">
+  <g data-node="actions" data-custom="true">
     <g transform="translate(1650 852)">
     <rect data-bounds="true" width="136" height="60" fill="#eeeeee" stroke="#333333" stroke-width="1.5"/>
     <text x="68" font-size="13" text-anchor="middle" dominant-baseline="central"><tspan x="68" y="22.2">利用者のリソース</tspan><tspan x="68" y="37.8">（action）</tspan></text></g>
   </g>
-  <g data-node="hc2" data-custom="true">
+  <g data-node="hc2" data-custom="true" transform="translate(0 -40)">
     <g transform="translate(1660 995)">
     <rect data-bounds="true" width="47.6" height="44" fill="#eeeeee" stroke="#333333" stroke-width="1.5"/>
     <text x="23.8" y="22" font-size="13" text-anchor="middle" dominant-baseline="central">hc</text></g>
@@ -48,9 +48,9 @@ expression: result.svg.as_str()
     <rect data-bounds="true" width="123" height="60" fill="#eeeeee" stroke="#333333" stroke-width="1.5"/>
     <text x="61.5" font-size="13" text-anchor="middle" dominant-baseline="central"><tspan x="61.5" y="22.2">エージェントの</tspan><tspan x="61.5" y="37.8">設定ファイル</tspan></text></g>
   </g>
-  <g data-node="adapter" data-custom="true" data-padding="22"><g transform="translate(358 38)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="245" height="1498" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">adapter</text></g>
-    
-    
+  <g data-node="adapter" data-custom="true" data-redrawn="true" data-padding="22">
+    <rect data-bounds="true" data-frame="true" x="358" y="38" width="245" height="1498" fill="none"/>
+    <g data-picture="true" transform="translate(358 38)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="225" height="1478" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">adapter</text></g>
     <g data-node="a1" data-custom="true" transform="translate(0 38.2)">
       <g transform="translate(380 60)">
     <rect data-bounds="true" width="159.4" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
@@ -115,7 +115,7 @@ expression: result.svg.as_str()
     <text x="100.5" y="40" font-size="13" text-anchor="middle" dominant-baseline="central">共有する配置を読み書きする</text>
     <g fill="#5b6b85"><text x="100.5" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">adapter/hc.lua</text></g></g>
     </g>
-    <g data-node="w9" data-custom="true">
+    <g data-node="w9" data-custom="true" transform="translate(0 -20)">
       <g transform="translate(380 1440)">
     <rect data-bounds="true" width="188" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="188" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -124,9 +124,9 @@ expression: result.svg.as_str()
     <g fill="#5b6b85"><text x="94" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">adapter/hc.lua</text></g></g>
     </g>
   </g>
-  <g data-node="core" data-custom="true" data-padding="22"><g transform="translate(778 38)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="558" height="1686" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">core</text></g>
-    
-    
+  <g data-node="core" data-custom="true" data-redrawn="true" data-padding="22">
+    <rect data-bounds="true" data-frame="true" x="778" y="38" width="558" height="1686" fill="none"/>
+    <g data-picture="true" transform="translate(778 38)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="538" height="1628" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">core</text></g>
     <g data-node="c1" data-custom="true" transform="translate(0 38.2)">
       <g transform="translate(800 60)">
     <rect data-bounds="true" width="201" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
@@ -191,7 +191,7 @@ expression: result.svg.as_str()
     <text x="61.5" y="40" font-size="13" text-anchor="middle" dominant-baseline="central">配置を統合する</text>
     <g fill="#5b6b85"><text x="61.5" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">core/layout.lua</text></g></g>
     </g>
-    <g data-node="c9" data-custom="true" transform="translate(0 13)">
+    <g data-node="c9" data-custom="true">
       <g transform="translate(800 1420)">
     <rect data-bounds="true" width="149" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="149" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -207,9 +207,9 @@ expression: result.svg.as_str()
     <text x="100.5" y="40" font-size="13" text-anchor="middle" dominant-baseline="central">インストールの状態を決める</text>
     <g fill="#5b6b85"><text x="100.5" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">core/setup.lua</text></g></g>
     </g>
-    <g data-node="s1" data-custom="true" data-padding="14"><g transform="translate(1116 66)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="159" height="114.19999999999999" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
-      
-      
+    <g data-node="s1" data-custom="true" data-redrawn="true" data-padding="14">
+      <rect data-bounds="true" data-frame="true" x="1116" y="66" width="159" height="114.19999999999999" fill="none"/>
+      <g data-picture="true" transform="translate(1116 66)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="155" height="60" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
       <g data-node="d1" data-custom="true" transform="translate(0 50.2)">
         <g transform="translate(1130 80)">
     <rect data-bounds="true" width="131" height="36" fill="#fff6d6" stroke="none"/>
@@ -218,10 +218,10 @@ expression: result.svg.as_str()
     <text x="84.5" y="18" font-size="13" text-anchor="middle" dominant-baseline="central">ターミナル</text></g>
       </g>
     </g>
-    <g data-node="s2" data-custom="true" data-padding="14"><g transform="translate(1076 406)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="225" height="94.19999999999999" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
-      
-      
-      <g data-node="d2" data-custom="true" transform="translate(-40 30.19999999999999)">
+    <g data-node="s2" data-custom="true" data-redrawn="true" data-padding="14">
+      <rect data-bounds="true" data-frame="true" x="1056" y="406" width="245" height="134.20000000000005" fill="none"/>
+      <g data-picture="true" transform="translate(1116 406)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="181" height="60" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
+      <g data-node="d2" data-custom="true" transform="translate(-60 70.19999999999999)">
         <g transform="translate(1130 420)">
     <rect data-bounds="true" width="157" height="36" fill="#fff6d6" stroke="none"/>
     <path d="M 157 0 H 0 V 36 H 157 M 38 0 V 36" fill="none" stroke="#6b5a16" stroke-width="1.5"/>
@@ -229,9 +229,9 @@ expression: result.svg.as_str()
     <text x="97.5" y="18" font-size="13" text-anchor="middle" dominant-baseline="central">リソースの項目</text></g>
       </g>
     </g>
-    <g data-node="s3" data-custom="true" data-padding="14"><g transform="translate(1116 1256)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="198" height="94.20000000000005" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
-      
-      
+    <g data-node="s3" data-custom="true" data-redrawn="true" data-padding="14">
+      <rect data-bounds="true" data-frame="true" x="1116" y="1256" width="198" height="94.20000000000005" fill="none"/>
+      <g data-picture="true" transform="translate(1116 1256)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="194" height="60" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
       <g data-node="d3" data-custom="true" transform="translate(0 30.200000000000045)">
         <g transform="translate(1130 1270)">
     <rect data-bounds="true" width="170" height="36" fill="#fff6d6" stroke="none"/>
@@ -240,9 +240,9 @@ expression: result.svg.as_str()
     <text x="104" y="18" font-size="13" text-anchor="middle" dominant-baseline="central">ウィンドウの配置</text></g>
       </g>
     </g>
-    <g data-node="s4" data-custom="true" data-padding="14"><g transform="translate(1116 996)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="159" height="94.20000000000005" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
-      
-      
+    <g data-node="s4" data-custom="true" data-redrawn="true" data-padding="14">
+      <rect data-bounds="true" data-frame="true" x="1116" y="996" width="159" height="94.20000000000005" fill="none"/>
+      <g data-picture="true" transform="translate(1116 996)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="155" height="60" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
       <g data-node="d1b" data-custom="true" transform="translate(0 30.200000000000045)">
         <g transform="translate(1130 1010)">
     <rect data-bounds="true" width="131" height="36" fill="#fff6d6" stroke="none"/>
@@ -251,9 +251,9 @@ expression: result.svg.as_str()
     <text x="84.5" y="18" font-size="13" text-anchor="middle" dominant-baseline="central">ターミナル</text></g>
       </g>
     </g>
-    <g data-node="s5" data-custom="true" data-padding="14"><g transform="translate(1116 1426)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="159" height="94.20000000000005" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
-      
-      
+    <g data-node="s5" data-custom="true" data-redrawn="true" data-padding="14">
+      <rect data-bounds="true" data-frame="true" x="1116" y="1426" width="159" height="94.20000000000005" fill="none"/>
+      <g data-picture="true" transform="translate(1116 1426)"><rect data-bounds="true" data-padding="14" x="0" y="0" width="155" height="60" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="14" y="22" font-size="13" text-anchor="start" dominant-baseline="central">state</text></g>
       <g data-node="d1c" data-custom="true" transform="translate(0 30.200000000000045)">
         <g transform="translate(1130 1440)">
     <rect data-bounds="true" width="131" height="36" fill="#fff6d6" stroke="none"/>
@@ -263,9 +263,9 @@ expression: result.svg.as_str()
       </g>
     </g>
   </g>
-  <g data-node="app" data-custom="true" data-padding="22"><g transform="translate(1378 823)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="196" height="156.20000000000005" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">app</text></g>
-    
-    
+  <g data-node="app" data-custom="true" data-redrawn="true" data-padding="22">
+    <rect data-bounds="true" data-frame="true" x="1378" y="823" width="196" height="156.20000000000005" fill="none"/>
+    <g data-picture="true" transform="translate(1378 823)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="176" height="98" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">app</text></g>
     <g data-node="p5" data-custom="true" transform="translate(0 38.200000000000045)">
       <g transform="translate(1400 845)">
     <rect data-bounds="true" width="151.6" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
@@ -275,10 +275,10 @@ expression: result.svg.as_str()
     <g fill="#5b6b85"><text x="75.8" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">app/init.lua</text></g></g>
     </g>
   </g>
-  <g data-node="integrations" data-custom="true" data-padding="22"><g transform="translate(1378 1568)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="232" height="156.20000000000005" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">integrations</text></g>
-    
-    
-    <g data-node="p10" data-custom="true" transform="translate(0 38.200000000000045)">
+  <g data-node="integrations" data-custom="true" data-redrawn="true" data-padding="22">
+    <rect data-bounds="true" data-frame="true" x="1358" y="1568" width="252" height="156.20000000000005" fill="none"/>
+    <g data-picture="true" transform="translate(1378 1568)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="212" height="98" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">integrations</text></g>
+    <g data-node="p10" data-custom="true" transform="translate(-20 38.200000000000045)">
       <g transform="translate(1400 1590)">
     <rect data-bounds="true" width="188" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="188" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -287,10 +287,10 @@ expression: result.svg.as_str()
     <g fill="#5b6b85"><text x="94" y="58" font-size="10" text-anchor="middle" dominant-baseline="central">integrations.lua</text></g></g>
     </g>
   </g>
-  <g data-node="ui" data-custom="true" data-padding="22"><g transform="translate(1838 548)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="248" height="814" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">ui</text></g>
-    
-    
-    <g data-node="u4" data-custom="true" transform="translate(33 0)">
+  <g data-node="ui" data-custom="true" data-redrawn="true" data-padding="22">
+    <rect data-bounds="true" data-frame="true" x="1838" y="548" width="248" height="814" fill="none"/>
+    <g data-picture="true" transform="translate(1838 548)"><rect data-bounds="true" data-padding="22" x="0" y="0" width="228" height="794" fill="none" stroke="#888888" stroke-dasharray="6 4"/><text x="22" y="30" font-size="13" text-anchor="start" dominant-baseline="central">ui</text></g>
+    <g data-node="u4" data-custom="true" transform="translate(32 0)">
       <g transform="translate(1860 570)">
     <rect data-bounds="true" width="136" height="74" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="136" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -322,7 +322,7 @@ expression: result.svg.as_str()
     <text x="81" font-size="13" text-anchor="middle" dominant-baseline="central"><tspan x="81" y="40.2">フォーカスと表示中の</tspan><tspan x="81" y="55.8">ターミナルを読む</tspan></text>
     <g fill="#5b6b85"><text x="81" y="74" font-size="10" text-anchor="middle" dominant-baseline="central">ui/focus.lua</text></g></g>
     </g>
-    <g data-node="u8" data-custom="true" transform="translate(0 -60)">
+    <g data-node="u8" data-custom="true">
       <g transform="translate(1860 1250)">
     <rect data-bounds="true" width="149" height="90" rx="16" fill="#eaf2ff" stroke="#2f4a7a"/>
     <line x1="0" y1="24" x2="149" y2="24" stroke="#2f4a7a" stroke-width="0.6"/>
@@ -349,45 +349,45 @@ expression: result.svg.as_str()
   <text data-label="edge-7" data-label-for="edge-7" text-anchor="middle" font-size="11" x="712" y="29.15"><tspan x="712" y="344">スペースのラベル</tspan></text>
   <path id="edge-8" data-from="w2" data-to="hc" stroke="black" marker-end="url(#arrow)" fill="none" d="M 380 355 L 67.6 355"/>
   <text data-label="edge-8" data-label-for="edge-8" text-anchor="middle" font-size="11" x="224" y="-219.85"><tspan x="224" y="344">ラベル</tspan></text>
-  <path id="edge-9" data-from="d1" data-to="c3" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1130 154 L 1023 154 L 1023 437 L 975 437"/>
-  <text data-label="edge-9" data-label-for="edge-9" text-anchor="start" font-size="11" x="1032" y="85.65"><tspan x="1032" y="357">ターミナル</tspan></text>
+  <path id="edge-9" data-from="d1" data-to="c3" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1130 154 L 1020 154 L 1020 437 L 975 437"/>
+  <text data-label="edge-9" data-label-for="edge-9" text-anchor="start" font-size="11" x="1029" y="85.65"><tspan x="1029" y="357">ターミナル</tspan></text>
   <path id="edge-10" data-from="c3" data-to="a5" stroke="black" marker-end="url(#arrow)" fill="none" d="M 800 437 L 538 437"/>
   <text data-label="edge-10" data-label-for="edge-10" text-anchor="middle" font-size="11" x="669" y="-18.85"><tspan x="669" y="426">モニターを張る親</tspan></text>
   <path id="edge-11" data-from="a5" data-to="monitors" stroke="black" marker-end="url(#arrow)" fill="none" d="M 380 430 L 246 430"/>
   <text data-label="edge-11" data-label-for="edge-11" text-anchor="middle" font-size="11" x="313" y="-27.35"><tspan x="313" y="419">親の要素</tspan></text>
   <path id="edge-12" data-from="monitors" data-to="a5" stroke="black" marker-end="url(#arrow)" fill="none" d="M 246 450 L 380 450"/>
   <text data-label="edge-12" data-label-for="edge-12" text-anchor="middle" font-size="11" x="313" y="23.65"><tspan x="313" y="470">項目のリスト</tspan></text>
-  <path id="edge-13" data-from="a5" data-to="d2" stroke="black" marker-end="url(#arrow)" fill="none" d="M 459 490 L 459 521 L 1142 521 L 1142 486.2"/>
-  <text data-label="edge-13" data-label-for="edge-13" text-anchor="middle" font-size="11" x="801" y="64.65"><tspan x="801" y="510">項目</tspan></text>
+  <path id="edge-13" data-from="a5" data-to="d2" stroke="black" marker-end="url(#arrow)" fill="none" d="M 538 460 L 562 460 L 562 502 L 1070 502"/>
+  <text data-label="edge-13" data-label-for="edge-13" text-anchor="middle" font-size="11" x="816" y="45.65"><tspan x="816" y="491">項目</tspan></text>
   <path id="edge-14" data-from="d1" data-to="c4" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1261 148 L 1309 148 L 1309 587 L 962 587"/>
   <text data-label="edge-14" data-label-for="edge-14" text-anchor="end" font-size="11" x="1300" y="16.65"><tspan x="1300" y="373">ターミナル</tspan></text>
-  <path id="edge-15" data-from="d2" data-to="c4" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1195 486.2 L 1195 569 L 962 569"/>
-  <text data-label="edge-15" data-label-for="edge-15" text-anchor="middle" font-size="11" x="1079" y="31.65"><tspan x="1079" y="558">項目</tspan></text>
-  <path id="edge-16" data-from="c4" data-to="u4" stroke="black" marker-end="url(#arrow)" fill="none" d="M 962 606 L 1893 606"/>
-  <text data-label="edge-16" data-label-for="edge-16" text-anchor="middle" font-size="11" x="1428" y="-15.85"><tspan x="1428" y="595">行</tspan></text>
-  <path id="edge-17" data-from="u4" data-to="user" stroke="black" marker-end="url(#arrow)" fill="none" d="M 2029 607 L 2220 607"/>
-  <text data-label="edge-17" data-label-for="edge-17" text-anchor="middle" font-size="11" x="2134" y="-261.35"><tspan x="2134" y="596">サイドバーの表示</tspan></text>
-  <path id="edge-18" data-from="user" data-to="u5" stroke="black" marker-end="url(#arrow)" fill="none" d="M 2220 777 L 2064 777"/>
-  <text data-label="edge-18" data-label-for="edge-18" text-anchor="middle" font-size="11" x="2142" y="-182.95"><tspan x="2142" y="752.8">キー、クリック、</tspan><tspan x="2142" y="766">メニューの選択</tspan></text>
+  <path id="edge-15" data-from="d2" data-to="c4" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1149 526.2 L 1149 569 L 962 569"/>
+  <text data-label="edge-15" data-label-for="edge-15" text-anchor="middle" font-size="11" x="1056" y="31.65"><tspan x="1056" y="558">項目</tspan></text>
+  <path id="edge-16" data-from="c4" data-to="u4" stroke="black" marker-end="url(#arrow)" fill="none" d="M 962 606 L 1892 606"/>
+  <text data-label="edge-16" data-label-for="edge-16" text-anchor="middle" font-size="11" x="1427" y="-15.85"><tspan x="1427" y="595">行</tspan></text>
+  <path id="edge-17" data-from="u4" data-to="user" stroke="black" marker-end="url(#arrow)" fill="none" d="M 2028 607 L 2260 607"/>
+  <text data-label="edge-17" data-label-for="edge-17" text-anchor="middle" font-size="11" x="2144" y="-261.35"><tspan x="2144" y="596">サイドバーの表示</tspan></text>
+  <path id="edge-18" data-from="user" data-to="u5" stroke="black" marker-end="url(#arrow)" fill="none" d="M 2260 777 L 2064 777"/>
+  <text data-label="edge-18" data-label-for="edge-18" text-anchor="middle" font-size="11" x="2162" y="-182.95"><tspan x="2162" y="752.8">キー、クリック、</tspan><tspan x="2162" y="766">メニューの選択</tspan></text>
   <path id="edge-19" data-from="u5" data-to="c5" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1860 765 L 998.4 765"/>
   <text data-label="edge-19" data-label-for="edge-19" text-anchor="middle" font-size="11" x="1429" y="-26.85"><tspan x="1429" y="754">行とキー</tspan></text>
   <path id="edge-20" data-from="c5" data-to="p5" stroke="black" marker-end="url(#arrow)" fill="none" d="M 998.4 789 L 1476 789 L 1476 883.2"/>
   <text data-label="edge-20" data-label-for="edge-20" text-anchor="middle" font-size="11" x="1237" y="-24.35"><tspan x="1237" y="809">実行する action と項目</tspan></text>
-  <path id="edge-21" data-from="p5" data-to="actions" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1551.6 936 L 1698 936 L 1698 912"/>
-  <text data-label="edge-21" data-label-for="edge-21" text-anchor="start" font-size="11" x="1707" y="43.15"><tspan x="1707" y="929">選ばれた項目と親</tspan></text>
+  <path id="edge-21" data-from="p5" data-to="actions" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1551.6 936 L 1718 936 L 1718 912"/>
+  <text data-label="edge-21" data-label-for="edge-21" text-anchor="start" font-size="11" x="1727" y="41.15"><tspan x="1727" y="927">選ばれた項目と親</tspan></text>
   <path id="edge-22" data-from="p5" data-to="c6" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1400 935 L 1028 935"/>
   <text data-label="edge-22" data-label-for="edge-22" text-anchor="middle" font-size="11" x="1214" y="-0.95"><tspan x="1214" y="910.8">ターミナルの操作</tspan><tspan x="1214" y="924">（開く、名前、ピン留め、起動）</tspan></text>
-  <path id="edge-23" data-from="c6" data-to="u6" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1028 959 L 1296 959 L 1296 1064 L 1928 1064 L 1928 1040"/>
-  <text data-label="edge-23" data-label-for="edge-23" text-anchor="middle" font-size="11" x="1770" y="129.15"><tspan x="1770" y="1084">開くターミナルと開き方</tspan></text>
+  <path id="edge-23" data-from="c6" data-to="u6" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1028 959 L 1294 959 L 1294 1010 L 1860 1010"/>
+  <text data-label="edge-23" data-label-for="edge-23" text-anchor="middle" font-size="11" x="1436" y="44.15"><tspan x="1436" y="999">開くターミナルと開き方</tspan></text>
   <path id="edge-24" data-from="c6" data-to="w6" stroke="black" marker-end="url(#arrow)" fill="none" d="M 800 947 L 568 947"/>
   <text data-label="edge-24" data-label-for="edge-24" text-anchor="middle" font-size="11" x="684" y="-14.85"><tspan x="684" y="936">起動するフォルダー、ラベル</tspan></text>
   <path id="edge-25" data-from="w6" data-to="hc" stroke="black" marker-end="url(#arrow)" fill="none" d="M 380 947 L 67.6 947"/>
   <text data-label="edge-25" data-label-for="edge-25" text-anchor="middle" font-size="11" x="224" y="76.15"><tspan x="224" y="936">起動、ラベル</tspan></text>
-  <path id="edge-26" data-from="u6" data-to="hc2" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 1860 1017 L 1707.6 1017"/>
-  <text data-label="edge-26" data-label-for="edge-26" text-anchor="middle" font-size="11" x="1784" y="16.15"><tspan x="1784" y="1006">ターミナルの入出力</tspan></text>
-  <path id="edge-27" data-from="u6" data-to="user" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 1996 995 L 2220 995"/>
-  <text data-label="edge-27" data-label-for="edge-27" text-anchor="middle" font-size="11" x="2119" y="-47.35"><tspan x="2119" y="984">画面と入力</tspan></text>
-  <path id="edge-28" data-from="user" data-to="u7" stroke="black" marker-end="url(#arrow)" fill="none" d="M 2220 1125 L 2022 1125"/>
+  <path id="edge-26" data-from="u6" data-to="hc2" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 1860 977 L 1707.6 977"/>
+  <text data-label="edge-26" data-label-for="edge-26" text-anchor="middle" font-size="11" x="1784" y="-23.85"><tspan x="1784" y="966">ターミナルの入出力</tspan></text>
+  <path id="edge-27" data-from="u6" data-to="user" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 1996 995 L 2260 995"/>
+  <text data-label="edge-27" data-label-for="edge-27" text-anchor="middle" font-size="11" x="2128" y="-47.35"><tspan x="2128" y="984">画面と入力</tspan></text>
+  <path id="edge-28" data-from="user" data-to="u7" stroke="black" marker-end="url(#arrow)" fill="none" d="M 2260 1125 L 2022 1125"/>
   <text data-label="edge-28" data-label-for="edge-28" text-anchor="middle" font-size="11" x="2141" y="-2.35"><tspan x="2141" y="1114">ウィンドウの移動</tspan></text>
   <path id="edge-29" data-from="u7" data-to="c7" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1860 1125 L 940 1125"/>
   <text data-label="edge-29" data-label-for="edge-29" text-anchor="middle" font-size="11" x="1262" y="26.75"><tspan x="1262" y="1145">フォーカスと</tspan><tspan x="1262" y="1158.2">表示中のターミナル</tspan></text>
@@ -401,28 +401,28 @@ expression: result.svg.as_str()
   <text data-label="edge-33" data-label-for="edge-33" text-anchor="middle" font-size="11" x="700" y="29.15"><tspan x="700" y="1194">既読のラベル</tspan></text>
   <path id="edge-34" data-from="w7" data-to="hc" stroke="black" marker-end="url(#arrow)" fill="none" d="M 380 1205 L 67.6 1205"/>
   <text data-label="edge-34" data-label-for="edge-34" text-anchor="middle" font-size="11" x="224" y="205.15"><tspan x="224" y="1194">ラベル</tspan></text>
-  <path id="edge-35" data-from="user" data-to="u8" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 2220 1235 L 2009 1235"/>
-  <text data-label="edge-35" data-label-for="edge-35" text-anchor="middle" font-size="11" x="2136" y="22.65"><tspan x="2136" y="1224">ウィンドウの配置</tspan></text>
-  <path id="edge-36" data-from="u8" data-to="c8" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 1860 1235 L 862 1235 L 862 1270"/>
-  <text data-label="edge-36" data-label-for="edge-36" text-anchor="middle" font-size="11" x="1211" y="-70.85"><tspan x="1211" y="1224">配置</tspan></text>
+  <path id="edge-35" data-from="user" data-to="u8" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 2260 1295 L 2009 1295"/>
+  <text data-label="edge-35" data-label-for="edge-35" text-anchor="middle" font-size="11" x="2135" y="82.65"><tspan x="2135" y="1284">ウィンドウの配置</tspan></text>
+  <path id="edge-36" data-from="u8" data-to="c8" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 1935 1250 L 1935 1226 L 862 1226 L 862 1270"/>
+  <text data-label="edge-36" data-label-for="edge-36" text-anchor="middle" font-size="11" x="1238" y="-79.85"><tspan x="1238" y="1215">配置</tspan></text>
   <path id="edge-37" data-from="c8" data-to="d3" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 923 1318 L 1130 1318"/>
   <text data-label="edge-37" data-label-for="edge-37" text-anchor="middle" font-size="11" x="1027" y="15.65"><tspan x="1027" y="1307">配置</tspan></text>
   <path id="edge-38" data-from="c8" data-to="w8" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 800 1307 L 581 1307"/>
   <text data-label="edge-38" data-label-for="edge-38" text-anchor="middle" font-size="11" x="691" y="-4.85"><tspan x="691" y="1296">共有する配置</tspan></text>
-  <path id="edge-39" data-from="w8" data-to="hc" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 380 1307 L 67.6 1307"/>
-  <text data-label="edge-39" data-label-for="edge-39" text-anchor="middle" font-size="11" x="224" y="256.15"><tspan x="224" y="1296">配置の doc</tspan></text>
-  <path id="edge-40" data-from="d1c" data-to="c9" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1130 1488 L 949 1488"/>
-  <text data-label="edge-40" data-label-for="edge-40" text-anchor="middle" font-size="11" x="1040" y="15.65"><tspan x="1040" y="1477">セッション ID</tspan></text>
-  <path id="edge-41" data-from="c9" data-to="w9" stroke="black" marker-end="url(#arrow)" fill="none" d="M 800 1470 L 568 1470"/>
-  <text data-label="edge-41" data-label-for="edge-41" text-anchor="middle" font-size="11" x="684" y="-11.85"><tspan x="684" y="1459">再開のコマンド</tspan></text>
-  <path id="edge-42" data-from="w9" data-to="hc" stroke="black" marker-end="url(#arrow)" fill="none" d="M 380 1477 L 67.6 1477"/>
-  <text data-label="edge-42" data-label-for="edge-42" text-anchor="middle" font-size="11" x="224" y="341.15"><tspan x="224" y="1466">入力</tspan></text>
-  <path id="edge-43" data-from="u5" data-to="c10" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1860 789 L 1818 789 L 1818 954 L 1589 954 L 1589 1533 L 901 1533 L 901 1628"/>
-  <text data-label="edge-43" data-label-for="edge-43" text-anchor="middle" font-size="11" x="1245" y="347.15"><tspan x="1245" y="1553">インストールの指示</tspan></text>
-  <path id="edge-44" data-from="c10" data-to="p10" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1001 1653 L 1400 1653"/>
-  <text data-label="edge-44" data-label-for="edge-44" text-anchor="middle" font-size="11" x="1201" y="11.15"><tspan x="1201" y="1642">インストールする統合</tspan></text>
-  <path id="edge-45" data-from="p10" data-to="c10" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1400 1678 L 1001 1678"/>
-  <text data-label="edge-45" data-label-for="edge-45" text-anchor="middle" font-size="11" x="1201" y="67.15"><tspan x="1201" y="1698">結果</tspan></text>
-  <path id="edge-46" data-from="p10" data-to="agents" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 1494 1702.2 L 1494 1744.2 L 172 1744.2 L 172 1660"/>
-  <text data-label="edge-46" data-label-for="edge-46" text-anchor="middle" font-size="11" x="833" y="131.65"><tspan x="833" y="1764">フックの設定</tspan></text>
+  <path id="edge-39" data-from="w8" data-to="hc" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 380 1297 L 67.6 1297"/>
+  <text data-label="edge-39" data-label-for="edge-39" text-anchor="middle" font-size="11" x="224" y="246.15"><tspan x="224" y="1286">配置の doc</tspan></text>
+  <path id="edge-40" data-from="d1c" data-to="c9" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1196 1470.2 L 1196 1446.2 L 949 1446.2"/>
+  <text data-label="edge-40" data-label-for="edge-40" text-anchor="middle" font-size="11" x="1073" y="-26.35"><tspan x="1073" y="1435">セッション ID</tspan></text>
+  <path id="edge-41" data-from="c9" data-to="w9" stroke="black" marker-end="url(#arrow)" fill="none" d="M 800 1457 L 568 1457"/>
+  <text data-label="edge-41" data-label-for="edge-41" text-anchor="middle" font-size="11" x="684" y="-24.85"><tspan x="684" y="1446">再開のコマンド</tspan></text>
+  <path id="edge-42" data-from="w9" data-to="hc" stroke="black" marker-end="url(#arrow)" fill="none" d="M 380 1457 L 67.6 1457"/>
+  <text data-label="edge-42" data-label-for="edge-42" text-anchor="middle" font-size="11" x="224" y="321.15"><tspan x="224" y="1446">入力</tspan></text>
+  <path id="edge-43" data-from="u5" data-to="c10" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1860 789 L 1589 789 L 1589 1536 L 901 1536 L 901 1628"/>
+  <text data-label="edge-43" data-label-for="edge-43" text-anchor="middle" font-size="11" x="1245" y="350.15"><tspan x="1245" y="1556">インストールの指示</tspan></text>
+  <path id="edge-44" data-from="c10" data-to="p10" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1001 1653 L 1380 1653"/>
+  <text data-label="edge-44" data-label-for="edge-44" text-anchor="middle" font-size="11" x="1191" y="11.15"><tspan x="1191" y="1642">インストールする統合</tspan></text>
+  <path id="edge-45" data-from="p10" data-to="c10" stroke="black" marker-end="url(#arrow)" fill="none" d="M 1380 1678 L 1001 1678"/>
+  <text data-label="edge-45" data-label-for="edge-45" text-anchor="middle" font-size="11" x="1191" y="67.15"><tspan x="1191" y="1698">結果</tspan></text>
+  <path id="edge-46" data-from="p10" data-to="agents" stroke="black" marker-end="url(#arrow)" marker-start="url(#arrow)" fill="none" d="M 1474 1702.2 L 1474 1744.2 L 172 1744.2 L 172 1660"/>
+  <text data-label="edge-46" data-label-for="edge-46" text-anchor="middle" font-size="11" x="823" y="131.65"><tspan x="823" y="1764">フックの設定</tspan></text>
 </svg>
