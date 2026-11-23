@@ -693,6 +693,25 @@ fn lays_out_the_social_app_er_diagram_without_issues() {
     assert_eq!(issue_codes(report), Vec::<String>::new());
 }
 
+/// Given a sketch as drawn before layout (issue #59, with the text widths
+///   it was reported with): `from`, a small circle, with three edges out to
+///   circles on its right and below it, one of them to `to`, a larger circle
+///   level with it far to the right
+/// When the diagram is laid out
+/// Then the edge from `from` to `to` runs straight, and nothing is reported
+#[test]
+fn lays_out_an_edge_straight_out_of_a_busy_side_to_a_node_level_with_it() {
+    let svg = include_str!("fixtures/busy-side-sketch.svg");
+
+    let result = layout(svg);
+
+    let points = edge_points(&result.report, "edge-5");
+    assert_eq!(bend_count(&points), 0, "{points:?}");
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
 /// Given a sketch as drawn before layout (issue #58): a short edge from the
 ///   lower of two stacked circles to a box on its right, its label filling
 ///   the gap between them, and an edge from the upper circle to a box below
