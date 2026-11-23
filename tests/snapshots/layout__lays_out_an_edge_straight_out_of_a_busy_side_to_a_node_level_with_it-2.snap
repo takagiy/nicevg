@@ -3,13 +3,13 @@ source: tests/layout.rs
 expression: result.svg.as_str()
 ---
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="740 180 1584 570.2" width="1584" height="570.2">
-  <g data-node="a" data-custom="true" transform="translate(0 -25)">
+  <g data-node="a" data-custom="true">
     <g transform="translate(760 260)"><circle data-bounds="true" cx="22" cy="22" r="22" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="22" y="26.9">x</tspan></text></g>
   </g>
-  <g data-node="from" data-custom="true" transform="translate(60 0)">
+  <g data-node="from" data-custom="true" transform="translate(0 40)">
     <g transform="translate(1100 200)"><circle data-bounds="true" cx="35" cy="35" r="35" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="35" y="31.5">1.1</tspan><tspan x="35" y="48.3">ああ</tspan></text></g>
   </g>
-  <g data-node="b" data-custom="true" transform="translate(40 0)">
+  <g data-node="b" data-custom="true">
     <g transform="translate(1140 440)"><circle data-bounds="true" cx="22" cy="22" r="22" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="22" y="26.9">1</tspan></text></g>
   </g>
   <g data-node="c" data-custom="true">
@@ -21,7 +21,7 @@ expression: result.svg.as_str()
   <g data-node="e" data-custom="true">
     <g transform="translate(1380 680)"><rect data-bounds="true" x="0" y="0" width="85" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="42.5" y="26">x1 あああ</tspan></text></g>
   </g>
-  <g data-node="to" data-custom="true" transform="translate(-60 0)">
+  <g data-node="to" data-custom="true" transform="translate(-60 40)">
     <g transform="translate(1940 200)"><circle data-bounds="true" cx="62" cy="62" r="62" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="62" y="50.1">1.1</tspan><tspan x="62" y="66.9">ああああああ</tspan><tspan x="62" y="83.7">あああ</tspan></text></g>
   </g>
   <g data-node="f" data-custom="true">
@@ -30,14 +30,14 @@ expression: result.svg.as_str()
   <g data-node="g" data-custom="true">
     <g transform="translate(2260 420)"><circle data-bounds="true" cx="22" cy="22" r="22" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="22" y="26.9">1</tspan></text></g>
   </g>
-  <path id="edge-0" data-from="a" data-to="from" fill="none" stroke="black" d="M 804 257 L 1168 257"/>
-  <path id="edge-1" data-from="from" data-to="b" fill="none" stroke="black" d="M 1195 270 L 1195 441"/>
-  <path id="edge-2" data-from="from" data-to="c" fill="none" stroke="black" d="M 1225 253 L 1449 253 L 1449 444"/>
-  <path id="edge-3" data-from="from" data-to="d" fill="none" stroke="black" d="M 1230 235 L 1742 235 L 1742 440"/>
+  <path id="edge-0" data-from="a" data-to="from" fill="none" stroke="black" d="M 804 282 L 1101 282"/>
+  <path id="edge-1" data-from="from" data-to="b" fill="none" stroke="black" d="M 1155 304 L 1155 441"/>
+  <path id="edge-2" data-from="from" data-to="c" fill="none" stroke="black" d="M 1165 293 L 1449 293 L 1449 444"/>
+  <path id="edge-3" data-from="from" data-to="d" fill="none" stroke="black" d="M 1170 275 L 1742 275 L 1742 440"/>
   <path id="edge-4" data-from="e" data-to="c" fill="none" stroke="black" d="M 1423 680 L 1423 568"/>
-  <path id="edge-5" data-from="from" data-to="to" fill="none" stroke="black" d="M 1226 218 L 1898 218"/>
-  <path id="edge-6" data-from="b" data-to="to" fill="none" stroke="black" d="M 1202 484 L 1202 730.2 L 1942 730.2 L 1942 324"/>
-  <path id="edge-7" data-from="c" data-to="to" fill="none" stroke="black" d="M 1499 444 L 1499 283 L 1884 283"/>
-  <path id="edge-8" data-from="d" data-to="to" fill="none" stroke="black" d="M 1804 502 L 1911 502 L 1911 316"/>
-  <path id="edge-9" data-from="to" data-to="g" fill="none" stroke="black" d="M 1973 316 L 1973 442 L 2260 442"/>
+  <path id="edge-5" data-from="from" data-to="to" fill="none" stroke="black" d="M 1166 258 L 1898 258"/>
+  <path id="edge-6" data-from="b" data-to="to" fill="none" stroke="black" d="M 1162 484 L 1162 730.2 L 1973 730.2 L 1973 356"/>
+  <path id="edge-7" data-from="c" data-to="to" fill="none" stroke="black" d="M 1499 584 L 1499 612 L 1942 612 L 1942 364"/>
+  <path id="edge-8" data-from="d" data-to="to" fill="none" stroke="black" d="M 1804 502 L 1911 502 L 1911 356"/>
+  <path id="edge-9" data-from="to" data-to="g" fill="none" stroke="black" d="M 2004 302 L 2282 302 L 2282 420"/>
 </svg>

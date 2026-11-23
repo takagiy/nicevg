@@ -505,6 +505,27 @@ fn lays_out_the_terminal_sidebar_dfd_with_straight_edges_into_its_tall_entity() 
     assert_fix_snapshots!(result);
 }
 
+/// Given the same DFD, where the edge from 6.1 down to 6.2, a box on the
+///   right joined by straight edges to the tall nodes hc2 on its left and
+///   user on its right, bends three times while 6.2 is where the sketch puts
+///   it
+/// When the diagram is laid out
+/// Then 6.2 moves down on its own, its straight edges stay straight, and the
+///   edge from 6.1 enters 6.2's left side bending twice
+#[test]
+fn lays_out_the_terminal_sidebar_dfd_moving_a_box_down_alone_between_tall_nodes() {
+    let svg = include_str!("fixtures/terminal-sidebar-dfd.svg");
+
+    let result = layout(svg);
+
+    let into_box = edge_points(&result.report, "edge-23");
+    assert_eq!(bend_count(&into_box), 2, "{into_box:?}");
+    for id in ["edge-26", "edge-27"] {
+        let straight = edge_points(&result.report, id);
+        assert_eq!(bend_count(&straight), 0, "{id}: {straight:?}");
+    }
+}
+
 /// Given the order checkout DFD draft, where the pick list from allocate to
 ///   ship has to get past the approval line
 /// When the diagram is laid out
@@ -707,6 +728,51 @@ fn lays_out_an_edge_straight_out_of_a_busy_side_to_a_node_level_with_it() {
 
     let points = edge_points(&result.report, "edge-5");
     assert_eq!(bend_count(&points), 0, "{points:?}");
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+
+    assert_fix_snapshots!(result);
+}
+
+/// Given the same sketch (issue #59, with the text widths it was reported
+///   with), where the edges from `b` and `c` to `to` cross the edge from
+///   `from` to `d` unless they pass below `d`
+/// When the diagram is laid out
+/// Then no two edges cross
+#[test]
+fn lays_out_the_busy_side_sketch_without_crossings() {
+    let svg = include_str!("fixtures/busy-side-sketch.svg");
+
+    let result = layout(svg);
+
+    let crossings: Vec<Point> = crossing_points(&result.report)
+        .iter()
+        .map(|crossing| crossing.at)
+        .collect();
+    assert_eq!(crossings, Vec::<Point>::new());
+}
+
+/// Given the same sketch drawn with narrower text (issue #59, as other fonts
+///   draw it): `from` a circle of radius 33, `to` and `d` of 56 and `c` of
+///   65, with the box `f` beside `to` in the way of an edge from `to`'s
+///   right side down to `g`
+/// When the diagram is laid out
+/// Then the edge from `from` to `to` runs straight, the edge from `to` to `g`
+///   bends at most once, no two edges cross, and nothing is reported
+#[test]
+fn lays_out_the_busy_side_sketch_with_narrower_text_without_a_winding_edge() {
+    let svg = include_str!("fixtures/busy-side-narrow-sketch.svg");
+
+    let result = layout(svg);
+
+    let straight = edge_points(&result.report, "edge-5");
+    assert_eq!(bend_count(&straight), 0, "{straight:?}");
+    let to_g = edge_points(&result.report, "edge-9");
+    assert!(bend_count(&to_g) <= 1, "{to_g:?}");
+    let crossings: Vec<Point> = crossing_points(&result.report)
+        .iter()
+        .map(|crossing| crossing.at)
+        .collect();
+    assert_eq!(crossings, Vec::<Point>::new());
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
 
     assert_fix_snapshots!(result);
