@@ -353,6 +353,28 @@ render({ nodes: [{ id: "a", class: "box", x: 0, y: 0, label }], style: { box } }
     });
 
     /**
+     * [x] When `nicevg --help` runs, it can say to read the manual with `nicevg man` first.
+     * Given the installed command
+     * When its help is displayed
+     * Then it says to use `nicevg man` first to read the manual, before the usage
+     */
+    test("help says to read the manual with nicevg man first", () => {
+      assert.match(run("", ["--help"]).stdout, /Use 'nicevg man' first to read the manual\.\n\nUsage: nicevg/);
+    });
+
+    /**
+     * [x] When `nicevg doc --help`, `nicevg run --help` or `nicevg fix-raw --help` runs, it can say so too.
+     * Given the installed command
+     * When the help of doc, run or fix-raw is displayed
+     * Then each says to use `nicevg man` first to read the manual, before its options
+     */
+    test("each command's help says to read the manual with nicevg man first", () => {
+      for (const command of ["doc", "run", "fix-raw"]) {
+        assert.match(run("", [command, "--help"]).stdout, /Use 'nicevg man' first to read the manual\.\n\nOptions:/, command);
+      }
+    });
+
+    /**
      * [x] When the style example in `nicevg-dsl-render-style` is drawn with `nicevg doc`, it can draw with no failures.
      * Given a git repository whose README.md has the help page's style example as a diagram block
      * When nicevg doc runs on it

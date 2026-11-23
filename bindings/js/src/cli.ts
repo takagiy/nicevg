@@ -14,12 +14,16 @@ import { man } from "./man.ts";
 
 const ABOUT = "A diagram tool for AI agents. It adjusts the layout and fixes visual issues, so the agent does not have to.";
 const USAGE = "Usage: nicevg doc [options] <files...>\n       nicevg run <script> [options]\n       nicevg fix-raw < <in.svg>\n       nicevg man [<tag> | <text>]...";
-const HELP = `${ABOUT}\n\n${USAGE}\n\nOptions:\n  -h, --help     Print help\n  -V, --version  Print version\n`;
+/** Said in every help: the manual holds what the helps leave out, such as the DSL and what each issue means. */
+const MANUAL = "Use 'nicevg man' first to read the manual.";
+const HELP = `${ABOUT}\n${MANUAL}\n\n${USAGE}\n\nOptions:\n  -h, --help     Print help\n  -V, --version  Print version\n`;
 const FIX_RAW_USAGE = `Usage: nicevg fix-raw < <in.svg>
 
 Reads an SVG diagram from stdin, fixes it and writes it to stdout. The issues
 left go to stderr, one per line. The exit status is 0 with none left, 1 with
 some, and 2 for invalid SVG or wrong arguments.
+
+${MANUAL}
 
 Options:
   -h, --help  Print help
@@ -31,6 +35,8 @@ Draws the diagram a DSL script renders, writes its SVG, and prints a JSON report
 the file written, the failure if the script drew nothing, the issues left and
 what the script wrote to the console. The script runs in a sandbox: it reads no
 files but those in the sandbox directory.
+
+${MANUAL}
 
 Options:
   -s, --script <code>    The DSL itself, or - to read it from stdin
@@ -50,6 +56,8 @@ Draws the diagrams written as diagram scripts in <!-- nicevg ... --> comments of
 markdown files, and prints the files it changed, the diagrams that failed and
 the issues left in the others as JSON. Diagram scripts run in a sandbox: they
 read and write no files but those in the sandbox directory.
+
+${MANUAL}
 
 Options:
   --dry-run                    Write nothing; report the files that would change
