@@ -13,6 +13,8 @@
 - [x] When matches do not nest, `nicevg man` can print each in page order, separated by a rule.
 - [x] When a query matches nothing, `nicevg man` can report it and exit 1.
 - [x] When `nicevg --help` runs, it can name `nicevg man`.
+- [x] When `nicevg --help` runs, it can say to read the manual with `nicevg man` first.
+- [x] When `nicevg doc --help`, `nicevg run --help` or `nicevg fix-raw --help` runs, it can say so too.
 
 ## Help page
 
