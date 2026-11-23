@@ -4,9 +4,11 @@
 //! The search is greedy. Each layout round tries small moves of single nodes —
 //! lining a bent edge's ends up, or nudging the ends of edges
 //! that cross, crowd or have issues — fixes the result, and keeps the move
-//! that lowers the score most. Moves never add issues or jogs, never change which
-//! side of another node a node is on, and stay within a few lanes of where
-//! the node started.
+//! that lowers the score most. A nudge that bends a straight edge of the
+//! node it moves is also tried with the node at that edge's other end
+//! moving along. Moves never add issues, jogs or crossings, never change
+//! which side of another node a node is on, and stay within a few lanes of
+//! where the node started.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex, mpsc};
@@ -149,21 +151,49 @@ fn run_rounds<'scope>(
     }
     let candidates = candidates(context, &state);
     tracing::Span::current().record("candidates", candidates.len());
+    let crossings_now = total_crossings(&state.result.report().diagram);
     let keeps = |next: &State| {
+        let diagram = &next.result.report().diagram;
         next.result.report().issues.len() <= state.result.report().issues.len()
-            && total_jogs(&next.result.report().diagram) <= total_jogs(&state.result.report().diagram)
+            && total_jogs(diagram) <= total_jogs(&state.result.report().diagram)
+            && total_crossings(diagram) <= crossings_now
     };
     // A move that did not help last round, away from everything the round
     // changed, would not help now either: it is not tried again.
     let diagram = &state.result.report().diagram;
     let key = |(id, by): &(String, Move)| (id.clone(), by.dx as i64, by.dy as i64);
-    let (retried, skipped): (Vec<_>, Vec<_>) = candidates.into_iter().partition(|candidate| {
+    let (mut retried, skipped): (Vec<_>, Vec<_>) = candidates.into_iter().partition(|candidate| {
         tried.get(&key(candidate)).is_none_or(|gain| *gain < 0.0)
             || reach(diagram, &candidate.0)
                 .iter()
                 .any(|reach| changed.iter().any(|area| touches_area(reach, area)))
     });
-    let evaluated = evaluate_all(context, &state, &retried, workers);
+    let mut evaluated = evaluate_all(context, &state, &retried, workers);
+    // A node nudged alone across an edge running straight from it may bend
+    // that edge. The best-scoring nudge of the round that did, of a node with
+    // an edge that bends twice or more or crosses another, is tried once more
+    // with the nodes at the other ends of the edges it bent, so those edges
+    // stay straight.
+    let carried = retried
+        .iter()
+        .zip(&evaluated)
+        .filter_map(|((id, by), next)| {
+            let moved = !id.contains(TOGETHER) && (by.dx != 0.0 || by.dy != 0.0);
+            if !moved || !mending(diagram, id) {
+                return None;
+            }
+            let next = next.as_ref()?;
+            let partners = bent_partners(diagram, &next.result.report().diagram, id, &context.parents);
+            let group = [vec![id.clone()], partners].concat().join(TOGETHER);
+            (group != *id && context.allows(&state, &group, *by)).then_some((next.score, (group, *by)))
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, candidate)| candidate);
+    if let Some((id, by)) = carried {
+        let next = evaluate(context, &state, &id, by).map(|moved| untangled(context, &id, moved));
+        retried.push((id, by));
+        evaluated.push(next);
+    }
     let tried: Tried = skipped
         .iter()
         .map(|candidate| (key(candidate), tried[&key(candidate)]))
@@ -208,6 +238,109 @@ fn run_rounds<'scope>(
 /// What each move tried scored against the state it was tried from (lower
 /// is better), infinite when it was ruled out; by node ids and rounded move.
 type Tried = HashMap<(String, i64, i64), f64>;
+
+/// How many times routes cross each other in all.
+fn total_crossings(diagram: &Diagram) -> usize {
+    let edges = &diagram.edges;
+    edges
+        .iter()
+        .enumerate()
+        .map(|(index, first)| {
+            edges[index + 1..]
+                .iter()
+                .map(|second| crossings(&first.points, &second.points))
+                .sum::<usize>()
+        })
+        .sum()
+}
+
+/// Whether node `id` has an edge that bends twice or more or crosses
+/// another: a nudge of it is meant to mend that edge.
+fn mending(diagram: &Diagram, id: &str) -> bool {
+    diagram
+        .edges
+        .iter()
+        .filter(|edge| edge.from == id || edge.to == id)
+        .any(|edge| {
+            bends(&edge.points) >= 2
+                || diagram
+                    .edges
+                    .iter()
+                    .any(|other| other.id != edge.id && crossings(&edge.points, &other.points) > 0)
+        })
+}
+
+/// The nodes at the other ends of node `id`'s edges that ran straight
+/// `before` a move of it and bend `after`, leaving out parents.
+fn bent_partners(before: &Diagram, after: &Diagram, id: &str, parents: &HashSet<String>) -> Vec<String> {
+    let mut partners: Vec<String> = before
+        .edges
+        .iter()
+        .filter(|edge| edge.points.len() >= 2 && bends(&edge.points) == 0)
+        .filter(|edge| after.edge(&edge.id).is_some_and(|moved| bends(&moved.points) > 0))
+        .filter_map(|edge| match (edge.from == id, edge.to == id) {
+            (true, false) => Some(edge.to.clone()),
+            (false, true) => Some(edge.from.clone()),
+            _ => None,
+        })
+        .filter(|partner| !parents.contains(partner))
+        .collect();
+    partners.sort();
+    partners.dedup();
+    partners
+}
+
+/// Whether edges with an end at the nodes `id` names cross each other.
+fn crossed_among(diagram: &Diagram, id: &str) -> bool {
+    let ids: HashSet<&str> = id.split(TOGETHER).collect();
+    let moved: Vec<&DiagramEdge> = diagram
+        .edges
+        .iter()
+        .filter(|edge| ids.contains(edge.from.as_str()) || ids.contains(edge.to.as_str()))
+        .collect();
+    moved.iter().enumerate().any(|(index, first)| {
+        moved[index + 1..]
+            .iter()
+            .any(|second| crossings(&first.points, &second.points) > 0)
+    })
+}
+
+/// A move of the nodes `id` names, untangled: it reroutes all their edges at
+/// once, each choosing its sides before the others' routes are drawn, as
+/// fixing explains for edges rerouted together, so where they cross each
+/// other they are given their edges again (`rerouted_again`).
+fn untangled(context: &Context, id: &str, moved: State) -> State {
+    if !crossed_among(&moved.result.report().diagram, id) {
+        return moved;
+    }
+    let result = rerouted_again(context, &moved.offsets, id, moved.result);
+    State {
+        score: context.score(result.report(), &moved.offsets),
+        result,
+        offsets: moved.offsets,
+    }
+}
+
+/// Each node's edges rerouted again, a node at a time among the others' new
+/// routes, with the nodes in the order `id` names them and the reverse; the
+/// best result that keeps the issues is taken.
+fn rerouted_again(context: &Context, offsets: &HashMap<String, Point>, id: &str, result: Draft) -> Draft {
+    let nodes: Vec<String> = id.split(TOGETHER).map(str::to_owned).collect();
+    let reversed: Vec<String> = nodes.iter().rev().cloned().collect();
+    let issues = result.report().issues.len();
+    let mut best = (context.score(result.report(), offsets), result.clone());
+    for order in [nodes, reversed] {
+        let mut current = result.clone();
+        for node in order {
+            current = fix_after_moves(current.moving(vec![node]), 1);
+            let score = context.score(current.report(), offsets);
+            if score < best.0 && current.report().issues.len() <= issues {
+                best = (score, current.clone());
+            }
+        }
+    }
+    best.1
+}
 
 /// Whether two areas overlap or touch; a straight segment's area is a line.
 fn touches_area(first: &Bounds, second: &Bounds) -> bool {
