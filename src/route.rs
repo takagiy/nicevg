@@ -1605,13 +1605,19 @@ pub fn route_edge(
 }
 
 /// Picks the pair of node sides whose route needs the fewest bends, trying
-/// every side of both ends from its midpoint. Each edge already on a
-/// side makes that side cost more, so bends are not saved by bunching
+/// each side where its end would lie: where the two nodes' line-up spans
+/// along the side overlap, at the middle of the overlap, both ends at the
+/// same place, as lining the ends up then takes them there; elsewhere at
+/// the side's middle, where spreading puts a lone end. Each edge already on
+/// a side makes that side cost more, so bends are not saved by bunching
 /// edges together. The sides facing along the dominant axis win ties.
 #[tracing::instrument(skip_all)]
+#[allow(clippy::too_many_arguments)]
 pub fn choose_sides(
     source: &Bounds,
     target: &Bounds,
+    source_circle: bool,
+    target_circle: bool,
     raw_obstacles: &[Bounds],
     raw_pushable: &[Pushable<'_>],
     occupied: &[Vec<Point>],
@@ -1623,12 +1629,28 @@ pub fn choose_sides(
         start: side_of(preferred.start, source),
         end: side_of(preferred.end, target),
     };
-    let terminals = |bounds: &Bounds, keep: Side| -> Vec<Terminal> {
+    let tried = |bounds: &Bounds, circle: bool, side: Side, other: &Bounds, other_circle: bool| {
+        let along_y = matches!(side, Side::Left | Side::Right);
+        let (low, high) = line_up_span(bounds, circle, along_y);
+        let (other_low, other_high) = line_up_span(other, other_circle, along_y);
+        let (from, to) = (low.max(other_low), high.min(other_high));
+        if from > to {
+            return port_on_side(bounds, side);
+        }
+        let at = round((from + to) / 2.0);
+        match side {
+            Side::Left => point(bounds.x, at),
+            Side::Right => point(bounds.right(), at),
+            Side::Top => point(at, bounds.y),
+            Side::Bottom => point(at, bounds.bottom()),
+        }
+    };
+    let terminals = |bounds: &Bounds, circle: bool, keep: Side, other: &Bounds, other_circle: bool| -> Vec<Terminal> {
         Side::ALL
             .iter()
             .map(|side| {
                 let cost = if *side == keep { 0.0 } else { SIDE_CHANGE_COST } + CROWDING_COST * load(bounds, *side);
-                terminal_at(port_on_side(bounds, *side), bounds, cost)
+                terminal_at(tried(bounds, circle, *side, other, other_circle), bounds, cost)
             })
             .collect()
     };
@@ -1642,8 +1664,8 @@ pub fn choose_sides(
         .map(|(bounds, cost)| (bounds.inflate(ROUTE_CLEARANCE), *cost))
         .collect();
     let found = search_along_rough_route(
-        &terminals(source, fallback.start),
-        &terminals(target, fallback.end),
+        &terminals(source, source_circle, fallback.start, target, target_circle),
+        &terminals(target, target_circle, fallback.end, source, source_circle),
         &obstacles,
         &pushable,
         occupied,
@@ -1953,10 +1975,37 @@ pub(crate) fn even_places(low: f64, length: f64, ends: usize, fixed: &[f64]) -> 
     places.into_iter().map(round).collect()
 }
 
+/// How far an end on a box side keeps from each end of the side, as one
+/// nearer a corner looks pushed into it: a quarter of the side, at least
+/// 8px, but at most 25px on a side up to 200px long and an eighth of a
+/// longer one, at most 50px; never past the middle. It is never more than
+/// a quarter of the side, so an end keeps no further from a corner than
+/// before a side's margin stopped growing with it.
+pub(crate) fn corner_margin(length: f64) -> f64 {
+    (length / 4.0)
+        .max(8.0)
+        .min((length / 8.0).max(25.0))
+        .min(50.0)
+        .min(length / 2.0)
+}
+
+/// Where along a node's sides across `along_y` (its left and right sides,
+/// or its top and bottom) an end may be lined up with the end of an edge
+/// across from it: clear of a box's corners by [`corner_margin`], or 8px in
+/// from a circle's box. Empty, low above high, on a circle too small for it.
+fn line_up_span(bounds: &Bounds, round: bool, along_y: bool) -> (f64, f64) {
+    let (low, length) = if along_y {
+        (bounds.y, bounds.height)
+    } else {
+        (bounds.x, bounds.width)
+    };
+    let margin = if round { 8.0 } else { corner_margin(length) };
+    (low + margin, low + length - margin)
+}
+
 /// Straightens edges between facing sides: when one end's coordinate
-/// also fits on the other end's side, in the middle half of a box's side or
-/// away from a circle's corners, and at least a lane away from other ports
-/// there, both ends share it.
+/// also fits on the other end's side, within its [`line_up_span`], and at
+/// least a lane away from other ports there, both ends share it.
 fn align_facing_ports(requests: &[PortRequest], ports: HashMap<String, Ports>) -> HashMap<String, Ports> {
     requests.iter().fold(ports, |mut ports, request| {
         let Some(port) = ports.get(&request.id).copied() else {
@@ -1979,16 +2028,9 @@ fn align_facing_ports(requests: &[PortRequest], ports: HashMap<String, Ports>) -
         if coordinate(port.start) == coordinate(port.end) {
             return ports;
         }
-        // Within the middle half of a box's side, as a port moved near a
-        // corner looks pushed aside.
         let fits = |bounds: &Bounds, round: bool, value: f64| {
-            let (low, length) = if along_y {
-                (bounds.y, bounds.height)
-            } else {
-                (bounds.x, bounds.width)
-            };
-            let margin = if round { 8.0 } else { (length / 4.0).max(8.0) };
-            value >= low + margin && value <= low + length - margin
+            let (low, high) = line_up_span(bounds, round, along_y);
+            value >= low && value <= high
         };
         let taken = |ports: &HashMap<String, Ports>, owner_id: &str, side: Side, value: f64| {
             requests.iter().filter(|other| other.id != request.id).any(|other| {
@@ -2341,6 +2383,22 @@ pub fn place_label(
 mod tests {
     use super::*;
 
+    /// Given sides from 1px to 2000px long
+    /// When their corner margins are taken
+    /// Then a side keeps a quarter of its length from each corner, at least
+    ///   8px and never past its middle, up to 25px on a side up to 200px
+    ///   long, an eighth of a longer one, and 50px past 400px; never more
+    ///   than a quarter of the side or 8px, as before the margin stopped
+    #[test]
+    fn keeps_ends_from_corners_by_a_margin_that_stops_growing_with_the_side() {
+        assert_eq!(
+            [12.0, 48.0, 100.0, 160.0, 200.0, 300.0, 400.0, 1490.0].map(corner_margin),
+            [6.0, 12.0, 25.0, 25.0, 25.0, 37.5, 50.0, 50.0]
+        );
+        for length in (1..=2000).map(f64::from) {
+            assert!(corner_margin(length) <= (length / 4.0).max(8.0), "{length}");
+        }
+    }
     /// Given two obstacles whose facing sides lie 4px apart
     /// When the grid lines along that axis are drawn
     /// Then the two edges share one line between them, each obstacle

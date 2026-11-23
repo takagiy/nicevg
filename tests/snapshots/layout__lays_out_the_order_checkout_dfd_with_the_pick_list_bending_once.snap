@@ -3,7 +3,7 @@ source: tests/layout.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "badness": 843.63,
+  "badness": 844.33,
   "bends": 16,
   "bentEdges": 12,
   "cornerShortfall": 0.0,
@@ -15,7 +15,7 @@ expression: "support :: quality_of(& result.report)"
   "jogs": 0,
   "jogShortfall": 0.0,
   "lateBends": 0,
-  "parallelDensity": 27.71,
+  "parallelDensity": 28.41,
   "remainingIssues": 0,
   "shortEnds": 0,
   "shortEndShortfall": 0.0,
