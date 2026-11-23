@@ -1,11 +1,11 @@
 ---
-source: tests/arrange.rs
+source: tests/layout.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "badness": 0.0,
-  "bends": 0,
-  "bentEdges": 0,
+  "badness": 60.0,
+  "bends": 1,
+  "bentEdges": 1,
   "cornerShortfall": 0.0,
   "crossings": 0,
   "crossingsNearEnds": 0,

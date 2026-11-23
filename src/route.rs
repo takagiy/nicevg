@@ -73,22 +73,29 @@ const _: () = assert!(crate::inspect::NEAR_MISS_DISTANCE < ROUTE_CLEARANCE);
 pub type Pushable<'a> = (Bounds, &'a dyn Fn() -> Option<f64>);
 /// No pushable box on a step.
 const NO_BOX: u16 = u16::MAX;
-/// How far a route runs straight into its target before the last bend,
-/// longest first. An arrowhead is about 10px long, so the clearance alone
-/// leaves the last bend under it; shorter stubs are the fallbacks when
-/// another node is in the way.
+/// How far a route runs straight out of its source before the first bend,
+/// and into its target after the last, longest first. An arrowhead is about
+/// 10px long, so the clearance alone leaves the bend under it; shorter stubs
+/// are the fallbacks when another node is in the way.
 pub const END_STUBS: [f64; 3] = [24.0, 16.0, ROUTE_CLEARANCE];
 /// An end segment shorter than this, or a crossing nearer the node than
 /// this, makes it hard to see the edge arrive.
 pub(crate) const SHORT_END: f64 = 20.0;
-/// What a route searched or a diagram laid out pays for an end segment
-/// that short: in full up to the shorter stub, half at a short end, nothing
-/// from the full stub on.
-pub(crate) const SHORT_END_FADE: Fade = Fade {
+/// The part of `short_end_cost` that fades: in full up to the shorter stub,
+/// half at a short end, nothing from the full stub on.
+const SHORT_END_FADE: Fade = Fade {
     start: 16.0,
     reach: 24.0,
     full: 300.0,
 };
+
+/// What a route searched or a diagram laid out pays for an end segment
+/// `length` long: the fade, and 3 for every pixel short of the full stub.
+/// A pixel shorter end segment saves at most 2px of route, out and back,
+/// so a shorter one always costs more.
+pub(crate) fn short_end_cost(length: f64) -> f64 {
+    SHORT_END_FADE.cost(length) + 3.0 * (SHORT_END_FADE.reach - length).max(0.0)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -238,20 +245,18 @@ fn stub_terminal(port: Point, bounds: &Bounds, length: f64, cost: f64) -> Termin
     }
 }
 
-/// Ends at each stub length whose straight run to the port stays clear of
-/// the obstacles; every pixel of stub given up costs a pixel of route, and
-/// a stub too short to see the arrival costs a short end on top.
-fn end_terminals(port: Point, target: &Bounds, obstacles: &[Bounds]) -> Vec<Terminal> {
+/// Terminals at each stub length whose straight run from the port stays
+/// clear of the obstacles; every pixel of stub given up costs a pixel of
+/// route, and a stub too short to see the edge leave or arrive costs a
+/// short end on top.
+fn stub_terminals(port: Point, node: &Bounds, obstacles: &[Bounds]) -> Vec<Terminal> {
     END_STUBS
         .iter()
         .filter(|length| {
             **length == ROUTE_CLEARANCE
-                || route_is_clear(&[port, outward(port, side_of(port, target), **length)], obstacles)
+                || route_is_clear(&[port, outward(port, side_of(port, node), **length)], obstacles)
         })
-        .map(|length| {
-            let short = SHORT_END_FADE.cost(*length);
-            stub_terminal(port, target, *length, END_STUBS[0] - length + short)
-        })
+        .map(|length| stub_terminal(port, node, *length, END_STUBS[0] - length + short_end_cost(*length)))
         .collect()
 }
 
@@ -259,6 +264,14 @@ fn end_terminals(port: Point, target: &Bounds, obstacles: &[Bounds]) -> Vec<Term
 /// port's side, which would double back along the stub.
 fn arrives_backwards(here: Point, next: Point, terminal: &Terminal) -> bool {
     (next.x - here.x) * (terminal.port.x - next.x) + (next.y - here.y) * (terminal.port.y - next.y) < 0.0
+}
+
+/// Whether a move from a start terminal to `next` heads back along its stub
+/// towards the port it leaves.
+fn leaves_backwards(next: Point, terminal: &Terminal) -> bool {
+    (next.x - terminal.point.x) * (terminal.port.x - terminal.point.x)
+        + (next.y - terminal.point.y) * (terminal.port.y - terminal.point.y)
+        > 0.0
 }
 
 pub struct Found {
@@ -1166,6 +1179,12 @@ fn astar(
             continue;
         }
         let came_from = visits.previous(state).map(cell_of_state);
+        // A route leaves a start's stub away from its port: turned back, a
+        // longer stub would be drawn as a shorter one at the longer one's price.
+        let leaving = came_from
+            .is_none()
+            .then(|| starts.iter().find(|terminal| cell_of(&terminal.point) == Some(cell)))
+            .flatten();
         let neighbours = [
             (xi.checked_sub(1), Some(yi)),
             (Some(xi + 1), Some(yi)),
@@ -1194,7 +1213,9 @@ fn astar(
             if end.is_none() && corridor.is_some_and(|corridor| !corridor.iter().any(inside)) {
                 continue;
             }
-            if end.is_some_and(|(_, terminal)| arrives_backwards(here, next, terminal)) {
+            if end.is_some_and(|(_, terminal)| arrives_backwards(here, next, terminal))
+                || leaving.is_some_and(|terminal| leaves_backwards(next, terminal))
+            {
                 continue;
             }
             let vertical = usize::from(nxi == xi);
@@ -1576,18 +1597,18 @@ pub fn route_edge(
         .copied()
         .chain([source.inflate(ROUTE_CLEARANCE), target.inflate(ROUTE_CLEARANCE)])
         .collect();
+    // A node never stands in the way of the run out of or into it, even at
+    // both ends of a loop; the node at the other end does.
+    let in_the_way = |other: &Bounds| -> Vec<Bounds> {
+        obstacles
+            .iter()
+            .copied()
+            .chain((source != target).then(|| other.inflate(ROUTE_CLEARANCE)))
+            .collect()
+    };
     match search(
-        &[terminal_at(ports.start, source, 0.0)],
-        &end_terminals(
-            ports.end,
-            target,
-            // The target never stands in the way of the run into it, even as the source of a loop.
-            &obstacles
-                .iter()
-                .copied()
-                .chain((source != target).then(|| source.inflate(ROUTE_CLEARANCE)))
-                .collect::<Vec<_>>(),
-        ),
+        &stub_terminals(ports.start, source, &in_the_way(target)),
+        &stub_terminals(ports.end, target, &in_the_way(source)),
         &all_obstacles,
         &pushable,
         occupied,
@@ -2495,17 +2516,91 @@ mod tests {
             width: 100.0,
             height: 60.0,
         };
-        let ends = end_terminals(point(100.0, 30.0), &target, &[]);
+        let ends = stub_terminals(point(100.0, 30.0), &target, &[]);
 
         for end in &ends {
             let length = 100.0 - end.point.x;
-            let expected = END_STUBS[0] - length + SHORT_END_FADE.cost(length);
+            let expected = END_STUBS[0] - length + short_end_cost(length);
             assert!((end.cost - expected).abs() < 1e-9, "{end:?}");
         }
         assert!(
             ends.iter()
                 .any(|end| 100.0 - end.point.x < SHORT_END_FADE.start && end.cost > 100.0)
         );
+    }
+
+    /// Given end segments from 0px to 30px long, a tenth of a pixel apart
+    /// When each is costed as an end segment
+    /// Then below the full stub every pixel shorter costs more than the 2px
+    ///   of route a pixel shorter end segment can save, and from the full
+    ///   stub on nothing
+    #[test]
+    fn costs_a_shorter_end_segment_more_than_the_route_it_saves() {
+        for tenth in 0..240 {
+            let length = f64::from(tenth) / 10.0;
+            assert!(short_end_cost(length) - short_end_cost(length + 0.1) > 0.2, "{length}");
+        }
+        assert_eq!(short_end_cost(END_STUBS[0]), 0.0);
+        assert_eq!(short_end_cost(30.0), 0.0);
+    }
+
+    /// The two boxes of the routes below: an edge leaves the middle of the
+    /// first box's bottom side for the left side of the second, above and
+    /// to the right.
+    fn routed_up_and_round(obstacles: &[Bounds]) -> Vec<Point> {
+        let source = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 50.0,
+        };
+        let target = Bounds {
+            x: 300.0,
+            y: -100.0,
+            width: 100.0,
+            height: 50.0,
+        };
+        let ports = Ports {
+            start: point(50.0, 50.0),
+            end: point(300.0, -75.0),
+        };
+        route_edge(&source, &target, obstacles, &[], ports, &[], &[])
+    }
+
+    /// Given an edge leaving a box's bottom side for a box above and to the
+    ///   right, with nothing below the first box
+    /// When the edge is routed
+    /// Then it runs 24px down out of the first box before its first bend,
+    ///   as it runs 24px into the second: bending 8px out would make the
+    ///   route 32px shorter, but its first segment too short to see it leave
+    #[test]
+    fn runs_out_of_its_start_port_as_far_as_into_its_end_before_bending() {
+        let route = routed_up_and_round(&[]);
+
+        let first = (route[1].x - route[0].x).abs() + (route[1].y - route[0].y).abs();
+        assert_eq!(route[0], point(50.0, 50.0));
+        assert!(first >= END_STUBS[0], "{route:?}");
+    }
+
+    /// Given the same edge with a third box 28px below the first, so that
+    ///   the route can leave the first box 16px but not 24px straight down
+    /// When the edge is routed
+    /// Then it bends 16px out of the first box rather than 8px, although the
+    ///   route is then 16px longer
+    #[test]
+    fn bends_16px_out_of_its_start_port_when_24px_is_blocked() {
+        let below = Bounds {
+            x: 0.0,
+            y: 78.0,
+            width: 100.0,
+            height: 40.0,
+        };
+
+        let route = routed_up_and_round(&[below]);
+
+        let first = (route[1].x - route[0].x).abs() + (route[1].y - route[0].y).abs();
+        assert_eq!(route[0], point(50.0, 50.0));
+        assert!((16.0..END_STUBS[0]).contains(&first), "{route:?}");
     }
 
     /// Given routes with no bend up to four bends, all 300px long, and a

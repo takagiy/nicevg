@@ -1,9 +1,9 @@
 ---
-source: tests/arrange.rs
+source: tests/layout.rs
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "badness": 94.84,
+  "badness": 60.87,
   "bends": 1,
   "bentEdges": 1,
   "cornerShortfall": 0.0,
@@ -15,9 +15,9 @@ expression: "support :: quality_of(& result.report)"
   "jogs": 0,
   "jogShortfall": 0.0,
   "lateBends": 0,
-  "parallelDensity": 1.84,
+  "parallelDensity": 0.87,
   "remainingIssues": 0,
-  "shortEnds": 1,
-  "shortEndShortfall": 11.0,
+  "shortEnds": 0,
+  "shortEndShortfall": 0.0,
   "tangledCrossings": 0
 }

@@ -698,8 +698,8 @@ fn lays_out_the_social_app_er_diagram_without_issues() {
 ///   stores beside the processes, and flows skipping several processes
 /// When the diagram is laid out
 /// Then nothing is reported, the layout is kept, no edge steps aside
-///   just before reaching a node or anywhere else, none but f29 arrives
-///   with a last segment shorter than 20px, the two shortcuts leaving
+///   just before reaching a node or anywhere else, none arrives with a
+///   last segment shorter than 20px, the two shortcuts leaving
 ///   "take application" side by side do not cross, neither do the two
 ///   edges entering "make offer" side by side from above, and no two
 ///   edges come so close that they read as touching
@@ -712,9 +712,7 @@ fn lays_out_a_tall_loan_dfd_without_steps_at_the_ends() {
     assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
     assert_eq!(stepped_ends(&result.report), Vec::<String>::new());
     assert_eq!(jogged(&result.report), Vec::<String>::new());
-    // f29 runs down between f30, 16px to its left, and the circles it joins,
-    // 32px from f30: the gap holds no run that leaves 20px of both.
-    assert_eq!(short_arrivals(&result.report), ["f29"]);
+    assert_eq!(short_arrivals(&result.report), Vec::<String>::new());
     assert_eq!(near_misses(&result.report), Vec::<(String, String)>::new());
     // f26 runs to "make offer" and f27 to "notify", both past every
     // process in between.
