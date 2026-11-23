@@ -276,6 +276,41 @@ fn reports_a_edge_passing_within_8px_of_a_free_label() {
     })));
 }
 
+/// Given an edge that runs straight through an edge label, and another that
+///   passes 5px below a second label
+/// When the diagram is inspected
+/// Then the first is reported as crossing its label, which leaves the label
+///   unreadable, and only the second as passing near one
+#[test]
+fn reports_an_edge_running_across_a_label_apart_from_one_passing_near_it() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 600 300">
+        <g data-node="source">
+          <rect x="20" y="20" width="100" height="160" />
+          <text x="70" y="53" text-anchor="middle" font-size="14">Source</text>
+        </g>
+        <g data-node="target">
+          <rect x="260" y="20" width="100" height="160" />
+          <text x="310" y="53" text-anchor="middle" font-size="14">Target</text>
+        </g>
+        <text data-label="retry" x="150" y="38" font-size="14">Retry</text>
+        <line id="through" data-from="source" data-to="target" x1="120" y1="33" x2="260" y2="33" />
+        <text data-label="again" x="150" y="138" font-size="14">Again</text>
+        <line id="below" data-from="source" data-to="target" x1="120" y1="146" x2="260" y2="146" />
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+
+    assert!(issues_json(&report).contains(&json!({
+        "code": "edge-overlaps-label",
+        "message": "Edge \"through\" crosses label \"retry\".",
+        "elements": ["through", "retry"],
+    })));
+    assert_eq!(issues_with_code(&report, "edge-overlaps-label"), [["through", "retry"]]);
+    assert_eq!(issues_with_code(&report, "edge-near-label"), [["below", "again"]]);
+}
+
 /// Given an edge whose ends stop inside the source and target
 /// When the diagram is inspected
 /// Then each end is reported instead of being accepted as edge-to-edge

@@ -833,6 +833,7 @@ fn rerouted_for(issue: &DiagramIssue) -> &[String] {
         "edge-overlaps" | "edge-bend-near-edge" => &issue.elements,
         "edge-overlaps-node"
         | "edge-near-label"
+        | "edge-overlaps-label"
         | "edge-end-detached"
         | "edge-slanted"
         | "edge-end-detached-port"

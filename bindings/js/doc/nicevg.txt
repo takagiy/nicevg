@@ -37,6 +37,7 @@ CONTENTS                                                     *nicevg-contents*
        |nicevg-engine-issue-edge-overlaps-node-outline|
        |nicevg-engine-issue-label-overlaps|
        |nicevg-engine-issue-label-overlaps-node|
+       |nicevg-engine-issue-edge-overlaps-label|
        |nicevg-engine-issue-edge-near-label|
        |nicevg-engine-issue-edge-label-detached|
 
@@ -427,8 +428,14 @@ label-overlaps-node                  *nicevg-engine-issue-label-overlaps-node*
 	An edge's label overlaps a node.
 	Fix: move that node away from the edge.
 
+edge-overlaps-label                  *nicevg-engine-issue-edge-overlaps-label*
+	An edge runs across a label, its own or another edge's, so the label
+	cannot be read.
+	Fix: move the nodes so the edge goes round the label, or move apart
+	the nodes the label's edge joins so the label has room beside it.
+
 edge-near-label                          *nicevg-engine-issue-edge-near-label*
-	An edge passes within 8px of another edge's label.
+	An edge passes within 8px of another edge's label, but not across it.
 	Fix: move the nodes so the edge passes further from the label.
 
 edge-label-detached                  *nicevg-engine-issue-edge-label-detached*
