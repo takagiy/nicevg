@@ -1122,6 +1122,67 @@ fn keeps_aligned_ports_at_least_10px_from_other_ports_on_the_side() {
     assert_fix_snapshots!(result);
 }
 
+/// Given a node 1490px tall and a box beside it, the box's middle 315px
+///   below the tall node's top, in the first quarter of the tall node's side
+/// When the diagram is fixed
+/// Then the edge between them runs straight across: a side that long keeps
+///   its ends only 50px from its corners
+#[test]
+fn runs_straight_into_a_long_side_far_from_its_middle() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 1600">
+        <g data-node="lane">
+          <rect x="20" y="40" width="48" height="1490" />
+          <text x="44" y="200" text-anchor="middle" font-size="13">hc</text>
+        </g>
+        <g data-node="writer">
+          <rect x="380" y="318" width="175" height="74" />
+          <text x="467" y="360" text-anchor="middle" font-size="13">Write labels</text>
+        </g>
+        <line id="labels" data-from="writer" data-to="lane"
+          x1="467" y1="355" x2="44" y2="785" />
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let points = edge_points(&result.report, "labels");
+
+    assert_eq!(points.len(), 2, "{points:?}");
+    assert!(is_orthogonal(&points));
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+}
+
+/// Given a node 1490px tall and a box beside it, the box's middle 162px
+///   below the tall node's, where a route from the box's top into the
+///   middle of the tall node's side bends once and one from its side facing
+///   that middle bends twice
+/// When the diagram is fixed
+/// Then the edge runs straight from the box's facing side: sides are tried
+///   where their ends can line up, not at their middles
+#[test]
+fn tries_facing_sides_where_their_ends_line_up() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 1600">
+        <g data-node="lane">
+          <rect x="20" y="40" width="48" height="1490" />
+          <text x="44" y="200" text-anchor="middle" font-size="13">hc</text>
+        </g>
+        <g data-node="launcher">
+          <rect x="380" y="910" width="188" height="74" />
+          <text x="474" y="952" text-anchor="middle" font-size="13">Ask to launch</text>
+        </g>
+        <line id="launch" data-from="launcher" data-to="lane"
+          x1="474" y1="947" x2="44" y2="785" />
+      </svg>
+    "#;
+
+    let result = fix(svg);
+    let points = edge_points(&result.report, "launch");
+
+    assert_eq!(points.len(), 2, "{points:?}");
+    assert!(is_orthogonal(&points));
+    assert!(result.report.issues.is_empty(), "{:?}", result.report.issues);
+}
 /// Given a target below and to the right, where right-to-left ports need
 ///   a two-bend jog
 /// When the diagram is fixed

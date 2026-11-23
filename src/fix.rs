@@ -23,9 +23,9 @@ use crate::inspect::{
 };
 use crate::route::{
     CROSSING_COST, END_STUBS, LABEL_CLEAR_OF_OTHERS, LANE_SPACING, LabelSpot, PARALLEL_RUN, Placement, PortRequest,
-    Ports, Pushable, ROUTE_CLEARANCE, Side, Sides, bends, choose_sides, crossings, edge_ports, end_on_shapes,
-    even_places, is_on_outline, label_landmarks, overlap, place_label, route_cost, route_edge, routes_cost,
-    runs_across, side_of, spread_ports,
+    Ports, Pushable, ROUTE_CLEARANCE, Side, Sides, bends, choose_sides, corner_margin, crossings, edge_ports,
+    end_on_shapes, even_places, is_on_outline, label_landmarks, overlap, place_label, route_cost, route_edge,
+    routes_cost, runs_across, side_of, spread_ports,
 };
 use crate::text::{label_text_index, move_label, text_bounds};
 use crate::xml::{Document, Element, Path, serialize};
@@ -1037,6 +1037,8 @@ fn reroute_around(draft: Draft, walls: &HashSet<String>, alone: Option<&HashSet<
                 let sides = choose_sides(
                     &reroute.source.bounds,
                     &reroute.target.bounds,
+                    reroute.source.is_circle(),
+                    reroute.target.is_circle(),
                     &obstacles_for(reroute.edge),
                     &pushable_for(reroute.edge),
                     &settled,
@@ -1928,13 +1930,18 @@ fn improve_ports(
             })
             .collect()
     };
-    // The segment of a side a port may move to: its middle half, as a port
-    // near a corner looks pushed aside, and one near a circle's tangent
-    // would meet it at a glancing angle.
+    // The segment of a side a port may move to: on a box, clear of its
+    // corners by `corner_margin`; on a circle, its middle half, as an end
+    // near the circle's tangent would meet it at a glancing angle.
     let usable = |index: usize, end: usize, side: Side| {
-        let (low, length) = extent(node_at(index, end), side);
-        // At most half the side, so a side under 16px leaves its middle.
-        let margin = (length / 4.0).max(8.0).min(length / 2.0);
+        let node = node_at(index, end);
+        let (low, length) = extent(node, side);
+        let margin = if node.is_circle() {
+            // At most half the side, so a side under 16px leaves its middle.
+            (length / 4.0).max(8.0).min(length / 2.0)
+        } else {
+            corner_margin(length)
+        };
         (low + margin, low + length - margin)
     };
     // Whether an end can take the coordinate `value` along `side`: within
