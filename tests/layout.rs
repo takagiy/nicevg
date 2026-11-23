@@ -477,11 +477,11 @@ fn lays_out_the_storefront_architecture_without_denting_a_row() {
     assert_fix_snapshots!(result);
 }
 
-/// Given the DFD of a plugin listing terminals in a sidebar, its nodes
-///   where nicevg 0.31.5-beta.35 laid them out and its edges drawn again
-///   straight between node centres: hc, an external entity 1490px tall,
-///   beside a column of processes that read from and write to it from top
-///   to bottom
+/// Given the DFD of a plugin listing terminals in a sidebar, as its sketch
+///   is drawn before layout, its nodes where the sketch puts them and its
+///   edges straight between node centres: hc, an external entity 1490px
+///   tall, beside a column of processes that read from and write to it from
+///   top to bottom
 /// When the diagram is laid out
 /// Then nothing is reported, and every edge between hc and a process beside
 ///   it runs straight across
@@ -504,6 +504,7 @@ fn lays_out_the_terminal_sidebar_dfd_with_straight_edges_into_its_tall_entity() 
 
     assert_fix_snapshots!(result);
 }
+
 /// Given the order checkout DFD draft, where the pick list from allocate to
 ///   ship has to get past the approval line
 /// When the diagram is laid out
