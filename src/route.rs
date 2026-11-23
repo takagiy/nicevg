@@ -1625,10 +1625,20 @@ pub fn route_edge(
     }
 }
 
+/// How many lines a lane apart the side choice also tries either way of the
+/// middle of the overlap two facing sides line up on, for where another
+/// edge already runs along the middle.
+const OVERLAP_LINES: u32 = 4;
+/// What each lane further from the middle adds to a side's price, too
+/// little to outweigh any real cost: the middle wins ties.
+const OFF_MIDDLE_COST: f64 = 0.01;
+
 /// Picks the pair of node sides whose route needs the fewest bends, trying
 /// each side where its end would lie: where the two nodes' line-up spans
 /// along the side overlap, at the middle of the overlap, both ends at the
-/// same place, as lining the ends up then takes them there; elsewhere at
+/// same place, as lining the ends up then takes them there, and on the lines
+/// a lane apart either way of the middle within the overlap, as another
+/// edge may already run along the middle (`OVERLAP_LINES`); elsewhere at
 /// the side's middle, where spreading puts a lone end. Each edge already on
 /// a side makes that side cost more, so bends are not saved by bunching
 /// edges together. The sides facing along the dominant axis win ties.
@@ -1650,31 +1660,46 @@ pub fn choose_sides(
         start: side_of(preferred.start, source),
         end: side_of(preferred.end, target),
     };
-    let tried = |bounds: &Bounds, circle: bool, side: Side, other: &Bounds, other_circle: bool| {
+    // Where a side is tried, each place with what it adds to the side's price.
+    let tried = |bounds: &Bounds, circle: bool, side: Side, other: &Bounds, other_circle: bool| -> Vec<(Point, f64)> {
         let along_y = matches!(side, Side::Left | Side::Right);
         let (low, high) = line_up_span(bounds, circle, along_y);
         let (other_low, other_high) = line_up_span(other, other_circle, along_y);
         let (from, to) = (low.max(other_low), high.min(other_high));
         if from > to {
-            return port_on_side(bounds, side);
+            return vec![(port_on_side(bounds, side), 0.0)];
         }
-        let at = round((from + to) / 2.0);
-        match side {
+        let place = |at: f64| match side {
             Side::Left => point(bounds.x, at),
             Side::Right => point(bounds.right(), at),
             Side::Top => point(at, bounds.y),
             Side::Bottom => point(at, bounds.bottom()),
+        };
+        let middle = round((from + to) / 2.0);
+        let mut places = vec![(place(middle), 0.0)];
+        for step in 1..=OVERLAP_LINES {
+            let away = f64::from(step) * LANE_SPACING;
+            for at in [middle - away, middle + away] {
+                if at >= from && at <= to {
+                    places.push((place(at), f64::from(step) * OFF_MIDDLE_COST));
+                }
+            }
         }
+        places
     };
-    let terminals = |bounds: &Bounds, circle: bool, keep: Side, other: &Bounds, other_circle: bool| -> Vec<Terminal> {
-        Side::ALL
-            .iter()
-            .map(|side| {
-                let cost = if *side == keep { 0.0 } else { SIDE_CHANGE_COST } + CROWDING_COST * load(bounds, *side);
-                terminal_at(tried(bounds, circle, *side, other, other_circle), bounds, cost)
-            })
-            .collect()
-    };
+    // The terminals of all sides, with the side each stands for.
+    let terminals =
+        |bounds: &Bounds, circle: bool, keep: Side, other: &Bounds, other_circle: bool| -> (Vec<Terminal>, Vec<Side>) {
+            Side::ALL
+                .iter()
+                .flat_map(|side| {
+                    let cost = if *side == keep { 0.0 } else { SIDE_CHANGE_COST } + CROWDING_COST * load(bounds, *side);
+                    tried(bounds, circle, *side, other, other_circle)
+                        .into_iter()
+                        .map(move |(at, off_middle)| (terminal_at(at, bounds, cost + off_middle), *side))
+                })
+                .unzip()
+        };
     let obstacles: Vec<Bounds> = raw_obstacles
         .iter()
         .map(|bounds| bounds.inflate(ROUTE_CLEARANCE))
@@ -1684,16 +1709,10 @@ pub fn choose_sides(
         .iter()
         .map(|(bounds, cost)| (bounds.inflate(ROUTE_CLEARANCE), *cost))
         .collect();
-    let found = search_along_rough_route(
-        &terminals(source, source_circle, fallback.start, target, target_circle),
-        &terminals(target, target_circle, fallback.end, source, source_circle),
-        &obstacles,
-        &pushable,
-        occupied,
-        rails,
-        SIDE_BEND_COST,
-    );
-    match found.and_then(|found| Some((Side::ALL.get(found.start?)?, Side::ALL.get(found.end?)?))) {
+    let (starts, start_sides) = terminals(source, source_circle, fallback.start, target, target_circle);
+    let (ends, end_sides) = terminals(target, target_circle, fallback.end, source, source_circle);
+    let found = search_along_rough_route(&starts, &ends, &obstacles, &pushable, occupied, rails, SIDE_BEND_COST);
+    match found.and_then(|found| Some((start_sides.get(found.start?)?, end_sides.get(found.end?)?))) {
         Some((start, end)) => Sides {
             start: *start,
             end: *end,
@@ -2745,6 +2764,33 @@ mod tests {
 
         assert_eq!((boxed.start.x, boxed.end.x), (170.0, 250.0));
         assert_eq!((round.start.x, round.end.x), (170.0, 170.0));
+    }
+
+    /// Given a circle with an edge already running out of the middle of its
+    ///   right side and away, and a larger circle level with it on the right,
+    ///   so the spans their facing sides line up on overlap around that middle
+    /// When the sides of another edge between the two are chosen
+    /// Then they are the facing sides, which a line a lane or two off the
+    ///   taken middle joins straight (issue #59)
+    #[test]
+    fn chooses_facing_sides_a_line_beside_the_taken_middle_joins_straight() {
+        let source = Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 70.0,
+            height: 70.0,
+        };
+        let target = Bounds {
+            x: 670.0,
+            y: -27.0,
+            width: 124.0,
+            height: 124.0,
+        };
+        let taken = vec![point(70.0, 35.0), point(600.0, 35.0), point(600.0, 200.0)];
+
+        let sides = choose_sides(&source, &target, true, true, &[], &[], &[taken], &[], &|_, _| 0.0);
+
+        assert_eq!((sides.start, sides.end), (Side::Right, Side::Left));
     }
 
     /// Given a box reaching across the left and lower edges of an area, and

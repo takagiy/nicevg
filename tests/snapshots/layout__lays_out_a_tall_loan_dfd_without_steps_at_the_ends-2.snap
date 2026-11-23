@@ -2,7 +2,7 @@
 source: tests/layout.rs
 expression: result.svg.as_str()
 ---
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-142 0 1386 2060" width="1386" height="2060">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-142 0 1428 2060" width="1428" height="2060">
 
   <style>
     text { font-family: system-ui, sans-serif; fill: #1f2937; }
@@ -140,7 +140,7 @@ expression: result.svg.as_str()
   </g>
   <path id="f1" class="flow" data-from="applicant" data-to="intake" fill="none" d="M 540 142 L 540 185"/>
   <path id="f2" class="flow" data-from="intake" data-to="applications" fill="none" d="M 605 250 L 760 250"/>
-  <path id="f3" class="flow" data-from="intake" data-to="verify" fill="none" d="M 540 315 L 540 361"/>
+  <path id="f3" class="flow" data-from="intake" data-to="verify" fill="none" d="M 518 311 L 518 365"/>
   <path id="f4" class="flow" data-from="verify" data-to="idp" fill="none" d="M 603 417 L 900 417"/>
   <path id="f5" class="flow" data-from="idp" data-to="verify" fill="none" d="M 900 435 L 603 435"/>
   <path id="f6" class="flow" data-from="verify" data-to="customers" fill="none" d="M 476 425 L 350 425"/>
@@ -164,14 +164,14 @@ expression: result.svg.as_str()
   <path id="f24" class="flow" data-from="underwriter" data-to="review" fill="none" d="M 1010 1150 L 812 1150"/>
   <path id="f25" class="flow" data-from="review" data-to="offer" fill="none" d="M 760 1180 L 760 1290 L 597 1290"/>
   <path id="f26" class="flow" data-from="intake" data-to="offer" fill="none" d="M 479 272 L 32 272 L 32 1280 L 488 1280"/>
-  <path id="f27" class="flow" data-from="intake" data-to="notify" fill="none" d="M 479 228 L -24 228 L -24 1800 L 484 1800"/>
-  <path id="f28" class="flow" data-from="assess" data-to="notify" fill="none" d="M 597 980 L 1148 980 L 1148 1819 L 593 1819"/>
+  <path id="f27" class="flow" data-from="intake" data-to="notify" fill="none" d="M 562 311 L 562 346 L 1168 346 L 1168 1828 L 588 1828"/>
+  <path id="f28" class="flow" data-from="assess" data-to="notify" fill="none" d="M 597 980 L 1148 980 L 1148 1800 L 596 1800"/>
   <path id="f29" class="flow" data-from="verify" data-to="sign" fill="none" d="M 485 457 L 16 457 L 16 1459 L 482 1459"/>
   <path id="f30" class="flow" data-from="customers" data-to="payout" fill="none" d="M 220 425 L -4 425 L -4 1683 L 489 1683"/>
   <path id="f31" class="flow" data-from="applicant" data-to="sign" fill="none" d="M 470 116 L -44 116 L -44 1501 L 482 1501"/>
   <path id="f32" class="flow" data-from="offer" data-to="offers" fill="none" d="M 480 1310 L 360 1310"/>
   <path id="f33" class="flow" data-from="offer" data-to="sign" fill="none" d="M 540 1370 L 540 1418"/>
-  <path id="f34" class="flow" data-from="offer" data-to="notify" fill="none" d="M 597 1330 L 1038 1330 L 1038 1781 L 593 1781"/>
+  <path id="f34" class="flow" data-from="offer" data-to="notify" fill="none" d="M 597 1330 L 1038 1330 L 1038 1772 L 588 1772"/>
   <path id="f35" class="flow" data-from="sign" data-to="contracts" fill="none" d="M 602 1480 L 760 1480"/>
   <path id="f36" class="flow" data-from="sign" data-to="payout" fill="none" d="M 540 1542 L 540 1597"/>
   <path id="f37" class="flow" data-from="payout" data-to="ledger" fill="none" d="M 482 1655 L 360 1655"/>
@@ -181,7 +181,7 @@ expression: result.svg.as_str()
   <path id="f41" class="flow" data-from="notify" data-to="messaging" fill="none" d="M 540 1856 L 540 1970"/>
   <text data-label="f1-label" data-label-for="f1" class="flow-label" x="549" y="169" text-anchor="start" font-size="11">application form</text>
   <text data-label="f2-label" data-label-for="f2" class="flow-label" x="683" y="239" text-anchor="middle" font-size="11">application</text>
-  <text data-label="f3-label" data-label-for="f3" class="flow-label" x="549" y="343" text-anchor="start" font-size="11">applicant details</text>
+  <text data-label="f3-label" data-label-for="f3" class="flow-label" x="509" y="343" text-anchor="end" font-size="11">applicant details</text>
   <text data-label="f4-label" data-label-for="f4" class="flow-label" x="752" y="406" text-anchor="middle" font-size="11">document scan</text>
   <text data-label="f5-label" data-label-for="f5" class="flow-label" x="752" y="455" text-anchor="middle" font-size="11">verification result</text>
   <text data-label="f6-label" data-label-for="f6" class="flow-label" x="413" y="414" text-anchor="middle" font-size="11">customer record</text>
@@ -205,14 +205,14 @@ expression: result.svg.as_str()
   <text data-label="f24-label" data-label-for="f24" class="flow-label" x="911" y="1170" text-anchor="middle" font-size="11">review decision</text>
   <text data-label="f25-label" data-label-for="f25" class="flow-label" x="769" y="1240" text-anchor="start" font-size="11">review outcome</text>
   <text data-label="f26-label" data-label-for="f26" class="flow-label" x="41" y="882" text-anchor="start" font-size="11">amount and term</text>
-  <text data-label="f27-label" data-label-for="f27" class="flow-label" x="230" y="1789" text-anchor="middle" font-size="11">acknowledgement</text>
-  <text data-label="f28-label" data-label-for="f28" class="flow-label" x="1157" y="1405" text-anchor="start" font-size="11">decline notice</text>
+  <text data-label="f27-label" data-label-for="f27" class="flow-label" x="1177" y="1092" text-anchor="start" font-size="11">acknowledgement</text>
+  <text data-label="f28-label" data-label-for="f28" class="flow-label" x="1139" y="1395" text-anchor="end" font-size="11">decline notice</text>
   <text data-label="f29-label" data-label-for="f29" class="flow-label" x="249" y="1448" text-anchor="middle" font-size="11">verified identity</text>
   <text data-label="f30-label" data-label-for="f30" class="flow-label" x="243" y="1703" text-anchor="middle" font-size="11">bank account</text>
   <text data-label="f31-label" data-label-for="f31" class="flow-label" x="-53" y="814" text-anchor="end" font-size="11">e-signature</text>
   <text data-label="f32-label" data-label-for="f32" class="flow-label" x="420" y="1330" text-anchor="middle" font-size="11">offer</text>
   <text data-label="f33-label" data-label-for="f33" class="flow-label" x="549" y="1399" text-anchor="start" font-size="11">offer terms</text>
-  <text data-label="f34-label" data-label-for="f34" class="flow-label" x="1047" y="1561" text-anchor="start" font-size="11">offer details</text>
+  <text data-label="f34-label" data-label-for="f34" class="flow-label" x="1047" y="1556" text-anchor="start" font-size="11">offer details</text>
   <text data-label="f35-label" data-label-for="f35" class="flow-label" x="681" y="1469" text-anchor="middle" font-size="11">signed contract</text>
   <text data-label="f36-label" data-label-for="f36" class="flow-label" x="549" y="1575" text-anchor="start" font-size="11">disbursement order</text>
   <text data-label="f37-label" data-label-for="f37" class="flow-label" x="421" y="1644" text-anchor="middle" font-size="11">ledger entry</text>
