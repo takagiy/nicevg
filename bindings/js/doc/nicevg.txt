@@ -249,7 +249,8 @@ rootAttrs	Attributes for the root <svg>, such as
 		nicevg writes `xmlns`, `viewBox`, `width` and `height`.
 		Texts are measured as this machine's fonts draw them in
 		that `font-family` and `font-weight`, and in the font
-		nicevg carries (Liberation Sans) where it has none. With
+		nicevg carries (Liberation Sans) where it has none. Kana
+		and kanji those fonts lack are a font size wide each. With
 		NICEVG_SYSTEM_FONTS=0 in the environment, only that font
 		measures, the same on every machine.
 

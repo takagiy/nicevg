@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use parley::fontique::{Blob, Collection, CollectionOptions, GenericFamily};
+use parley::fontique::{Blob, Collection, CollectionOptions, GenericFamily, Script};
 use parley::{FontContext, FontWeight, Layout, LayoutContext, StyleProperty};
 use unicode_width::UnicodeWidthStr;
 
@@ -13,6 +13,13 @@ const OWN_FONTS: [&[u8]; 2] = [
     include_bytes!("../fonts/LiberationSans-Regular.ttf"),
     include_bytes!("../fonts/LiberationSans-Bold.ttf"),
 ];
+
+/// Kana and Han, with the punctuation among them. Fonts for documents draw
+/// each of their characters as wide as its columns say, while the font a
+/// machine falls back to where the declared fonts lack them may not: the one
+/// Windows picks has kana about a quarter narrower. Which font a reader's
+/// browser picks is not known here, so their columns give their width.
+const KANA_AND_HAN: [[u8; 4]; 3] = [*b"Hira", *b"Kana", *b"Hani"];
 
 /// How many widths are kept: past it all are dropped, so that a process
 /// measuring ever new texts does not grow with them.
@@ -46,6 +53,9 @@ fn fonts() -> &'static Mutex<Fonts> {
                 collection.set_generic_families(*generic, own.iter().copied());
             }
         }
+        for script in KANA_AND_HAN.map(Script::from_bytes) {
+            collection.set_fallbacks(script, std::iter::empty());
+        }
         Mutex::new(Fonts {
             fonts: FontContext {
                 collection,
@@ -61,9 +71,10 @@ fn fonts() -> &'static Mutex<Fonts> {
 /// How wide a line of text is drawn at a font size, with the `font-family`
 /// and `font-weight` it declares. A text of no family, or of families there
 /// is no font of, is drawn in a serif font, as browsers draw it. A
-/// character no font of this machine has is taken as wide as the columns
-/// Unicode gives it (East Asian Width), half a font size each: a whole font
-/// size for a wide character, none for a combining one.
+/// character no font of this machine has, or kana or Han the declared fonts
+/// lack, is taken as wide as the columns Unicode gives it (East Asian Width,
+/// ambiguous ones as wide), half a font size each: a whole font size for a
+/// wide character, none for a combining one.
 pub fn text_width(text: &str, font_size: f64, font_family: &str, font_weight: &str) -> f64 {
     let weight = FontWeight::parse_css(font_weight).unwrap_or_default();
     let mut fonts = fonts().lock().expect("no measuring panics");
@@ -104,7 +115,7 @@ pub fn text_width(text: &str, font_size: f64, font_family: &str, font_weight: &s
         .flat_map(|line| line.runs())
         .flat_map(|run| run.clusters())
         .filter(|cluster| cluster.glyphs().any(|glyph| glyph.id == 0))
-        .map(|cluster| text[cluster.text_range()].width() as f32 * font_size as f32 / 2.0 - cluster.advance())
+        .map(|cluster| text[cluster.text_range()].width_cjk() as f32 * font_size as f32 / 2.0 - cluster.advance())
         .sum();
     let width = f64::from(layout.width() + unseen).round();
     known

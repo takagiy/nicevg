@@ -30,21 +30,23 @@ fn measures_a_text_as_wide_as_its_font_draws_it() {
 
 /// Given free labels at 14px in characters the fonts measuring here lack: two
 ///   kanji, a thumbs-up emoji, two Thai letters with a vowel sign above the
-///   first, and the kanji after two Latin letters
+///   first, a circled digit and a reference mark, whose columns East Asian
+///   texts double, and the kanji after two Latin letters
 /// When the diagram is inspected
 /// Then each is as wide as its columns in Unicode's East Asian Width, 7px
 ///   each: the kanji and the emoji two columns a character, the Thai
-///   letters one each and the sign above none, and the Latin letters as
-///   their font draws them
+///   letters one each and the sign above none, the circled digit and the
+///   reference mark two each, and the Latin letters as their font draws them
 #[test]
 fn takes_a_character_no_font_has_as_wide_as_its_columns() {
     let svg = r#"
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 220" font-family="sans-serif" font-size="14">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 260" font-family="sans-serif" font-size="14">
         <text data-label="kanji" x="20" y="40">注文</text>
         <text data-label="emoji" x="20" y="80">👍</text>
         <text data-label="thai" x="20" y="120">กิน</text>
-        <text data-label="latin" x="20" y="160">ab</text>
-        <text data-label="mixed" x="20" y="200">ab注文</text>
+        <text data-label="ambiguous" x="20" y="160">①※</text>
+        <text data-label="latin" x="20" y="200">ab</text>
+        <text data-label="mixed" x="20" y="240">ab注文</text>
       </svg>
     "#;
 
@@ -52,6 +54,7 @@ fn takes_a_character_no_font_has_as_wide_as_its_columns() {
     let width = |id: &str| label_bounds(&report, id).width;
 
     assert_eq!((width("kanji"), width("emoji"), width("thai")), (28.0, 14.0, 14.0));
+    assert_eq!(width("ambiguous"), 28.0);
     assert_eq!(width("mixed"), width("latin") + 28.0);
 }
 
