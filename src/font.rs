@@ -21,6 +21,14 @@ const OWN_FONTS: [&[u8]; 2] = [
 /// browser picks is not known here, so their columns give their width.
 const KANA_AND_HAN: [[u8; 4]; 3] = [*b"Hira", *b"Kana", *b"Hani"];
 
+/// The fonts Chrome on Windows draws Thai and Georgian in where the declared
+/// fonts lack them, the first of Chromium's lists for them there. Windows
+/// itself falls back to Leelawadee UI, which draws Thai up to 16% narrower,
+/// and to Segoe UI, which draws Georgian about a tenth wider. Chrome draws
+/// the other scripts in the fonts Windows falls back to.
+#[cfg(windows)]
+const CHROME_FALLBACKS: [([u8; 4], &str); 2] = [(*b"Thai", "Tahoma"), (*b"Geor", "Sylfaen")];
+
 /// How many widths are kept: past it all are dropped, so that a process
 /// measuring ever new texts does not grow with them.
 const KEPT_WIDTHS: usize = 100_000;
@@ -55,6 +63,13 @@ fn fonts() -> &'static Mutex<Fonts> {
         }
         for script in KANA_AND_HAN.map(Script::from_bytes) {
             collection.set_fallbacks(script, std::iter::empty());
+        }
+        #[cfg(windows)]
+        for (script, family) in CHROME_FALLBACKS {
+            let script = Script::from_bytes(script);
+            let system: Vec<_> = collection.fallback_families(script).collect();
+            let chrome = collection.family_id(family);
+            collection.set_fallbacks(script, chrome.into_iter().chain(system));
         }
         Mutex::new(Fonts {
             fonts: FontContext {
