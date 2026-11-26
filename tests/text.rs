@@ -1,20 +1,22 @@
-//! How the space a text takes is measured: the widths its font draws,
-//! presentation properties, baselines and labels spanning several lines.
+//! How the space a text takes is measured: the widths a font it names draws,
+//! the widths estimated where it names none, presentation properties,
+//! baselines and labels spanning several lines.
 
 mod support;
 
 use nicevg::{Bounds, InspectionReport};
 use support::*;
 
-/// Given free labels of four letters at 14px, one of narrow letters, one
-///   of wide letters, and one of the wide letters in bold
+/// Given free labels of four letters at 14px in Liberation Sans, a font
+///   nicevg carries: one of narrow letters, one of wide letters, and one of
+///   the wide letters in bold
 /// When the diagram is inspected
-/// Then each is as wide as its font draws it: the narrow one 12px, the
+/// Then each is as wide as the font draws it: the narrow one 12px, the
 ///   wide one 44px, and the bold one wider still
 #[test]
-fn measures_a_text_as_wide_as_its_font_draws_it() {
+fn measures_a_text_as_wide_as_the_font_it_names_draws_it() {
     let svg = r#"
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 140" font-family="sans-serif" font-size="14">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 140" font-family="Liberation Sans" font-size="14">
         <text data-label="narrow" x="20" y="40">illi</text>
         <text data-label="wide" x="20" y="80">mwmw</text>
         <text data-label="bold" x="20" y="120" font-weight="bold">mwmw</text>
@@ -28,33 +30,62 @@ fn measures_a_text_as_wide_as_its_font_draws_it() {
     assert!(width("bold") > width("wide"));
 }
 
-/// Given free labels at 14px in characters the fonts measuring here lack: two
-///   kanji, a thumbs-up emoji, two Thai letters with a vowel sign above the
-///   first, a circled digit and a reference mark, whose columns East Asian
-///   texts double, and the kanji after two Latin letters
+/// Given the same labels in sans-serif, a generic family, and the narrow one
+///   in monospace
 /// When the diagram is inspected
-/// Then each is as wide as its columns in Unicode's East Asian Width, 7px
-///   each: the kanji and the emoji two columns a character, the Thai
-///   letters one each and the sign above none, the circled digit and the
-///   reference mark two each, and the Latin letters as their font draws them
+/// Then each is estimated from its letters, each as wide as the widest font
+///   browsers draw it in by default: the narrow one 18px, the wide one 51px,
+///   the bold one 56px, and the narrow one in monospace 34px
 #[test]
-fn takes_a_character_no_font_has_as_wide_as_its_columns() {
+fn estimates_a_text_in_a_generic_family_from_its_letters() {
     let svg = r#"
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 260" font-family="sans-serif" font-size="14">
-        <text data-label="kanji" x="20" y="40">注文</text>
-        <text data-label="emoji" x="20" y="80">👍</text>
-        <text data-label="thai" x="20" y="120">กิน</text>
-        <text data-label="ambiguous" x="20" y="160">①※</text>
-        <text data-label="latin" x="20" y="200">ab</text>
-        <text data-label="mixed" x="20" y="240">ab注文</text>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 180" font-family="sans-serif" font-size="14">
+        <text data-label="narrow" x="20" y="40">illi</text>
+        <text data-label="wide" x="20" y="80">mwmw</text>
+        <text data-label="bold" x="20" y="120" font-weight="bold">mwmw</text>
+        <text data-label="monospace" x="20" y="160" font-family="monospace">illi</text>
       </svg>
     "#;
 
     let report = inspect(svg);
     let width = |id: &str| label_bounds(&report, id).width;
 
-    assert_eq!((width("kanji"), width("emoji"), width("thai")), (28.0, 14.0, 14.0));
-    assert_eq!(width("ambiguous"), 28.0);
+    assert_eq!(
+        (width("narrow"), width("wide"), width("bold"), width("monospace")),
+        (18.0, 51.0, 56.0, 34.0)
+    );
+}
+
+/// Given free labels at 14px in sans-serif of characters other than Latin,
+///   Greek and Cyrillic ones: two kanji, a thumbs-up emoji, two Thai letters
+///   with a vowel sign above the first, and a circled digit with a reference
+///   mark; and two Latin letters, alone and before the kanji, in Liberation
+///   Sans, which has no kanji
+/// When the diagram is inspected
+/// Then each is estimated from its characters: a kanji, the circled digit
+///   and the reference mark a font size each, the emoji 19px, the Thai
+///   letters 18px with the sign above none, and the kanji after the Latin
+///   letters a font size each beyond what the font draws
+#[test]
+fn estimates_the_characters_no_named_font_draws() {
+    let svg = r#"
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 260" font-family="sans-serif" font-size="14">
+        <text data-label="kanji" x="20" y="40">注文</text>
+        <text data-label="emoji" x="20" y="80">👍</text>
+        <text data-label="thai" x="20" y="120">กิน</text>
+        <text data-label="ambiguous" x="20" y="160">①※</text>
+        <text data-label="latin" x="20" y="200" font-family="Liberation Sans">ab</text>
+        <text data-label="mixed" x="20" y="240" font-family="Liberation Sans">ab注文</text>
+      </svg>
+    "#;
+
+    let report = inspect(svg);
+    let width = |id: &str| label_bounds(&report, id).width;
+
+    assert_eq!(
+        (width("kanji"), width("emoji"), width("thai"), width("ambiguous")),
+        (28.0, 19.0, 18.0, 28.0)
+    );
     assert_eq!(width("mixed"), width("latin") + 28.0);
 }
 

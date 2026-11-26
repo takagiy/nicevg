@@ -1,21 +1,22 @@
 ---
 source: tests/layout.rs
+assertion_line: 477
 expression: "support :: quality_of(& result.report)"
 ---
 {
-  "badness": 1363.93,
+  "badness": 1448.44,
   "bends": 20,
   "bentEdges": 12,
-  "cornerShortfall": 0.0,
+  "cornerShortfall": 20.5,
   "crossings": 10,
   "crossingsNearEnds": 0,
   "detachedLabels": 0,
-  "detour": 532.0,
+  "detour": 551.0,
   "diagonalSegments": 0,
   "jogs": 0,
   "jogShortfall": 0.0,
   "lateBends": 1,
-  "parallelDensity": 30.81,
+  "parallelDensity": 30.28,
   "remainingIssues": 0,
   "shortEnds": 0,
   "shortEndShortfall": 0.0,

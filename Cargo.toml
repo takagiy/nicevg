@@ -9,6 +9,7 @@ repository = "https://github.com/takagiy/nicevg"
 
 [dependencies]
 fontique = { version = "0.13.0", features = ["fontconfig-dlopen"] }
+icu_properties = "2.3.0"
 parley = "0.13.0"
 quick-xml = "0.42.0"
 regex = "1.13.1"

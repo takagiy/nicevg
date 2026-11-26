@@ -10,8 +10,8 @@
 
 テキストの行を、宣言された `font-family` と `font-weight` のフォントでシェーピングして、その幅を使う。
 
-- シェーピングとフォントの選択は `parley`、マシンのフォントの検索は `fontique` に任せる。CSS の `font-family` の並びの解釈と、`sans-serif` などの総称名からフォントを選ぶ処理も、これらのクレートが行う。
-- Liberation Sans（Regular と Bold、SIL OFL 1.1）をライブラリに同梱する。総称名に当たるフォントがマシンにないとき、このフォントで測る。
+- シェーピングとフォントの選択は `parley`、マシンのフォントの検索は `fontique` に任せる。CSS の `font-family` の並びの解釈と、`sans-serif` などの総称名からフォントを選ぶ処理も、これらのクレートが行う。総称名と、名前で指定したフォントにない文字は、のちに [字とスクリプトから見積もるようにした](estimate-widths-without-a-font.md)。
+- Liberation Sans（Regular と Bold、SIL OFL 1.1）をライブラリに同梱する。総称名に当たるフォントがマシンにないとき、このフォントで測る。のちに、名前で指定されたときだけ使うようにした。
 - 環境変数 `NICEVG_SYSTEM_FONTS=0` で、同梱のフォントだけで測る。どのマシンでも同じ幅になるので、テストはこの設定で実行する。
 - どのフォントにもグリフがない文字は、Unicode の East Asian Width が定める桁数で幅を決める。1 桁をフォントサイズの 0.5 倍とする。ワイドな文字と絵文字は 2 桁、結合文字は 0 桁である。桁数は `unicode-width` クレートで求める。宣言のフォントにないかなと漢字も、のちに [桁数で測るようにした](kana-and-han-by-columns.md)。
 - TypeScript の `text()` も、ネイティブライブラリに同じ計測を頼む。スタイルが描く間に作ったテキストは、`rootAttrs` の `font-family` と `font-weight` で測る。`nicevg doc` と `nicevg run` のスクリプトはサンドボックスの中で動くので、ホストが計測の関数を渡す。

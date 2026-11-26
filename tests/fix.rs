@@ -684,7 +684,8 @@ fn reroutes_an_edge_out_of_the_gap_between_a_node_and_its_parent_s_side() {
 
 /// Given the Apache Druid architecture as laid out with one edge drawn
 ///   straight through two nodes: it leaves the top of its node with two
-///   others, where the gap to the node above holds two routes
+///   others, where the gap to the node above holds two routes; its texts in
+///   Liberation Sans, the font the layout was made with
 /// When the diagram is fixed
 /// Then no edge is left slanted or through a node: one that finds no way
 ///   among the routes drawn with its own is rerouted once more, alone,
@@ -1997,7 +1998,7 @@ fn keeps_a_moved_label_clear_of_other_labels() {
 
     let result = fix(svg);
 
-    assert_eq!(label_bounds(&result.report, "note"), bounds(175.0, -14.0, 30.0, 17.0));
+    assert_eq!(label_bounds(&result.report, "note"), bounds(172.5, -14.0, 35.0, 17.0));
     assert!(
         gap_between(
             &label_bounds(&result.report, "retry"),
