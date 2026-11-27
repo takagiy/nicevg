@@ -1,9 +1,10 @@
 ---
 source: tests/layout.rs
+assertion_line: 795
 expression: result.svg.as_str()
 ---
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 760 744 522.2" width="744" height="522.2">
-  <g data-node="p4" data-custom="true" transform="translate(17 0)">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 760 773 522.2" width="773" height="522.2">
+  <g data-node="p4" data-custom="true" transform="translate(42 0)">
     <g transform="translate(350 780)"><circle data-bounds="true" cx="55" cy="55" r="55" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="55" y="43.1">hsr</tspan><tspan x="55" y="59.900000000000006">eltpusctap</tspan><tspan x="55" y="76.7">irhgwprrpm</tspan></text></g>
   </g>
   <g data-node="s4" data-custom="true">
@@ -12,18 +13,18 @@ expression: result.svg.as_str()
   <g data-node="p5" data-custom="true">
     <g transform="translate(350 1000)"><circle data-bounds="true" cx="58" cy="58" r="58" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="58" y="46.1">aip</tspan><tspan x="58" y="62.900000000000006">txmwznmxzs</tspan><tspan x="58" y="79.7">oeldbepg</tspan></text></g>
   </g>
-  <g data-node="s9" data-custom="true" transform="translate(13 0)">
+  <g data-node="s9" data-custom="true" transform="translate(42 0)">
     <g transform="translate(620 1025)"><rect data-bounds="true" x="0" y="0" width="131" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="65.5" y="26">ivnyujnqmslrsnshk</tspan></text></g>
   </g>
   <g data-node="end" data-custom="true" transform="translate(0 -60)">
     <g transform="translate(340 1220)"><rect data-bounds="true" x="0" y="0" width="151" height="42.2" fill="white" stroke="black"/><text text-anchor="middle" font-size="14"><tspan x="75.5" y="26">vaitvwfwkrssdwugusij</tspan></text></g>
   </g>
-  <path id="edge-0" data-from="s4" data-to="p4" fill="none" stroke="black" d="M 204 826 L 368 826"/>
-  <text data-label="edge-0" data-label-for="edge-0" text-anchor="middle" font-size="12" x="286" y="-19.75"><tspan x="286" y="815">dcpupclzcneajnyndbttybmw</tspan></text>
-  <path id="edge-1" data-from="p4" data-to="end" fill="none" stroke="black" d="M 370 853 L 316 853 L 316 1181 L 340 1181"/>
+  <path id="edge-0" data-from="s4" data-to="p4" fill="none" stroke="black" d="M 204 826 L 393 826"/>
+  <text data-label="edge-0" data-label-for="edge-0" text-anchor="middle" font-size="12" x="299" y="-19.75"><tspan x="299" y="815">dcpupclzcneajnyndbttybmw</tspan></text>
+  <path id="edge-1" data-from="p4" data-to="end" fill="none" stroke="black" d="M 395 853 L 316 853 L 316 1181 L 340 1181"/>
   <text data-label="edge-1" data-label-for="edge-1" text-anchor="end" font-size="12" x="307" y="-20.25"><tspan x="307" y="1022">skriqhbjacdtrbgnjtiew</tspan></text>
-  <path id="edge-2" data-from="p5" data-to="s9" fill="none" stroke="black" d="M 465 1046 L 633 1046"/>
-  <text data-label="edge-2" data-label-for="edge-2" text-anchor="middle" font-size="12" x="549" y="-21.25"><tspan x="549" y="1035">bkklemmoqmutvrdtzqinuxwh</tspan></text>
+  <path id="edge-2" data-from="p5" data-to="s9" fill="none" stroke="black" d="M 465 1046 L 662 1046"/>
+  <text data-label="edge-2" data-label-for="edge-2" text-anchor="middle" font-size="12" x="564" y="-21.25"><tspan x="564" y="1035">bkklemmoqmutvrdtzqinuxwh</tspan></text>
   <path id="edge-3" data-from="p5" data-to="end" fill="none" stroke="black" d="M 408 1116 L 408 1160"/>
   <text data-label="edge-3" data-label-for="edge-3" text-anchor="start" font-size="12" x="417" y="-10.75"><tspan x="417" y="1143">jniqjrkaznskamtsuebuukolvl</tspan></text>
 </svg>

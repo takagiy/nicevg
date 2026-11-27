@@ -538,6 +538,7 @@ version = "0.31.4"
 dependencies = [
  "clap",
  "fontique",
+ "icu_properties",
  "insta",
  "mimalloc",
  "parley",

@@ -80,7 +80,7 @@ fn reports_the_required_box_size_when_a_label_violates_node_padding() {
             "code": "node-label-overflows",
             "message": "Label does not fit inside node \"confirm\" with 12px padding.",
             "elements": ["confirm"],
-            "details": { "requiredWidth": 131, "requiredHeight": 41 },
+            "details": { "requiredWidth": 149, "requiredHeight": 41 },
         })]
     );
 }
@@ -595,7 +595,7 @@ fn includes_free_labels_when_checking_the_safe_viewbox() {
         "elements": ["svg"],
         "details": {
             "sides": ["right"],
-            "requiredViewBox": { "x": 70, "y": 6, "width": 70, "height": 57 },
+            "requiredViewBox": { "x": 70, "y": 6, "width": 75, "height": 57 },
         },
     })));
 }

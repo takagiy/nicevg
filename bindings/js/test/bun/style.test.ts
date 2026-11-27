@@ -52,7 +52,7 @@ describe("svg and text", () => {
     expect(String(text("注文").at({ cx: 50, cy: 20 }))).toContain('x="50" y="20" font-size="14" text-anchor="middle"');
     expect(String(text("a").at({ right: 50, bottom: 34 }))).toContain('x="50" y="25.5" font-size="14" text-anchor="end"');
     expect(text("注文").width).toBe(28);
-    expect(text("ab").width).toBe(16);
+    expect(text("ab").width).toBe(18);
   });
 
   /**
